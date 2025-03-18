@@ -2170,10 +2170,18 @@ ${text}
         // Parse the summaryHTML to find 'path' identifiers and replace them with the actual comment IDs links
         const formattedSummary = this.replacePathsWithCommentLinks(summaryHtml, commentPathToIdMap);
 
-        const {aiProvider, model} = await this.getAIProviderModel();
+        const {aiProvider, model, language} = await this.getAIProviderModel();
         if (aiProvider) {
+            let metadataText = `Summarized using <strong>${aiProvider} ${model || ''}</strong> in <strong>${duration ?? '0'} secs</strong>`;
+            
+            // 如果不是英语，显示语言信息
+            if (language && language !== 'en') {
+                const languageName = this.getLanguageName(language);
+                metadataText += ` in <strong>${languageName}</strong>`;
+            }
+            
             this.summaryPanel.updateContent({
-                metadata: `Summarized using <strong>${aiProvider} ${model || ''}</strong> in <strong>${duration ?? '0'} secs</strong>`,
+                metadata: metadataText,
                 text: formattedSummary
             });
         } else {

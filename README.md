@@ -27,6 +27,7 @@ Transform your Hacker News experience with intelligent navigation, AI-powered su
   * Connect to cloud-hosted models - OpenAI, Anthropic, or OpenRouter for advanced summaries
   * Use local models hosted on Ollama
   * Use Chrome's built-in AI for local processing on Chrome browser
+  * Support for multiple languages - English, Chinese, Spanish, French, German, Japanese, Korean, Russian, Portuguese, and Italian
 
 * **Enhanced Comment Navigation**
     * Quick-jump between comments by the same author
