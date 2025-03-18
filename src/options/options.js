@@ -1,6 +1,16 @@
 // Save settings to Chrome storage
 async function saveSettings() {
-    const providerSelection = document.querySelector('input[name="provider-selection"]:checked').id;
+    const selectedProvider = document.querySelector('input[name="provider-selection"]:checked');
+    
+    // 如果没有选中任何提供商，默认选择第一个
+    if (!selectedProvider) {
+        const firstProvider = document.querySelector('input[name="provider-selection"]');
+        if (firstProvider) {
+            firstProvider.checked = true;
+        }
+    }
+    
+    const providerSelection = document.querySelector('input[name="provider-selection"]:checked')?.id || 'ollama';
     const language = document.getElementById('language-select').value;
     const settings = {
         providerSelection,
@@ -194,5 +204,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const checkedRadio = document.querySelector('input[name="provider-selection"]:checked');
     if (checkedRadio) {
         checkedRadio.dispatchEvent(new Event('change'));
+    } else {
+        // 如果没有选中任何提供商，默认选择第一个
+        const firstProvider = document.querySelector('input[name="provider-selection"]');
+        if (firstProvider) {
+            firstProvider.checked = true;
+            firstProvider.dispatchEvent(new Event('change'));
+        }
     }
 });
