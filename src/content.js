@@ -2415,7 +2415,7 @@ Per favore, rispondi in italiano.`;
         });
     }
 
-    summarizeUsingChromeBuiltInAI(formattedComment, commentPathToIdMap) {
+    async summarizeUsingChromeBuiltInAI(formattedComment, commentPathToIdMap) {
         if(this.isChomeAiAvailable === HNEnhancer.CHROME_AI_AVAILABLE.NO) {
             this.summaryPanel.updateContent({
                 title: 'AI Not Available',
@@ -2440,13 +2440,36 @@ Per favore, rispondi in italiano.`;
             });
         }
 
+        // Get the language setting
+        const {language} = await this.getAIProviderModel();
+        
         // Summarize the text by passing in the text to page script which in turn will call the Chrome AI API
         window.postMessage({
             type: 'HN_AI_SUMMARIZE',
-            data: {text: formattedComment, commentPathToIdMap: commentPathToIdMap}
+            data: {
+                text: formattedComment, 
+                commentPathToIdMap: commentPathToIdMap,
+                language: language
+            }
         });
     }
 
+    getLanguageName(language) {
+        const languageNames = {
+            'en': 'English',
+            'zh': '中文 (Chinese)',
+            'es': 'Español (Spanish)',
+            'fr': 'Français (French)',
+            'de': 'Deutsch (German)',
+            'ja': '日本語 (Japanese)',
+            'ko': '한국어 (Korean)',
+            'ru': 'Русский (Russian)',
+            'pt': 'Português (Portuguese)',
+            'it': 'Italiano (Italian)'
+        };
+        return languageNames[language] || language;
+    }
+    
     getHNPostTitle() {
         return document.title;
     }
