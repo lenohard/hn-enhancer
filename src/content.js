@@ -2147,8 +2147,26 @@ Brief summary of the overall discussion in 2-3 sentences - adjust based on compl
     async getUserMessage(title, text) {
         const {language} = await this.getAIProviderModel();
         
-        // Default English prompt
-        let prompt = `Provide a concise and insightful summary of the following Hacker News discussion, as per the guidelines you've been given. 
+        // Language output instruction based on selected language
+        let languageInstruction = '';
+        if (language !== 'en') {
+            const languageInstructions = {
+                'zh': 'Please respond in Chinese (中文).',
+                'es': 'Please respond in Spanish (Español).',
+                'fr': 'Please respond in French (Français).',
+                'de': 'Please respond in German (Deutsch).',
+                'ja': 'Please respond in Japanese (日本語).',
+                'ko': 'Please respond in Korean (한국어).',
+                'ru': 'Please respond in Russian (Русский).',
+                'pt': 'Please respond in Portuguese (Português).',
+                'it': 'Please respond in Italian (Italiano).'
+            };
+            
+            languageInstruction = languageInstructions[language] || '';
+        }
+        
+        // Single prompt template with language instruction at the end
+        const prompt = `Provide a concise and insightful summary of the following Hacker News discussion, as per the guidelines you've been given. 
 The goal is to help someone quickly grasp the main discussion points and key perspectives without reading all comments.
 Please focus on extracting the main themes, significant viewpoints, and high-quality contributions.
 The post title and comments are separated by three dashed lines:
@@ -2158,127 +2176,8 @@ ${title}
 ---
 Comments:
 ${text}
----`;
-
-        // Language-specific prompts
-        if (language === 'zh') {
-            prompt = `请根据给定的指南，提供以下Hacker News讨论的简明而有见地的摘要。
-目标是帮助用户快速理解主要讨论点和关键观点，而无需阅读所有评论。
-请专注于提取主要主题、重要观点和高质量的贡献。
-帖子标题和评论由三条虚线分隔：
 ---
-帖子标题：
-${title}
----
-评论：
-${text}
----
-请用中文回答。`;
-        } else if (language === 'es') {
-            prompt = `Proporciona un resumen conciso y perspicaz de la siguiente discusión de Hacker News, según las pautas que se te han dado.
-El objetivo es ayudar a alguien a comprender rápidamente los puntos principales de discusión y las perspectivas clave sin tener que leer todos los comentarios.
-Por favor, concéntrate en extraer los temas principales, puntos de vista significativos y contribuciones de alta calidad.
-El título de la publicación y los comentarios están separados por tres líneas discontinuas:
----
-Título de la publicación:
-${title}
----
-Comentarios:
-${text}
----
-Por favor, responde en español.`;
-        } else if (language === 'fr') {
-            prompt = `Fournissez un résumé concis et perspicace de la discussion Hacker News suivante, conformément aux directives qui vous ont été données.
-L'objectif est d'aider quelqu'un à saisir rapidement les principaux points de discussion et les perspectives clés sans avoir à lire tous les commentaires.
-Veuillez vous concentrer sur l'extraction des thèmes principaux, des points de vue significatifs et des contributions de haute qualité.
-Le titre du post et les commentaires sont séparés par trois tirets :
----
-Titre du post :
-${title}
----
-Commentaires :
-${text}
----
-Veuillez répondre en français.`;
-        } else if (language === 'de') {
-            prompt = `Geben Sie eine prägnante und aufschlussreiche Zusammenfassung der folgenden Hacker News-Diskussion gemäß den Ihnen gegebenen Richtlinien.
-Das Ziel ist es, jemandem zu helfen, die wichtigsten Diskussionspunkte und Schlüsselperspektiven schnell zu erfassen, ohne alle Kommentare lesen zu müssen.
-Bitte konzentrieren Sie sich auf die Extraktion der Hauptthemen, bedeutenden Standpunkte und hochwertigen Beiträge.
-Der Beitragstitel und die Kommentare sind durch drei Striche getrennt:
----
-Beitragstitel:
-${title}
----
-Kommentare:
-${text}
----
-Bitte antworten Sie auf Deutsch.`;
-        } else if (language === 'ja') {
-            prompt = `与えられたガイドラインに従って、以下のHacker Newsディスカッションの簡潔で洞察力のある要約を提供してください。
-目標は、すべてのコメントを読まなくても、主要な議論のポイントと重要な視点を素早く把握できるようにすることです。
-主要なテーマ、重要な視点、質の高い貢献を抽出することに焦点を当ててください。
-投稿タイトルとコメントは3つのダッシュで区切られています：
----
-投稿タイトル：
-${title}
----
-コメント：
-${text}
----
-日本語で回答してください。`;
-        } else if (language === 'ko') {
-            prompt = `주어진 지침에 따라 다음 Hacker News 토론에 대한 간결하고 통찰력 있는 요약을 제공하세요.
-목표는 모든 댓글을 읽지 않고도 주요 토론 요점과 핵심 관점을 빠르게 파악할 수 있도록 돕는 것입니다.
-주요 주제, 중요한 관점 및 고품질 기여를 추출하는 데 집중하세요.
-게시물 제목과 댓글은 세 개의 대시로 구분됩니다:
----
-게시물 제목:
-${title}
----
-댓글:
-${text}
----
-한국어로 답변해 주세요.`;
-        } else if (language === 'ru') {
-            prompt = `Предоставьте краткое и содержательное резюме следующего обсуждения на Hacker News в соответствии с предоставленными вам рекомендациями.
-Цель - помочь быстро понять основные моменты обсуждения и ключевые точки зрения без необходимости читать все комментарии.
-Пожалуйста, сосредоточьтесь на извлечении основных тем, значимых точек зрения и качественных вкладов.
-Заголовок поста и комментарии разделены тремя тире:
----
-Заголовок поста:
-${title}
----
-Комментарии:
-${text}
----
-Пожалуйста, ответьте на русском языке.`;
-        } else if (language === 'pt') {
-            prompt = `Forneça um resumo conciso e perspicaz da seguinte discussão do Hacker News, de acordo com as diretrizes que lhe foram dadas.
-O objetivo é ajudar alguém a compreender rapidamente os principais pontos de discussão e perspectivas-chave sem ter que ler todos os comentários.
-Por favor, concentre-se em extrair os temas principais, pontos de vista significativos e contribuições de alta qualidade.
-O título da postagem e os comentários são separados por três traços:
----
-Título da postagem:
-${title}
----
-Comentários:
-${text}
----
-Por favor, responda em português.`;
-        } else if (language === 'it') {
-            prompt = `Fornisci un riassunto conciso e perspicace della seguente discussione di Hacker News, secondo le linee guida che ti sono state fornite.
-L'obiettivo è aiutare qualcuno a cogliere rapidamente i punti principali della discussione e le prospettive chiave senza dover leggere tutti i commenti.
-Per favore, concentrati sull'estrazione dei temi principali, dei punti di vista significativi e dei contributi di alta qualità.
-Il titolo del post e i commenti sono separati da tre trattini:
----
-Titolo del post:
-${title}
----
-Commenti:
-${text}
----
-Per favore, rispondi in italiano.`;
-        }
+${languageInstruction}`;
         
         return prompt;
     }
