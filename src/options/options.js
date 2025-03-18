@@ -145,7 +145,7 @@ async function loadSettings() {
             // Set Gemini settings
             if (settings.gemini) {
                 document.getElementById('gemini-key').value = settings.gemini.apiKey || '';
-                document.getElementById('gemini-model').value = settings.gemini.model || 'gemini-1.5-pro';
+                document.getElementById('gemini-model').value = settings.gemini.model || 'gemini-2.0-flash-lite';
             }
 
             // Set DeepSeek settings
