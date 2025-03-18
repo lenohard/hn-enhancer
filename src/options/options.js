@@ -1,8 +1,10 @@
 // Save settings to Chrome storage
 async function saveSettings() {
     const providerSelection = document.querySelector('input[name="provider-selection"]:checked').id;
+    const language = document.getElementById('language-select').value;
     const settings = {
         providerSelection,
+        language,
         openai: {
             apiKey: document.getElementById('openai-key').value,
             model: document.getElementById('openai-model').value
@@ -105,6 +107,11 @@ async function loadSettings() {
         const settings = data.settings;
 
         if (settings) {
+            // Set language selection
+            if (settings.language) {
+                document.getElementById('language-select').value = settings.language;
+            }
+            
             // Set provider selection
             const providerRadio = document.getElementById(settings.providerSelection);
             if (providerRadio) providerRadio.checked = true;

@@ -1209,7 +1209,8 @@ class HNEnhancer {
         const settingsData = await chrome.storage.sync.get('settings');
         const aiProvider = settingsData.settings?.providerSelection;
         const model = settingsData.settings?.[aiProvider]?.model;
-        return {aiProvider, model};
+        const language = settingsData.settings?.language || 'en';
+        return {aiProvider, model, language};
     }
 
     async summarizeAllComments() {
@@ -1601,8 +1602,9 @@ class HNEnhancer {
         }
     }
 
-    summarizeTextWithAI(formattedComment, commentPathToIdMap) {
-        chrome.storage.sync.get('settings').then(data => {
+    async summarizeTextWithAI(formattedComment, commentPathToIdMap) {
+        try {
+            const data = await chrome.storage.sync.get('settings');
 
             const providerSelection = data.settings?.providerSelection;
             // const providerSelection = 'none';
@@ -1627,40 +1629,38 @@ class HNEnhancer {
 
                 case 'openai':
                     const apiKey = data.settings?.[providerSelection]?.apiKey;
-                    this.summarizeUsingOpenAI(formattedComment,  model, apiKey, commentPathToIdMap);
+                    await this.summarizeUsingOpenAI(formattedComment, model, apiKey, commentPathToIdMap);
                     break;
 
                 case 'openrouter':
                     const openrouterKey = data.settings?.[providerSelection]?.apiKey;
-                    this.summarizeUsingOpenRouter(formattedComment, model, openrouterKey, commentPathToIdMap);
+                    await this.summarizeUsingOpenRouter(formattedComment, model, openrouterKey, commentPathToIdMap);
                     break;
 
                 case 'anthropic':
                     const claudeApiKey = data.settings?.[providerSelection]?.apiKey;
-                    this.summarizeUsingAnthropic(formattedComment, model, claudeApiKey, commentPathToIdMap);
+                    await this.summarizeUsingAnthropic(formattedComment, model, claudeApiKey, commentPathToIdMap);
                     break;
 
                 case 'deepseek':
                     const deepSeekApiKey = data.settings?.[providerSelection]?.apiKey;
-                    this.summarizeUsingDeepSeek(formattedComment, model, deepSeekApiKey, commentPathToIdMap);
+                    await this.summarizeUsingDeepSeek(formattedComment, model, deepSeekApiKey, commentPathToIdMap);
                     break;
 
                 case 'ollama':
-                    this.summarizeUsingOllama(formattedComment, model, commentPathToIdMap);
+                    await this.summarizeUsingOllama(formattedComment, model, commentPathToIdMap);
                     break;
 
                 case 'none':
-                    this.showSummaryInPanel(formattedComment, commentPathToIdMap, 0).catch(error => {
-                        console.error('Error showing summary:', error);
-                    });
+                    await this.showSummaryInPanel(formattedComment, commentPathToIdMap, 0);
                     break;
             }
-        }).catch(error => {
+        } catch (error) {
             console.error('Error fetching settings:', error);
-        });
+        }
     }
 
-    summarizeUsingOpenRouter(text, model, apiKey, commentPathToIdMap) {
+    async summarizeUsingOpenRouter(text, model, apiKey, commentPathToIdMap) {
         // Validate required parameters
         if (!text || !model || !apiKey) {
             console.error('Missing required parameters for OpenAI summarization');
@@ -1683,7 +1683,7 @@ class HNEnhancer {
         // this.logDebug('2. System prompt:', systemPrompt);
 
         const postTitle = this.getHNPostTitle()
-        const userPrompt = this.getUserMessage(postTitle, tokenLimitText);
+        const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
         // this.logDebug('3. User prompt:', userPrompt);
 
         // OpenRouter, just like OpenAI, takes system and user messages as an array with role (system / user) and content
@@ -1752,7 +1752,7 @@ class HNEnhancer {
         });
     }
 
-    summarizeUsingOpenAI(text, model, apiKey, commentPathToIdMap) {
+    async summarizeUsingOpenAI(text, model, apiKey, commentPathToIdMap) {
         // Validate required parameters
         if (!text || !model || !apiKey) {
             console.error('Missing required parameters for OpenAI summarization');
@@ -1777,7 +1777,7 @@ class HNEnhancer {
         // this.logDebug('2. System prompt:', systemPrompt);
 
         const postTitle = this.getHNPostTitle()
-        const userPrompt = this.getUserMessage(postTitle, tokenLimitText);
+        const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
         // this.logDebug('3. User prompt:', userPrompt);
 
         // OpenAI takes system and user messages as an array with role (system / user) and content
@@ -1845,7 +1845,7 @@ class HNEnhancer {
         });
     }
 
-    summarizeUsingAnthropic(text, model, apiKey, commentPathToIdMap) {
+    async summarizeUsingAnthropic(text, model, apiKey, commentPathToIdMap) {
         // Validate required parameters
         if (!text || !model || !apiKey) {
             console.error('Missing required parameters for Anthropic summarization');
@@ -1867,7 +1867,7 @@ class HNEnhancer {
         // console.log('2. System prompt:', systemPrompt);
 
         const postTitle = this.getHNPostTitle()
-        const userPrompt = this.getUserMessage(postTitle, tokenLimitText);
+        const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
         // console.log('3. User prompt:', userPrompt);
 
         // Anthropic takes system messages at the top level, whereas user messages as an array with role "user" and content.
@@ -1932,7 +1932,7 @@ class HNEnhancer {
         });
     }
 
-    summarizeUsingDeepSeek(text, model, apiKey, commentPathToIdMap) {
+    async summarizeUsingDeepSeek(text, model, apiKey, commentPathToIdMap) {
         // Validate required parameters
         if (!text || !model || !apiKey) {
             console.error('Missing required parameters for DeepSeek summarization');
@@ -1954,7 +1954,7 @@ class HNEnhancer {
         // this.logDebug('2. System prompt:', systemPrompt);
 
         const postTitle = this.getHNPostTitle()
-        const userPrompt = this.getUserMessage(postTitle, tokenLimitText);
+        const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
         // this.logDebug('3. User prompt:', userPrompt);
 
         // DeepSeek takes system and user messages in the same format as OpenAI - an array with role (system / user) and content
@@ -2144,8 +2144,11 @@ Brief summary of the overall discussion in 2-3 sentences - adjust based on compl
         return outputText;
     }
 
-    getUserMessage(title, text) {
-        return `Provide a concise and insightful summary of the following Hacker News discussion, as per the guidelines you've been given. 
+    async getUserMessage(title, text) {
+        const {language} = await this.getAIProviderModel();
+        
+        // Default English prompt
+        let prompt = `Provide a concise and insightful summary of the following Hacker News discussion, as per the guidelines you've been given. 
 The goal is to help someone quickly grasp the main discussion points and key perspectives without reading all comments.
 Please focus on extracting the main themes, significant viewpoints, and high-quality contributions.
 The post title and comments are separated by three dashed lines:
@@ -2157,6 +2160,127 @@ Comments:
 ${text}
 ---`;
 
+        // Language-specific prompts
+        if (language === 'zh') {
+            prompt = `请根据给定的指南，提供以下Hacker News讨论的简明而有见地的摘要。
+目标是帮助用户快速理解主要讨论点和关键观点，而无需阅读所有评论。
+请专注于提取主要主题、重要观点和高质量的贡献。
+帖子标题和评论由三条虚线分隔：
+---
+帖子标题：
+${title}
+---
+评论：
+${text}
+---
+请用中文回答。`;
+        } else if (language === 'es') {
+            prompt = `Proporciona un resumen conciso y perspicaz de la siguiente discusión de Hacker News, según las pautas que se te han dado.
+El objetivo es ayudar a alguien a comprender rápidamente los puntos principales de discusión y las perspectivas clave sin tener que leer todos los comentarios.
+Por favor, concéntrate en extraer los temas principales, puntos de vista significativos y contribuciones de alta calidad.
+El título de la publicación y los comentarios están separados por tres líneas discontinuas:
+---
+Título de la publicación:
+${title}
+---
+Comentarios:
+${text}
+---
+Por favor, responde en español.`;
+        } else if (language === 'fr') {
+            prompt = `Fournissez un résumé concis et perspicace de la discussion Hacker News suivante, conformément aux directives qui vous ont été données.
+L'objectif est d'aider quelqu'un à saisir rapidement les principaux points de discussion et les perspectives clés sans avoir à lire tous les commentaires.
+Veuillez vous concentrer sur l'extraction des thèmes principaux, des points de vue significatifs et des contributions de haute qualité.
+Le titre du post et les commentaires sont séparés par trois tirets :
+---
+Titre du post :
+${title}
+---
+Commentaires :
+${text}
+---
+Veuillez répondre en français.`;
+        } else if (language === 'de') {
+            prompt = `Geben Sie eine prägnante und aufschlussreiche Zusammenfassung der folgenden Hacker News-Diskussion gemäß den Ihnen gegebenen Richtlinien.
+Das Ziel ist es, jemandem zu helfen, die wichtigsten Diskussionspunkte und Schlüsselperspektiven schnell zu erfassen, ohne alle Kommentare lesen zu müssen.
+Bitte konzentrieren Sie sich auf die Extraktion der Hauptthemen, bedeutenden Standpunkte und hochwertigen Beiträge.
+Der Beitragstitel und die Kommentare sind durch drei Striche getrennt:
+---
+Beitragstitel:
+${title}
+---
+Kommentare:
+${text}
+---
+Bitte antworten Sie auf Deutsch.`;
+        } else if (language === 'ja') {
+            prompt = `与えられたガイドラインに従って、以下のHacker Newsディスカッションの簡潔で洞察力のある要約を提供してください。
+目標は、すべてのコメントを読まなくても、主要な議論のポイントと重要な視点を素早く把握できるようにすることです。
+主要なテーマ、重要な視点、質の高い貢献を抽出することに焦点を当ててください。
+投稿タイトルとコメントは3つのダッシュで区切られています：
+---
+投稿タイトル：
+${title}
+---
+コメント：
+${text}
+---
+日本語で回答してください。`;
+        } else if (language === 'ko') {
+            prompt = `주어진 지침에 따라 다음 Hacker News 토론에 대한 간결하고 통찰력 있는 요약을 제공하세요.
+목표는 모든 댓글을 읽지 않고도 주요 토론 요점과 핵심 관점을 빠르게 파악할 수 있도록 돕는 것입니다.
+주요 주제, 중요한 관점 및 고품질 기여를 추출하는 데 집중하세요.
+게시물 제목과 댓글은 세 개의 대시로 구분됩니다:
+---
+게시물 제목:
+${title}
+---
+댓글:
+${text}
+---
+한국어로 답변해 주세요.`;
+        } else if (language === 'ru') {
+            prompt = `Предоставьте краткое и содержательное резюме следующего обсуждения на Hacker News в соответствии с предоставленными вам рекомендациями.
+Цель - помочь быстро понять основные моменты обсуждения и ключевые точки зрения без необходимости читать все комментарии.
+Пожалуйста, сосредоточьтесь на извлечении основных тем, значимых точек зрения и качественных вкладов.
+Заголовок поста и комментарии разделены тремя тире:
+---
+Заголовок поста:
+${title}
+---
+Комментарии:
+${text}
+---
+Пожалуйста, ответьте на русском языке.`;
+        } else if (language === 'pt') {
+            prompt = `Forneça um resumo conciso e perspicaz da seguinte discussão do Hacker News, de acordo com as diretrizes que lhe foram dadas.
+O objetivo é ajudar alguém a compreender rapidamente os principais pontos de discussão e perspectivas-chave sem ter que ler todos os comentários.
+Por favor, concentre-se em extrair os temas principais, pontos de vista significativos e contribuições de alta qualidade.
+O título da postagem e os comentários são separados por três traços:
+---
+Título da postagem:
+${title}
+---
+Comentários:
+${text}
+---
+Por favor, responda em português.`;
+        } else if (language === 'it') {
+            prompt = `Fornisci un riassunto conciso e perspicace della seguente discussione di Hacker News, secondo le linee guida che ti sono state fornite.
+L'obiettivo è aiutare qualcuno a cogliere rapidamente i punti principali della discussione e le prospettive chiave senza dover leggere tutti i commenti.
+Per favore, concentrati sull'estrazione dei temi principali, dei punti di vista significativi e dei contributi di alta qualità.
+Il titolo del post e i commenti sono separati da tre trattini:
+---
+Titolo del post:
+${title}
+---
+Commenti:
+${text}
+---
+Per favore, rispondi in italiano.`;
+        }
+        
+        return prompt;
     }
 
     // Show the summary in the summary panel - format the summary for two steps:
@@ -2225,7 +2349,7 @@ ${text}
         });
     }
 
-    summarizeUsingOllama(text, model, commentPathToIdMap) {
+    async summarizeUsingOllama(text, model, commentPathToIdMap) {
         // Validate required parameters
         if (!text || !model) {
             console.error('Missing required parameters for Ollama summarization');
@@ -2244,7 +2368,7 @@ ${text}
 
         // Create the user message with the text to summarize
         const title = this.getHNPostTitle();
-        const userMessage = this.getUserMessage(title, text);
+        const userMessage = await this.getUserMessage(title, text);
 
         // this.logDebug('2. System message:', systemMessage);
         // this.logDebug('3. User message:', userMessage);
