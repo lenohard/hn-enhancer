@@ -23,6 +23,10 @@ async function saveSettings() {
             apiKey: document.getElementById('anthropic-key').value,
             model: document.getElementById('anthropic-model').value
         },
+        gemini: {
+            apiKey: document.getElementById('gemini-key').value,
+            model: document.getElementById('gemini-model').value
+        },
         deepseek: {
             apiKey: document.getElementById('deepseek-key').value,
             model: document.getElementById('deepseek-model').value
@@ -137,6 +141,12 @@ async function loadSettings() {
                 document.getElementById('anthropic-key').value = settings.anthropic.apiKey || '';
                 document.getElementById('anthropic-model').value = settings.anthropic.model || 'claude-3-opus';
             }
+            
+            // Set Gemini settings
+            if (settings.gemini) {
+                document.getElementById('gemini-key').value = settings.gemini.apiKey || '';
+                document.getElementById('gemini-model').value = settings.gemini.model || 'gemini-1.5-pro';
+            }
 
             // Set DeepSeek settings
             if (settings.deepseek) {
@@ -188,12 +198,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Enable/disable input fields based on selection
             const openaiInputs = document.querySelectorAll('#openai-key, #openai-model');
             const anthropicInputs = document.querySelectorAll('#anthropic-key, #anthropic-model');
+            const geminiInputs = document.querySelectorAll('#gemini-key, #gemini-model');
             const deepseekInputs = document.querySelectorAll('#deepseek-key, #deepseek-model');
             const ollamaInputs = document.querySelectorAll('#ollama-model');
             const openrouterInputs = document.querySelectorAll('#openrouter-key, #openrouter-model');
 
             openaiInputs.forEach(input => input.disabled = radio.id !== 'openai');
             anthropicInputs.forEach(input => input.disabled = radio.id !== 'anthropic');
+            geminiInputs.forEach(input => input.disabled = radio.id !== 'gemini');
             deepseekInputs.forEach(input => input.disabled = radio.id !== 'deepseek');
             ollamaInputs.forEach(input => input.disabled = radio.id !== 'ollama');
             openrouterInputs.forEach(input => input.disabled = radio.id !== 'openrouter');

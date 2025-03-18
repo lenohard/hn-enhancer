@@ -102,6 +102,23 @@ Transform your Hacker News experience with intelligent navigation, AI-powered su
     * Consider token limits and costs (bigger discussion threads are truncated to fit into context window)
     * Set up usage alerts in OpenAI dashboard
 
+### Google Gemini
+1. Requirements:
+    * Google AI Studio API key
+    * Active Google account
+
+2. Setup Steps:
+    * Generate API key at [Google AI Studio](https://aistudio.google.com/app/apikey)
+    * Enter API key in extension settings
+    * Select model:
+        * Gemini 1.5 Pro (Recommended for best quality)
+        * Gemini 1.5 Flash (Faster, more economical)
+        * Gemini 1.0 Pro (Legacy model)
+
+3. Best Practices:
+    * Monitor API usage
+    * Set up billing alerts in Google Cloud Console
+
 ### Anthropic (Recommended for Best Performance)
 1. Requirements:
     * Anthropic API key
