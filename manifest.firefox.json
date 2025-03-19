@@ -49,21 +49,26 @@
         "styles.css"
       ],
       "js": [
-        "summary-panel.js",
-        "hn-state.js",
-        "api-client.js",
-        "markdown-utils.js",
-        "dom-utils.js",
-        "navigation.js",
-        "summarization.js",
-        "ui-components.js",
         "content.js"
-      ],
-      "type": "module"
+      ]
     }
   ],
   "web_accessible_resources": [{
-    "resources": ["page-script.js", "options-styles.css", "options.js"],
+    "resources": [
+      "page-script.js", 
+      "options-styles.css", 
+      "options.js",
+      "hn-state.js",
+      "api-client.js",
+      "markdown-utils.js",
+      "dom-utils.js",
+      "summary-panel.js",
+      "navigation.js",
+      "summarization.js",
+      "author-tracking.js",
+      "ui-components.js",
+      "hn-enhancer.js"
+    ],
     "matches": ["https://news.ycombinator.com/*"]
   }]
 }
