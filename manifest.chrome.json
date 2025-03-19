@@ -51,6 +51,7 @@
         "dom-utils.js",
         "navigation.js",
         "summarization.js",
+        "ui-components.js",
         "content.js"
       ],
       "type": "module"

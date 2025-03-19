@@ -10,6 +10,7 @@ import SummaryPanel from './summary-panel.js';
 import Navigation from './navigation.js';
 import Summarization from './summarization.js';
 import AuthorTracking from './author-tracking.js';
+import UIComponents from './ui-components.js';
 
 export default class HNEnhancer {
     static DEBUG = false;  // Set to true when debugging
@@ -32,13 +33,14 @@ export default class HNEnhancer {
         
         // Initialize page state
         this.currentComment = null;
-        this.helpModal = this.createHelpModal();
         
         // Initialize components
+        this.uiComponents = new UIComponents(this);
+        this.helpModal = this.uiComponents.createHelpModal();
         this.authorTracking = new AuthorTracking(this);
         this.navigation = new Navigation(this);
         
-        this.createHelpIcon();
+        this.uiComponents.createHelpIcon();
 
         // Initialize based on page type
         if (this.isHomePage) {
@@ -95,26 +97,6 @@ export default class HNEnhancer {
     }
 
 
-    createHelpModal() {
-        // Implementation will be moved to ui-components.js
-        const modal = document.createElement('div');
-        modal.className = 'keyboard-help-modal';
-        modal.style.display = 'none';
-        // Simplified implementation
-        document.body.appendChild(modal);
-        return modal;
-    }
-
-    createHelpIcon() {
-        // Implementation will be moved to ui-components.js
-        const icon = document.createElement('div');
-        icon.className = 'help-icon';
-        icon.innerHTML = '?';
-        icon.title = 'Keyboard Shortcuts (Press ? or / to toggle)';
-        icon.onclick = () => this.toggleHelpModal(true);
-        document.body.appendChild(icon);
-        return icon;
-    }
 
     toggleHelpModal(show) {
         this.helpModal.style.display = show ? 'flex' : 'none';
@@ -138,6 +120,9 @@ export default class HNEnhancer {
     }
 
     initCommentsPageNavigation() {
+        // Inject 'Summarize all comments' link at the top of the main post
+        this.uiComponents.injectSummarizePostLink();
+        
         // Go through all the comments in this post and inject all our nav elements - author, summarize etc.
         const allComments = document.querySelectorAll('.athing.comtr');
 

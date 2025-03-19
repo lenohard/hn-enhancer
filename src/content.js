@@ -1,6 +1,7 @@
 import HNEnhancer from './hn-enhancer.js';
 
-class ContentEnhancer {
+// This file is now just a wrapper that initializes the HNEnhancer
+// All functionality has been moved to modular components
     initHomePageNavigation() {
         this.allPosts = document.querySelectorAll('.athing');
 
@@ -1085,22 +1086,6 @@ class ContentEnhancer {
         });
     }
 
-    injectSummarizePostLink() {
-        const navLinks = document.querySelector('.subtext .subline');
-        if (!navLinks) return;
-
-        const summarizeLink = document.createElement('a');
-        summarizeLink.href = '#';
-        summarizeLink.textContent = 'summarize all comments';
-
-        summarizeLink.addEventListener('click', async (e) => {
-            e.preventDefault();
-            await document.hnEnhancer.summarization.summarizeAllComments();
-        });
-
-        navLinks.appendChild(document.createTextNode(' | '));
-        navLinks.appendChild(summarizeLink);
-    }
 
     async getAIProviderModel() {
         const settingsData = await chrome.storage.sync.get('settings');
