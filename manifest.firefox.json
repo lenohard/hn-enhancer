@@ -59,16 +59,16 @@
       "page-script.js", 
       "options-styles.css", 
       "options.js",
-      "src/hn-state.js",
-      "src/api-client.js",
-      "src/markdown-utils.js",
-      "src/dom-utils.js",
-      "src/summary-panel.js",
-      "src/navigation.js",
-      "src/summarization.js",
-      "src/author-tracking.js",
-      "src/ui-components.js",
-      "src/hn-enhancer.js"
+      "hn-state.js",
+      "api-client.js",
+      "markdown-utils.js",
+      "dom-utils.js",
+      "summary-panel.js",
+      "navigation.js",
+      "summarization.js",
+      "author-tracking.js",
+      "ui-components.js",
+      "hn-enhancer.js"
     ],
     "matches": ["https://news.ycombinator.com/*"]
   }]
