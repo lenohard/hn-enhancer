@@ -8,6 +8,7 @@ import MarkdownUtils from './markdown-utils.js';
 import DomUtils from './dom-utils.js';
 import SummaryPanel from './summary-panel.js';
 import Navigation from './navigation.js';
+import Summarization from './summarization.js';
 
 export default class HNEnhancer {
     static DEBUG = false;  // Set to true when debugging
@@ -50,6 +51,7 @@ export default class HNEnhancer {
             this.navigation.navigateToFirstComment(false);
             this.initChromeBuiltinAI();
             this.summaryPanel = new SummaryPanel();
+            this.summarization = new Summarization(this);
         }
 
         // Set up keyboard shortcuts
@@ -391,6 +393,11 @@ export default class HNEnhancer {
             's': () => {
                 // Open/close the summary panel on the right
                 this.summaryPanel.toggle();
+                
+                // If the panel is now visible and the current comment is set, summarize its thread
+                if (this.summaryPanel.isVisible && this.currentComment) {
+                    this.summarization.summarizeThread(this.currentComment);
+                }
             },
         };
     }

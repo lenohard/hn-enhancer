@@ -1,12 +1,5 @@
 import HNEnhancer from './hn-enhancer.js';
 
-const SummarizeCheckStatus = {
-    OK: 'ok',
-    TEXT_TOO_SHORT: 'too_short',
-    THREAD_TOO_SHALLOW: 'too_shallow',
-    THREAD_TOO_DEEP: 'chrome_depth_limit'
-};
-
 class ContentEnhancer {
     initHomePageNavigation() {
         this.allPosts = document.querySelectorAll('.athing');
@@ -223,7 +216,7 @@ class ContentEnhancer {
             // Set the current comment and summarize the thread starting from this comment
             this.setCurrentComment(comment);
 
-            await this.summarizeThread(comment);
+            await document.hnEnhancer.summarization.summarizeThread(comment);
         });
 
         navsElement.appendChild(summarizeThreadLink);
@@ -1102,7 +1095,7 @@ class ContentEnhancer {
 
         summarizeLink.addEventListener('click', async (e) => {
             e.preventDefault();
-            await this.summarizeAllComments();
+            await document.hnEnhancer.summarization.summarizeAllComments();
         });
 
         navLinks.appendChild(document.createTextNode(' | '));
