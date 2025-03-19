@@ -7,6 +7,7 @@ const SummarizeCheckStatus = {
     THREAD_TOO_DEEP: 'chrome_depth_limit'
 };
 
+class ContentEnhancer {
     initHomePageNavigation() {
         this.allPosts = document.querySelectorAll('.athing');
 
@@ -2266,6 +2267,8 @@ ${languageInstruction}`;
     getHNPostTitle() {
         return document.title;
     }
+}
+
 }
 
 // Initialize the HNEnhancer. Note that we are loading this content script with the default run_at of 'document_idle'.

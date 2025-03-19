@@ -54,6 +54,7 @@
         "api-client.js",
         "markdown-utils.js",
         "dom-utils.js",
+        "navigation.js",
         "content.js"
       ],
       "type": "module"

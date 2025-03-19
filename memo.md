@@ -39,11 +39,11 @@ Break down content.js into logical modules following a more organized structure:
 
 ### Phase 2: Extract Core Functionality
 - [x] Extract HNState class to hn-state.js
-- [ ] Create minimal HNEnhancer class in hn-enhancer.js
-- [ ] Set up initialization flow
+- [x] Create minimal HNEnhancer class in hn-enhancer.js
+- [x] Set up initialization flow
 
 ### Phase 3: Extract Feature Modules
-- [ ] Move navigation code to navigation.js
+- [x] Move navigation code to navigation.js
 - [ ] Move summarization code to summarization.js
 - [ ] Move author tracking to author-tracking.js
 
