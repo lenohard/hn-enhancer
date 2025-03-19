@@ -1653,7 +1653,8 @@ class HNEnhancer {
 
                 case "gemini":
                     await this.summarizeUsingGemini(formattedComment, model, commentPathToIdMap);
-
+                    break;
+                    
                 case 'none':
                     await this.showSummaryInPanel(formattedComment, commentPathToIdMap, 0);
                     break;
@@ -2349,38 +2350,12 @@ ${languageInstruction}`;
             const postTitle = this.getHNPostTitle();
             const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
 
-            // Set up the API request
-            const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
-            const url = `${endpoint}?key=${apiKey}`;
-            
-            // Prepare the request payload
-            const payload = {
-                contents: [
-                    {
-                        role: "user",
-                        parts: [
-                            { text: systemPrompt },
-                            { text: userPrompt }
-                        ]
-                    }
-                ],
-                generationConfig: {
-                    temperature: 0.7,
-                    topP: 0.95,
-                    topK: 40,
-                    maxOutputTokens: 8192
-                }
-            };
-
             // Make the API request using background message
-            const response = await this.sendBackgroundMessage('FETCH_API_REQUEST', {
-                url: url,
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload),
-                timeout: 120000 // 2 minute timeout
+            const response = await this.sendBackgroundMessage('GEMINI_API_REQUEST', {
+                apiKey: apiKey,
+                model: model,
+                systemPrompt: systemPrompt,
+                userPrompt: userPrompt
             });
 
             if (!response || !response.candidates || response.candidates.length === 0) {

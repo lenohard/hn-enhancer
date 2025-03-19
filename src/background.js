@@ -41,6 +41,8 @@ async function handleGeminiRequest(data) {
         }
     };
     
+    console.log('Making Gemini API request to:', endpoint);
+    
     const response = await fetch(url, {
         method: 'POST',
         headers: {
