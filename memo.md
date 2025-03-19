@@ -44,7 +44,7 @@ Break down content.js into logical modules following a more organized structure:
 
 ### Phase 3: Extract Feature Modules
 - [x] Move navigation code to navigation.js
-- [ ] Move summarization code to summarization.js
+- [x] Move summarization code to summarization.js
 - [ ] Move author tracking to author-tracking.js
 
 ### Phase 4: Extract UI Components

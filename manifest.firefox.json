@@ -55,6 +55,7 @@
         "markdown-utils.js",
         "dom-utils.js",
         "navigation.js",
+        "summarization.js",
         "content.js"
       ],
       "type": "module"
