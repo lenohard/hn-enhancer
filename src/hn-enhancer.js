@@ -9,6 +9,7 @@ import DomUtils from './dom-utils.js';
 import SummaryPanel from './summary-panel.js';
 import Navigation from './navigation.js';
 import Summarization from './summarization.js';
+import AuthorTracking from './author-tracking.js';
 
 export default class HNEnhancer {
     static DEBUG = false;  // Set to true when debugging
@@ -24,19 +25,17 @@ export default class HNEnhancer {
      */
     constructor() {
         this.apiClient = new ApiClient(HNEnhancer.DEBUG);
-        this.markdownUtils = new MarkdownUtils();
-        this.domUtils = new DomUtils();
+        this.markdownUtils = MarkdownUtils;
+        this.domUtils = DomUtils;
         this.hnState = HNState;
         this.isChomeAiAvailable = HNEnhancer.CHROME_AI_AVAILABLE.NO;
         
         // Initialize page state
-        this.authorComments = this.createAuthorCommentsMap();
-        this.popup = this.createAuthorPopup();
-        this.postAuthor = this.getPostAuthor();
         this.currentComment = null;
         this.helpModal = this.createHelpModal();
         
-        // Initialize navigation
+        // Initialize components
+        this.authorTracking = new AuthorTracking(this);
         this.navigation = new Navigation(this);
         
         this.createHelpIcon();
@@ -95,35 +94,6 @@ export default class HNEnhancer {
         return window.location.pathname === '/item';
     }
 
-    // Placeholder methods to be implemented or moved to separate modules
-    createAuthorCommentsMap() {
-        // Implementation will be moved to author-tracking.js
-        const authorCommentsMap = new Map();
-        const comments = document.querySelectorAll('.athing.comtr');
-        comments.forEach(comment => {
-            const authorElement = comment.querySelector('.hnuser');
-            if (authorElement) {
-                const author = authorElement.textContent;
-                if (!authorCommentsMap.has(author)) {
-                    authorCommentsMap.set(author, []);
-                }
-                authorCommentsMap.get(author).push(comment);
-            }
-        });
-        return authorCommentsMap;
-    }
-
-    createAuthorPopup() {
-        const popup = document.createElement('div');
-        popup.className = 'author-popup';
-        document.body.appendChild(popup);
-        return popup;
-    }
-
-    getPostAuthor() {
-        const postAuthorElement = document.querySelector('.fatitem .hnuser');
-        return postAuthorElement ? postAuthorElement.textContent : null;
-    }
 
     createHelpModal() {
         // Implementation will be moved to ui-components.js
@@ -168,8 +138,22 @@ export default class HNEnhancer {
     }
 
     initCommentsPageNavigation() {
-        // Implementation will be moved to navigation.js
-        // Simplified implementation
+        // Go through all the comments in this post and inject all our nav elements - author, summarize etc.
+        const allComments = document.querySelectorAll('.athing.comtr');
+
+        allComments.forEach(comment => {
+            // inject the author nav links - # of comments, left/right links to see comments by the same author
+            this.authorTracking.injectAuthorCommentsNavLinks(comment);
+
+            // customize the default next/prev/root/parent links to do the Companion behavior
+            this.navigation.customizeDefaultNavLinks(comment);
+
+            // Insert summarize thread link at the end
+            this.injectSummarizeThreadLinks(comment);
+        });
+
+        // Set up the hover events on all user elements - in the main post subline and each comment
+        this.authorTracking.setupUserHover();
     }
 
     setupKeyBoardShortcuts() {
@@ -357,7 +341,7 @@ export default class HNEnhancer {
                 const authorElement = this.currentComment.querySelector('.hnuser');
                 if (authorElement) {
                     const author = authorElement.textContent;
-                    this.navigation.navigateAuthorComments(author, this.currentComment, 'prev');
+                    this.authorTracking.navigateAuthorComments(author, this.currentComment, 'prev');
                 }
             },
             ']': () => {
@@ -365,7 +349,7 @@ export default class HNEnhancer {
                 const authorElement = this.currentComment.querySelector('.hnuser');
                 if (authorElement) {
                     const author = authorElement.textContent;
-                    this.navigation.navigateAuthorComments(author, this.currentComment, 'next');
+                    this.authorTracking.navigateAuthorComments(author, this.currentComment, 'next');
                 }
             },
             'z': () => {
@@ -421,3 +405,32 @@ export default class HNEnhancer {
         };
     }
 }
+    /**
+     * Injects summarize thread links into comments
+     * @param {Element} comment - The comment element
+     */
+    injectSummarizeThreadLinks(comment) {
+        const navsElement = comment.querySelector('.navs');
+        if(!navsElement) {
+            console.error('Could not find the navs element to inject the summarize thread link');
+            return;
+        }
+
+        navsElement.appendChild(document.createTextNode(' | '));
+
+        const summarizeThreadLink = document.createElement('a');
+        summarizeThreadLink.href = '#';
+        summarizeThreadLink.textContent = 'summarize thread';
+        summarizeThreadLink.title = 'Summarize all child comments in this thread';
+
+        summarizeThreadLink.addEventListener('click', async (e) => {
+            e.preventDefault();
+
+            // Set the current comment and summarize the thread starting from this comment
+            this.navigation.setCurrentComment(comment);
+
+            await this.summarization.summarizeThread(comment);
+        });
+
+        navsElement.appendChild(summarizeThreadLink);
+    }

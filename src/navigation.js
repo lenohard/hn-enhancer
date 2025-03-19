@@ -208,29 +208,6 @@ class Navigation {
         });
     }
 
-    /**
-     * Navigates to comments by the same author
-     * @param {string} author - The author name
-     * @param {Element} currentComment - The current comment element
-     * @param {string} direction - The direction to navigate ('prev', 'next')
-     */
-    navigateAuthorComments(author, currentComment, direction) {
-        const comments = this.enhancer.authorComments.get(author);
-        if (!comments) return;
-
-        const currentIndex = comments.indexOf(currentComment);
-        if (currentIndex === -1) return;
-
-        let targetIndex;
-        if (direction === 'prev') {
-            targetIndex = currentIndex > 0 ? currentIndex - 1 : comments.length - 1;
-        } else {
-            targetIndex = currentIndex < comments.length - 1 ? currentIndex + 1 : 0;
-        }
-
-        const targetComment = comments[targetIndex];
-        this.setCurrentComment(targetComment);
-    }
 }
 
 export default Navigation;
