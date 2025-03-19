@@ -172,7 +172,7 @@ class HNEnhancer {
 
     getCurrentPost() {
         if(this.currentPostIndex < 0 || this.currentPostIndex >= this.allPosts.length){
-            this.logInfo(`No current post to return, because current post index is outside the bounds of the posts array. 
+            this.logInfo(`No current post to return, because current post index is outside the bounds of the posts array.
                             currentPostIndex: ${this.currentPostIndex}. allPosts.length: ${this.allPosts.length}`);
             return null;
         }
@@ -191,7 +191,7 @@ class HNEnhancer {
             return;
         }
         if(postIndex < 0 || postIndex >= this.allPosts.length) {
-            console.error(`ERROR: cannot set current post because the given index is outside the bounds of the posts array. 
+            console.error(`ERROR: cannot set current post because the given index is outside the bounds of the posts array.
                             postIndex: ${postIndex}. allPosts.length: ${this.allPosts.length}`);
             return;
         }
@@ -960,10 +960,10 @@ class HNEnhancer {
                 },
                 text: (status, highlightedAuthor) => {
                     return status === SummarizeCheckStatus.THREAD_TOO_DEEP
-                        ? `This ${highlightedAuthor} thread is too long or deeply nested to be handled by Chrome Built-in AI. The underlying model Gemini Nano may struggle and hallucinate with large content and deep nested threads due to model size limitations. This model works best with individual comments or brief discussion threads. 
+                        ? `This ${highlightedAuthor} thread is too long or deeply nested to be handled by Chrome Built-in AI. The underlying model Gemini Nano may struggle and hallucinate with large content and deep nested threads due to model size limitations. This model works best with individual comments or brief discussion threads.
                         <br/><br/>However, if you still want to summarize this thread, you can <a href="#" id="options-page-link">configure another AI provider</a> like local <a href="https://ollama.com/" target="_blank">Ollama</a> or cloud AI services like OpenAI or Claude.`
 
-                        : `This ${highlightedAuthor} thread is concise enough to read directly. Summarizing short threads with a cloud AI service would be inefficient. 
+                        : `This ${highlightedAuthor} thread is concise enough to read directly. Summarizing short threads with a cloud AI service would be inefficient.
                         <br/><br/> However, if you still want to summarize this thread, you can <a href="#" id="options-page-link">configure a local AI provider</a> like <a href="https://developer.chrome.com/docs/ai/built-in" target="_blank">Chrome Built-in AI</a> or <a href="https://ollama.com/" target="_blank">Ollama</a> for more efficient processing of shorter threads.`;
                 }
             };
@@ -1240,7 +1240,7 @@ class HNEnhancer {
                 this.summaryPanel.updateContent({
                     title: `Summarization not recommended`,
                     metadata: `Content too long for the selected AI <strong>${aiProvider}</strong>`,
-                    text: `This post is too long to be handled by Chrome Built-in AI. The underlying model Gemini Nano may struggle and hallucinate with large content and deep nested threads due to model size limitations. This model works best with individual comments or brief discussion threads. 
+                    text: `This post is too long to be handled by Chrome Built-in AI. The underlying model Gemini Nano may struggle and hallucinate with large content and deep nested threads due to model size limitations. This model works best with individual comments or brief discussion threads.
                     <br/><br/>However, if you still want to summarize this thread, you can <a href="#" id="options-page-link">configure another AI provider</a> like local <a href="https://ollama.com/" target="_blank">Ollama</a> or cloud AI services like OpenAI or Claude.`
                 });
 
@@ -1651,9 +1651,13 @@ class HNEnhancer {
                     await this.summarizeUsingOllama(formattedComment, model, commentPathToIdMap);
                     break;
 
+                case "gemini":
+                    await this.summarizeUsingGemini(formattedComment, model, commentPathToIdMap);
+
                 case 'none':
                     await this.showSummaryInPanel(formattedComment, commentPathToIdMap, 0);
                     break;
+
             }
         } catch (error) {
             console.error('Error fetching settings:', error);
@@ -2024,15 +2028,15 @@ class HNEnhancer {
 
     getSystemMessage() {
         return `
-You are an AI assistant specialized in analyzing and summarizing Hacker News discussions. 
-Your goal is to help users quickly understand the key discussions and insights from Hacker News threads without having to read through lengthy comment sections. 
-A discussion consists of threaded comments where each comment can have child comments (replies) nested underneath it, forming interconnected conversation branches. 
-Your task is to provide concise, meaningful summaries that capture the essence of the discussion while prioritizing high quality content. 
+You are an AI assistant specialized in analyzing and summarizing Hacker News discussions.
+Your goal is to help users quickly understand the key discussions and insights from Hacker News threads without having to read through lengthy comment sections.
+A discussion consists of threaded comments where each comment can have child comments (replies) nested underneath it, forming interconnected conversation branches.
+Your task is to provide concise, meaningful summaries that capture the essence of the discussion while prioritizing high quality content.
 Follow these guidelines:
 
 1. Discussion Structure Understanding:
    Comments are formatted as: [hierarchy_path] (score: X) <replies: Y> {downvotes: Z} Author: Comment
-   
+
    - hierarchy_path: Shows the comment's position in the discussion tree
      - Single number [1] indicates a top-level comment
      - Each additional number represents one level deeper in the reply chain. e.g., [1.2.1] is a reply to [1.2]
@@ -2042,13 +2046,13 @@ Follow these guidelines:
      - 1000 represents the highest-value comment in the discussion
      - Other scores are proportionally scaled against this maximum
      - Higher scores indicate more upvotes from the community and content quality
-     
+
    - replies: Number of direct responses to this comment
 
    - downvotes: Number of downvotes the comment received
      - Exclude comments with high downvotes from the summary
      - DO NOT include comments that are have 4 or more downvotes
-   
+
    Example discussion:
    [1] (score: 1000) <replies: 3> {downvotes: 0} user1: Main point as the first reply to the post
    [1.1] (score: 800) <replies: 1> {downvotes: 0} user2: Supporting argument or counter point in response to [1]
@@ -2062,10 +2066,10 @@ Follow these guidelines:
    - Pay attention to comments with many replies as they sparked discussion
    - Track how discussions evolve through the hierarchy
    - Consider the combination of score, downvotes AND replies to gauge overall importance, prioritizing insightful, well-reasoned, and informative content
-  
+
 3. Theme Identification:
    - Use top-level comments ([1], [2], etc.) to identify main discussion themes
-   - Identify recurring themes across top-level comments 
+   - Identify recurring themes across top-level comments
    - Look for comments that address similar aspects of the main post or propose related ideas.
    - Group related top-level comments into thematic clusters
    - Track how each theme develops through reply chains
@@ -2076,9 +2080,9 @@ Follow these guidelines:
     - Replies suggest engagement and discussion, and depth (often implied by longer or more detailed comments) can signal valuable insights or expertise
     - Actively identify and highlight expert explanations or in-depth analyses. These are often found in detailed responses, comments with high scores, or from users who demonstrate expertise on the topic
 
-Based on the above instructions, you should summarize the discussion. Your output should be well-structured, informative, and easily digestible for someone who hasn't read the original thread. 
+Based on the above instructions, you should summarize the discussion. Your output should be well-structured, informative, and easily digestible for someone who hasn't read the original thread.
 
-Your response should be formatted using markdown and should have the following structure. 
+Your response should be formatted using markdown and should have the following structure.
 
 # Overview
 Brief summary of the overall discussion in 2-3 sentences - adjust based on complexity and depth of comments.
@@ -2088,7 +2092,7 @@ Brief summary of the overall discussion in 2-3 sentences - adjust based on compl
 
 # [Theme 1 title - from the first bullet above]
 [Summarize key insights or arguments under this theme in a couple of sentences. Use bullet points.]
-[Identify important quotes and include them here with hierarchy_paths so that we can link back to the comment in the main page. Include direct "quotations" (with author attribution) where appropriate. You MUST quote directly from users with double quotes. You MUST include hierarchy_path as well. Do NOT include comments with 4 or more downvotes. For example: 
+[Identify important quotes and include them here with hierarchy_paths so that we can link back to the comment in the main page. Include direct "quotations" (with author attribution) where appropriate. You MUST quote directly from users with double quotes. You MUST include hierarchy_path as well. Do NOT include comments with 4 or more downvotes. For example:
 - [1.1.1] (user3) noted, '...'
 - [2.1] (user2) explained that '...'"
 - [3] Perspective from (user5) added, "..."
@@ -2146,7 +2150,7 @@ Brief summary of the overall discussion in 2-3 sentences - adjust based on compl
 
     async getUserMessage(title, text) {
         const {language} = await this.getAIProviderModel();
-        
+
         // Language output instruction based on selected language
         let languageInstruction = '';
         if (language !== 'en') {
@@ -2161,12 +2165,12 @@ Brief summary of the overall discussion in 2-3 sentences - adjust based on compl
                 'pt': 'Please respond in Portuguese (Português).',
                 'it': 'Please respond in Italian (Italiano).'
             };
-            
+
             languageInstruction = languageInstructions[language] || '';
         }
-        
+
         // Single prompt template with language instruction at the end
-        const prompt = `Provide a concise and insightful summary of the following Hacker News discussion, as per the guidelines you've been given. 
+        const prompt = `Provide a concise and insightful summary of the following Hacker News discussion, as per the guidelines you've been given.
 The goal is to help someone quickly grasp the main discussion points and key perspectives without reading all comments.
 Please focus on extracting the main themes, significant viewpoints, and high-quality contributions.
 The post title and comments are separated by three dashed lines:
@@ -2178,7 +2182,7 @@ Comments:
 ${text}
 ---
 ${languageInstruction}`;
-        
+
         return prompt;
     }
 
@@ -2196,13 +2200,13 @@ ${languageInstruction}`;
         const {aiProvider, model, language} = await this.getAIProviderModel();
         if (aiProvider) {
             let metadataText = `Summarized using <strong>${aiProvider} ${model || ''}</strong> in <strong>${duration ?? '0'} secs</strong>`;
-            
+
             // 如果不是英语，显示语言信息
             if (language && language !== 'en') {
                 const languageName = this.getLanguageName(language);
                 metadataText += ` in <strong>${languageName}</strong>`;
             }
-            
+
             this.summaryPanel.updateContent({
                 metadata: metadataText,
                 text: formattedSummary
@@ -2240,9 +2244,9 @@ ${languageInstruction}`;
             if (!id) {
                 return match; // If no ID found, return original text
             }
-            return ` <a href="#" 
+            return ` <a href="#"
                        title="Go to comment #${id}"
-                       data-comment-link="true" data-comment-id="${id}" 
+                       data-comment-link="true" data-comment-id="${id}"
                        style="color: rgb(130, 130, 130); text-decoration: underline;"
                     >comment #${id}</a>`;
         });
@@ -2314,12 +2318,15 @@ ${languageInstruction}`;
         });
     }
 
+    async summarizeUsingGemini(text, model, commentPathToIdMap) {
+    }
+
     async summarizeUsingChromeBuiltInAI(formattedComment, commentPathToIdMap) {
         if(this.isChomeAiAvailable === HNEnhancer.CHROME_AI_AVAILABLE.NO) {
             this.summaryPanel.updateContent({
                 title: 'AI Not Available',
                 metadata: 'Chrome Built-in AI is disabled or unavailable',
-                text: `Unable to generate summary: Chrome's AI features are not enabled on your device. 
+                text: `Unable to generate summary: Chrome's AI features are not enabled on your device.
                        <br><br>
                        To enable and test Chrome AI:
                        <br>
@@ -2341,12 +2348,12 @@ ${languageInstruction}`;
 
         // Get the language setting
         const {language} = await this.getAIProviderModel();
-        
+
         // Summarize the text by passing in the text to page script which in turn will call the Chrome AI API
         window.postMessage({
             type: 'HN_AI_SUMMARIZE',
             data: {
-                text: formattedComment, 
+                text: formattedComment,
                 commentPathToIdMap: commentPathToIdMap,
                 language: language
             }
@@ -2368,7 +2375,7 @@ ${languageInstruction}`;
         };
         return languageNames[language] || language;
     }
-    
+
     getHNPostTitle() {
         return document.title;
     }
