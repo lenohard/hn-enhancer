@@ -12,6 +12,51 @@ async function onInstalled() {
 }
 
 // Uncomment this line to enable the onInstalled handler
+// Handle Gemini API requests
+async function handleGeminiRequest(data) {
+    const { apiKey, model, systemPrompt, userPrompt } = data;
+    
+    if (!apiKey || !model) {
+        throw new Error('Missing required parameters for Gemini API request');
+    }
+    
+    const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
+    const url = `${endpoint}?key=${apiKey}`;
+    
+    const payload = {
+        contents: [
+            {
+                role: "user",
+                parts: [
+                    { text: systemPrompt },
+                    { text: userPrompt }
+                ]
+            }
+        ],
+        generationConfig: {
+            temperature: 0.7,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 8192
+        }
+    };
+    
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Gemini API Error: HTTP error code: ${response.status}, URL: ${url.split('?')[0]} \nBody: ${errorText}`);
+    }
+    
+    return await response.json();
+}
+
 // chrome.runtime.onInstalled.addListener(onInstalled);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -28,6 +73,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return handleAsyncMessage(
                 message,
                 async () => await fetchWithTimeout(message.data.url, message.data),
+                sendResponse
+            );
+
+        case 'GEMINI_API_REQUEST':
+            return handleAsyncMessage(
+                message,
+                async () => await handleGeminiRequest(message.data),
                 sendResponse
             );
 
