@@ -16,12 +16,17 @@ async function onInstalled() {
 async function handleGeminiRequest(data) {
     const { apiKey, model, systemPrompt, userPrompt } = data;
     
+    console.log('处理Gemini API请求，模型:', model);
+    
     if (!apiKey || !model) {
+        console.error('Gemini API请求缺少必要参数');
         throw new Error('Missing required parameters for Gemini API request');
     }
     
     const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
     const url = `${endpoint}?key=${apiKey}`;
+    
+    console.log('Gemini API端点:', endpoint);
     
     const payload = {
         contents: [
@@ -41,22 +46,50 @@ async function handleGeminiRequest(data) {
         }
     };
     
-    console.log('Making Gemini API request to:', endpoint);
-    
-    const response = await fetch(url, {
+    console.log('Gemini请求负载结构:', JSON.stringify({
+        endpoint: endpoint,
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    });
+        payloadSize: JSON.stringify(payload).length,
+        apiKeyLength: apiKey ? apiKey.length : 0,
+        systemPromptLength: systemPrompt ? systemPrompt.length : 0,
+        userPromptLength: userPrompt ? userPrompt.length : 0
+    }, null, 2));
     
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Gemini API Error: HTTP error code: ${response.status}, URL: ${url.split('?')[0]} \nBody: ${errorText}`);
+    try {
+        console.log('发送Gemini API请求...');
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        console.log('收到Gemini API响应, 状态码:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Gemini API错误:', {
+                status: response.status,
+                statusText: response.statusText,
+                errorBody: errorText
+            });
+            throw new Error(`Gemini API Error: HTTP error code: ${response.status}, URL: ${url.split('?')[0]} \nBody: ${errorText}`);
+        }
+        
+        const responseData = await response.json();
+        console.log('Gemini API响应数据结构:', JSON.stringify({
+            hasData: !!responseData,
+            hasCandidates: !!(responseData && responseData.candidates),
+            candidatesCount: responseData && responseData.candidates ? responseData.candidates.length : 0
+        }, null, 2));
+        
+        return responseData;
+    } catch (error) {
+        console.error('Gemini API请求失败:', error);
+        console.error('错误详情:', error.stack);
+        throw error;
     }
-    
-    return await response.json();
 }
 
 // chrome.runtime.onInstalled.addListener(onInstalled);
@@ -94,10 +127,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function handleAsyncMessage(message, asyncOperation, sendResponse) {
     (async () => {
         try {
+            console.log(`开始处理异步消息: ${message.type}`);
             const response = await asyncOperation();
+            console.log(`异步消息处理成功: ${message.type}`);
             sendResponse({success: true, data: response});
         } catch (error) {
-            console.error(`Message: ${message.type}. Error: ${error}`);
+            console.error(`异步消息处理失败: ${message.type}. 错误:`, error);
+            console.error(`错误详情:`, error.stack);
             sendResponse({success: false, error: error.toString()});
         }
     })();

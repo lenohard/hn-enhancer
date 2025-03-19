@@ -2334,6 +2334,8 @@ ${languageInstruction}`;
         }
 
         try {
+            console.log('开始使用Gemini生成摘要，模型:', model);
+            
             // Show a loading message in the summary panel
             this.summaryPanel.updateContent({
                 title: 'Thread Summary',
@@ -2344,31 +2346,50 @@ ${languageInstruction}`;
             // Limit the input text to avoid token limits
             const tokenLimit = model.includes('1.5') ? 30000 : 15000;
             const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
+            console.log('文本长度限制为:', tokenLimit, '字符');
 
             // Create the system and user prompts
             const systemPrompt = this.getSystemMessage();
             const postTitle = this.getHNPostTitle();
             const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
+            console.log('准备发送请求到Gemini API，标题:', postTitle);
 
             // Make the API request using background message
+            console.log('发送GEMINI_API_REQUEST消息到background.js');
             const response = await this.sendBackgroundMessage('GEMINI_API_REQUEST', {
                 apiKey: apiKey,
                 model: model,
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt
             });
+            console.log('收到Gemini API响应:', response ? '成功' : '失败');
 
-            if (!response || !response.candidates || response.candidates.length === 0) {
-                throw new Error('No response from Gemini API');
+            if (!response) {
+                throw new Error('未收到Gemini API响应');
+            }
+            
+            if (!response.candidates || response.candidates.length === 0) {
+                console.error('Gemini API响应中没有candidates:', response);
+                throw new Error('Gemini API响应中没有candidates');
             }
 
+            console.log('Gemini API响应结构:', JSON.stringify(response, null, 2));
+            
+            if (!response.candidates[0].content || !response.candidates[0].content.parts || !response.candidates[0].content.parts[0]) {
+                console.error('Gemini API响应结构不正确:', response.candidates[0]);
+                throw new Error('Gemini API响应结构不正确');
+            }
+            
             const summary = response.candidates[0].content.parts[0].text;
+            console.log('成功获取摘要，长度:', summary ? summary.length : 0);
             
             // Update the summary panel with the generated summary
             await this.showSummaryInPanel(summary, commentPathToIdMap, response.duration);
+            console.log('摘要已显示在面板中');
 
         } catch (error) {
-            console.error('Error in Gemini summarization:', error);
+            console.error('Gemini摘要生成错误:', error);
+            console.error('错误详情:', error.stack);
 
             // Update the summary panel with an error message
             let errorMessage = `Error generating summary using Gemini model ${model}. `;
