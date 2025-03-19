@@ -2319,6 +2319,97 @@ ${languageInstruction}`;
     }
 
     async summarizeUsingGemini(text, model, commentPathToIdMap) {
+        // Validate required parameters
+        const data = await chrome.storage.sync.get('settings');
+        const apiKey = data.settings?.gemini?.apiKey;
+        
+        if (!text || !model || !apiKey) {
+            console.error('Missing required parameters for Gemini summarization');
+            this.summaryPanel.updateContent({
+                title: 'Error',
+                text: 'Missing API configuration for Gemini'
+            });
+            return;
+        }
+
+        try {
+            // Show a loading message in the summary panel
+            this.summaryPanel.updateContent({
+                title: 'Thread Summary',
+                metadata: `Analyzing discussion using <strong>Gemini ${model}</strong>`,
+                text: `<div>Generating summary... This may take a few moments.<span class="loading-spinner"></span></div>`
+            });
+
+            // Limit the input text to avoid token limits
+            const tokenLimit = model.includes('1.5') ? 30000 : 15000;
+            const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
+
+            // Create the system and user prompts
+            const systemPrompt = this.getSystemMessage();
+            const postTitle = this.getHNPostTitle();
+            const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
+
+            // Set up the API request
+            const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
+            const url = `${endpoint}?key=${apiKey}`;
+            
+            // Prepare the request payload
+            const payload = {
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { text: systemPrompt },
+                            { text: userPrompt }
+                        ]
+                    }
+                ],
+                generationConfig: {
+                    temperature: 0.7,
+                    topP: 0.95,
+                    topK: 40,
+                    maxOutputTokens: 8192
+                }
+            };
+
+            // Make the API request using background message
+            const response = await this.sendBackgroundMessage('FETCH_API_REQUEST', {
+                url: url,
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload),
+                timeout: 120000 // 2 minute timeout
+            });
+
+            if (!response || !response.candidates || response.candidates.length === 0) {
+                throw new Error('No response from Gemini API');
+            }
+
+            const summary = response.candidates[0].content.parts[0].text;
+            
+            // Update the summary panel with the generated summary
+            await this.showSummaryInPanel(summary, commentPathToIdMap, response.duration);
+
+        } catch (error) {
+            console.error('Error in Gemini summarization:', error);
+
+            // Update the summary panel with an error message
+            let errorMessage = `Error generating summary using Gemini model ${model}. `;
+            if (error.message.includes('API key')) {
+                errorMessage += 'Please check your API key configuration.';
+            } else if (error.message.includes('429')) {
+                errorMessage += 'Rate limit exceeded. Please try again later.';
+            } else {
+                errorMessage += error.message;
+            }
+
+            this.summaryPanel.updateContent({
+                title: 'Error',
+                text: errorMessage
+            });
+        }
     }
 
     async summarizeUsingChromeBuiltInAI(formattedComment, commentPathToIdMap) {

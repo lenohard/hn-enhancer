@@ -11,6 +11,9 @@ async function onInstalled() {
     }
 }
 
+// Uncomment this line to enable the onInstalled handler
+// chrome.runtime.onInstalled.addListener(onInstalled);
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     console.log('Background script received message of type:', message.type);
@@ -58,6 +61,8 @@ async function fetchWithTimeout(url, options = {}) {
     const id = setTimeout(() => controller.abort(), timeout);
 
     try {
+        console.log(`Making ${method} request to: ${url.split('?')[0]}`);
+        
         const response = await fetch(url, {
             method,
             headers,
@@ -68,7 +73,7 @@ async function fetchWithTimeout(url, options = {}) {
 
         if (!response.ok) {
             const responseText = await response.text();
-            const errorText = `API Error: HTTP error code: ${response.status}, URL: ${url} \nBody: ${responseText}`;
+            const errorText = `API Error: HTTP error code: ${response.status}, URL: ${url.split('?')[0]} \nBody: ${responseText}`;
             console.error(errorText);
             throw new Error(errorText);
         }
@@ -77,7 +82,7 @@ async function fetchWithTimeout(url, options = {}) {
     } catch (error) {
         clearTimeout(id);
         if (error.name === 'AbortError') {
-            throw new Error(`Request timeout after ${timeout}ms: ${url}`);
+            throw new Error(`Request timeout after ${timeout}ms: ${url.split('?')[0]}`);
         }
         throw error;
     }
