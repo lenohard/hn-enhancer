@@ -45,8 +45,13 @@
       ],
       "js": [
         "summary-panel.js",
+        "hn-state.js",
+        "api-client.js",
+        "markdown-utils.js",
+        "dom-utils.js",
         "content.js"
-      ]
+      ],
+      "type": "module"
     }
   ],
   "web_accessible_resources": [{

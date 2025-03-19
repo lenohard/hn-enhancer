@@ -1,4 +1,4 @@
-class SummaryPanel {
+export default class SummaryPanel {
     constructor() {
         this.panel = this.createPanel();
         this.resizer = this.createResizer();
