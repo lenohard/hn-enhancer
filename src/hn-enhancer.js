@@ -25,38 +25,51 @@ export default class HNEnhancer {
      * Creates a new HNEnhancer instance
      */
     constructor() {
-        this.apiClient = new ApiClient(HNEnhancer.DEBUG);
-        this.markdownUtils = MarkdownUtils;
-        this.domUtils = DomUtils;
-        this.hnState = HNState;
-        this.isChomeAiAvailable = HNEnhancer.CHROME_AI_AVAILABLE.NO;
-        
-        // Initialize page state
-        this.currentComment = null;
-        
-        // Initialize components
-        this.uiComponents = new UIComponents(this);
-        this.helpModal = this.uiComponents.createHelpModal();
-        this.authorTracking = new AuthorTracking(this);
-        this.navigation = new Navigation(this);
-        
-        this.uiComponents.createHelpIcon();
+        try {
+            this.apiClient = new ApiClient(HNEnhancer.DEBUG);
+            this.markdownUtils = MarkdownUtils;
+            this.domUtils = DomUtils;
+            this.hnState = HNState;
+            this.isChomeAiAvailable = HNEnhancer.CHROME_AI_AVAILABLE.NO;
+            
+            // Initialize page state
+            this.currentComment = null;
+            
+            // Initialize components
+            this.uiComponents = new UIComponents(this);
+            this.helpModal = this.uiComponents.createHelpModal();
+            this.authorTracking = new AuthorTracking(this);
+            this.navigation = new Navigation(this);
+            
+            this.uiComponents.createHelpIcon();
 
-        // Initialize based on page type
-        if (this.isHomePage) {
-            this.currentPostIndex = -1;
-            this.allPosts = null;
-            this.initHomePageNavigation();
-        } else if (this.isCommentsPage) {
-            this.initCommentsPageNavigation();
-            this.navigation.navigateToFirstComment(false);
-            this.initChromeBuiltinAI();
-            this.summaryPanel = new SummaryPanel();
-            this.summarization = new Summarization(this);
+            // 记录页面类型
+            console.log('页面类型 - 主页:', this.isHomePage, '评论页:', this.isCommentsPage);
+
+            // Initialize based on page type
+            if (this.isHomePage) {
+                console.log('初始化主页导航');
+                this.currentPostIndex = -1;
+                this.allPosts = null;
+                this.initHomePageNavigation();
+            } else if (this.isCommentsPage) {
+                console.log('初始化评论页导航');
+                this.initCommentsPageNavigation();
+                this.navigation.navigateToFirstComment(false);
+                this.initChromeBuiltinAI();
+                this.summaryPanel = new SummaryPanel();
+                this.summarization = new Summarization(this);
+            } else {
+                console.log('当前页面不是主页或评论页');
+            }
+
+            // Set up keyboard shortcuts
+            this.setupKeyBoardShortcuts();
+            console.log('HNEnhancer 初始化完成');
+        } catch (error) {
+            console.error('HNEnhancer 初始化失败:', error);
+            console.error('错误详情:', error.stack);
         }
-
-        // Set up keyboard shortcuts
-        this.setupKeyBoardShortcuts();
     }
 
     /**
@@ -83,9 +96,12 @@ export default class HNEnhancer {
      */
     get isHomePage() {
         const pathname = window.location.pathname;
-        return pathname === '/' || pathname === '/news' || pathname === '/newest' || 
+        console.log('当前页面路径:', pathname);
+        const isHome = pathname === '/' || pathname === '/news' || pathname === '/newest' || 
                pathname === '/ask' || pathname === '/show' || pathname === '/front' || 
                pathname === '/shownew';
+        console.log('是否为主页:', isHome);
+        return isHome;
     }
 
     /**
@@ -93,7 +109,9 @@ export default class HNEnhancer {
      * @returns {boolean} True if the current page is a comments page
      */
     get isCommentsPage() {
-        return window.location.pathname === '/item';
+        const isComments = window.location.pathname === '/item';
+        console.log('是否为评论页:', isComments);
+        return isComments;
     }
 
 

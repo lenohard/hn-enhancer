@@ -92,7 +92,8 @@ async function handleGeminiRequest(data) {
     }
 }
 
-// chrome.runtime.onInstalled.addListener(onInstalled);
+// 启用安装处理程序
+chrome.runtime.onInstalled.addListener(onInstalled);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
