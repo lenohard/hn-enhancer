@@ -404,7 +404,6 @@ export default class HNEnhancer {
             },
         };
     }
-}
     /**
      * Injects summarize thread links into comments
      * @param {Element} comment - The comment element
@@ -434,3 +433,4 @@ export default class HNEnhancer {
 
         navsElement.appendChild(summarizeThreadLink);
     }
+}
