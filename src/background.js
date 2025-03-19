@@ -117,6 +117,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 async () => await handleGeminiRequest(message.data),
                 sendResponse
             );
+            
+        case 'OPENAI_API_REQUEST':
+            return handleAsyncMessage(
+                message,
+                async () => await handleOpenAIRequest(message.data),
+                sendResponse
+            );
+            
+        case 'ANTHROPIC_API_REQUEST':
+            return handleAsyncMessage(
+                message,
+                async () => await handleAnthropicRequest(message.data),
+                sendResponse
+            );
+            
+        case 'DEEPSEEK_API_REQUEST':
+            return handleAsyncMessage(
+                message,
+                async () => await handleDeepSeekRequest(message.data),
+                sendResponse
+            );
+            
+        case 'OLLAMA_API_REQUEST':
+            return handleAsyncMessage(
+                message,
+                async () => await handleOllamaRequest(message.data),
+                sendResponse
+            );
+            
+        case 'OPENROUTER_API_REQUEST':
+            return handleAsyncMessage(
+                message,
+                async () => await handleOpenRouterRequest(message.data),
+                sendResponse
+            );
+            
+        case 'CHROME_AI_API_REQUEST':
+            return handleAsyncMessage(
+                message,
+                async () => await handleChromeAIRequest(message.data),
+                sendResponse
+            );
 
         default:
             console.log('Unknown message type:', message.type);
@@ -140,6 +182,315 @@ function handleAsyncMessage(message, asyncOperation, sendResponse) {
 
     // indicate that sendResponse will be called later and hence keep the message channel open
     return true;
+}
+
+// Handle OpenAI API requests
+async function handleOpenAIRequest(data) {
+    const { apiKey, model, messages } = data;
+    
+    console.log('处理OpenAI API请求，模型:', model);
+    
+    if (!apiKey || !model || !messages) {
+        console.error('OpenAI API请求缺少必要参数');
+        throw new Error('Missing required parameters for OpenAI API request');
+    }
+    
+    const endpoint = 'https://api.openai.com/v1/chat/completions';
+    
+    console.log('OpenAI API端点:', endpoint);
+    
+    const payload = {
+        model: model,
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 2048
+    };
+    
+    try {
+        console.log('发送OpenAI API请求...');
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        console.log('收到OpenAI API响应, 状态码:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('OpenAI API错误:', {
+                status: response.status,
+                statusText: response.statusText,
+                errorBody: errorText
+            });
+            throw new Error(`OpenAI API Error: HTTP error code: ${response.status} \nBody: ${errorText}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('OpenAI API请求失败:', error);
+        throw error;
+    }
+}
+
+// Handle Anthropic API requests
+async function handleAnthropicRequest(data) {
+    const { apiKey, model, messages } = data;
+    
+    console.log('处理Anthropic API请求，模型:', model);
+    
+    if (!apiKey || !model || !messages) {
+        console.error('Anthropic API请求缺少必要参数');
+        throw new Error('Missing required parameters for Anthropic API request');
+    }
+    
+    const endpoint = 'https://api.anthropic.com/v1/messages';
+    
+    console.log('Anthropic API端点:', endpoint);
+    
+    // 将消息转换为Anthropic格式
+    const systemMessage = messages.find(m => m.role === 'system');
+    const userMessages = messages.filter(m => m.role === 'user');
+    
+    const payload = {
+        model: model,
+        messages: userMessages,
+        max_tokens: 2048
+    };
+    
+    // 如果有系统消息，添加到请求中
+    if (systemMessage) {
+        payload.system = systemMessage.content;
+    }
+    
+    try {
+        console.log('发送Anthropic API请求...');
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        console.log('收到Anthropic API响应, 状态码:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Anthropic API错误:', {
+                status: response.status,
+                statusText: response.statusText,
+                errorBody: errorText
+            });
+            throw new Error(`Anthropic API Error: HTTP error code: ${response.status} \nBody: ${errorText}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('Anthropic API请求失败:', error);
+        throw error;
+    }
+}
+
+// Handle DeepSeek API requests
+async function handleDeepSeekRequest(data) {
+    const { apiKey, model, messages } = data;
+    
+    console.log('处理DeepSeek API请求，模型:', model);
+    
+    if (!apiKey || !model || !messages) {
+        console.error('DeepSeek API请求缺少必要参数');
+        throw new Error('Missing required parameters for DeepSeek API request');
+    }
+    
+    const endpoint = 'https://api.deepseek.com/v1/chat/completions';
+    
+    console.log('DeepSeek API端点:', endpoint);
+    
+    const payload = {
+        model: model,
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 2048
+    };
+    
+    try {
+        console.log('发送DeepSeek API请求...');
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        console.log('收到DeepSeek API响应, 状态码:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('DeepSeek API错误:', {
+                status: response.status,
+                statusText: response.statusText,
+                errorBody: errorText
+            });
+            throw new Error(`DeepSeek API Error: HTTP error code: ${response.status} \nBody: ${errorText}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('DeepSeek API请求失败:', error);
+        throw error;
+    }
+}
+
+// Handle Ollama API requests
+async function handleOllamaRequest(data) {
+    const { model, messages } = data;
+    
+    console.log('处理Ollama API请求，模型:', model);
+    
+    if (!model || !messages) {
+        console.error('Ollama API请求缺少必要参数');
+        throw new Error('Missing required parameters for Ollama API request');
+    }
+    
+    const endpoint = 'http://localhost:11434/api/chat';
+    
+    console.log('Ollama API端点:', endpoint);
+    
+    const payload = {
+        model: model,
+        messages: messages,
+        stream: false
+    };
+    
+    try {
+        console.log('发送Ollama API请求...');
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        console.log('收到Ollama API响应, 状态码:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Ollama API错误:', {
+                status: response.status,
+                statusText: response.statusText,
+                errorBody: errorText
+            });
+            throw new Error(`Ollama API Error: HTTP error code: ${response.status} \nBody: ${errorText}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('Ollama API请求失败:', error);
+        throw error;
+    }
+}
+
+// Handle OpenRouter API requests
+async function handleOpenRouterRequest(data) {
+    const { apiKey, model, messages } = data;
+    
+    console.log('处理OpenRouter API请求，模型:', model);
+    
+    if (!apiKey || !model || !messages) {
+        console.error('OpenRouter API请求缺少必要参数');
+        throw new Error('Missing required parameters for OpenRouter API request');
+    }
+    
+    const endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+    
+    console.log('OpenRouter API端点:', endpoint);
+    
+    const payload = {
+        model: model,
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 2048
+    };
+    
+    try {
+        console.log('发送OpenRouter API请求...');
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+                'HTTP-Referer': 'https://github.com/levelup-apps/hn-enhancer',
+                'X-Title': 'Hacker News Companion'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        console.log('收到OpenRouter API响应, 状态码:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('OpenRouter API错误:', {
+                status: response.status,
+                statusText: response.statusText,
+                errorBody: errorText
+            });
+            throw new Error(`OpenRouter API Error: HTTP error code: ${response.status} \nBody: ${errorText}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('OpenRouter API请求失败:', error);
+        throw error;
+    }
+}
+
+// Handle Chrome AI API requests
+async function handleChromeAIRequest(data) {
+    const { text } = data;
+    
+    console.log('处理Chrome AI API请求');
+    
+    if (!text) {
+        console.error('Chrome AI API请求缺少必要参数');
+        throw new Error('Missing required parameters for Chrome AI API request');
+    }
+    
+    try {
+        console.log('检查Chrome AI API是否可用...');
+        
+        // 检查Chrome AI API是否可用
+        if (!chrome.summarization) {
+            throw new Error('Chrome AI API不可用。请确保您使用的是Chrome 131+版本，并且已下载模型。');
+        }
+        
+        console.log('发送Chrome AI API请求...');
+        
+        // 使用Chrome的内置摘要API
+        const summary = await chrome.summarization.summarize({
+            text: text,
+            type: 'default'
+        });
+        
+        console.log('收到Chrome AI API响应:', summary ? '成功' : '失败');
+        
+        if (!summary) {
+            throw new Error('Chrome AI未能生成摘要');
+        }
+        
+        return { summary };
+    } catch (error) {
+        console.error('Chrome AI API请求失败:', error);
+        throw error;
+    }
 }
 
 // Utility function for API calls with timeout
