@@ -1654,7 +1654,7 @@ class HNEnhancer {
                 case "gemini":
                     await this.summarizeUsingGemini(formattedComment, model, commentPathToIdMap);
                     break;
-                    
+
                 case 'none':
                     await this.showSummaryInPanel(formattedComment, commentPathToIdMap, 0);
                     break;
@@ -2323,7 +2323,7 @@ ${languageInstruction}`;
         // Validate required parameters
         const data = await chrome.storage.sync.get('settings');
         const apiKey = data.settings?.gemini?.apiKey;
-        
+
         if (!text || !model || !apiKey) {
             console.error('Missing required parameters for Gemini summarization');
             this.summaryPanel.updateContent({
@@ -2335,7 +2335,7 @@ ${languageInstruction}`;
 
         try {
             console.log('开始使用Gemini生成摘要，模型:', model);
-            
+
             // Show a loading message in the summary panel
             this.summaryPanel.updateContent({
                 title: 'Thread Summary',
@@ -2367,22 +2367,22 @@ ${languageInstruction}`;
             if (!response) {
                 throw new Error('未收到Gemini API响应');
             }
-            
+
             if (!response.candidates || response.candidates.length === 0) {
                 console.error('Gemini API响应中没有candidates:', response);
                 throw new Error('Gemini API响应中没有candidates');
             }
 
             console.log('Gemini API响应结构:', JSON.stringify(response, null, 2));
-            
+
             if (!response.candidates[0].content || !response.candidates[0].content.parts || !response.candidates[0].content.parts[0]) {
                 console.error('Gemini API响应结构不正确:', response.candidates[0]);
                 throw new Error('Gemini API响应结构不正确');
             }
-            
+
             const summary = response.candidates[0].content.parts[0].text;
             console.log('成功获取摘要，长度:', summary ? summary.length : 0);
-            
+
             // Update the summary panel with the generated summary
             await this.showSummaryInPanel(summary, commentPathToIdMap, response.duration);
             console.log('摘要已显示在面板中');
