@@ -170,6 +170,151 @@ async function loadSettings() {
     }
 }
 
+// Test the current provider configuration
+async function testProviderConnection() {
+    // Get the currently selected provider
+    const selectedProvider = document.querySelector('input[name="provider-selection"]:checked')?.id;
+    if (!selectedProvider) {
+        alert('请先选择一个AI提供商');
+        return;
+    }
+
+    // Get the test button and change its text
+    const testButton = document.getElementById('test-connection');
+    const originalText = testButton.textContent;
+    testButton.textContent = '测试中...';
+    testButton.disabled = true;
+
+    try {
+        // Prepare test data based on the selected provider
+        let testData = {};
+        let testMessage = '这是一条测试消息，请回复"测试成功"';
+        
+        switch (selectedProvider) {
+            case 'openai':
+                testData = {
+                    apiKey: document.getElementById('openai-key').value,
+                    model: document.getElementById('openai-model').value,
+                    messages: [
+                        { role: "system", content: "You are a helpful assistant." },
+                        { role: "user", content: testMessage }
+                    ]
+                };
+                break;
+            case 'anthropic':
+                testData = {
+                    apiKey: document.getElementById('anthropic-key').value,
+                    model: document.getElementById('anthropic-model').value,
+                    messages: [
+                        { role: "user", content: testMessage }
+                    ]
+                };
+                break;
+            case 'gemini':
+                testData = {
+                    apiKey: document.getElementById('gemini-key').value,
+                    model: document.getElementById('gemini-model').value,
+                    systemPrompt: "You are a helpful assistant.",
+                    userPrompt: testMessage
+                };
+                break;
+            case 'deepseek':
+                testData = {
+                    apiKey: document.getElementById('deepseek-key').value,
+                    model: document.getElementById('deepseek-model').value,
+                    messages: [
+                        { role: "system", content: "You are a helpful assistant." },
+                        { role: "user", content: testMessage }
+                    ]
+                };
+                break;
+            case 'ollama':
+                testData = {
+                    model: document.getElementById('ollama-model').value,
+                    messages: [
+                        { role: "system", content: "You are a helpful assistant." },
+                        { role: "user", content: testMessage }
+                    ]
+                };
+                break;
+            case 'openrouter':
+                testData = {
+                    apiKey: document.getElementById('openrouter-key').value,
+                    model: document.getElementById('openrouter-model').value,
+                    messages: [
+                        { role: "system", content: "You are a helpful assistant." },
+                        { role: "user", content: testMessage }
+                    ]
+                };
+                break;
+            case 'chrome-ai':
+                testData = {
+                    text: testMessage
+                };
+                break;
+            default:
+                throw new Error(`未知的提供商: ${selectedProvider}`);
+        }
+
+        // Send test request to background script
+        const response = await sendBackgroundMessage(`${selectedProvider.toUpperCase()}_API_REQUEST`, testData);
+        
+        console.log('测试响应:', response);
+        
+        // Check if the response is valid
+        if (response) {
+            let responseText = '';
+            
+            // Extract response text based on provider
+            switch (selectedProvider) {
+                case 'gemini':
+                    if (response.candidates && response.candidates[0]?.content?.parts[0]?.text) {
+                        responseText = response.candidates[0].content.parts[0].text;
+                    }
+                    break;
+                case 'anthropic':
+                    if (response.content && response.content[0]?.text) {
+                        responseText = response.content[0].text;
+                    }
+                    break;
+                case 'openai':
+                case 'deepseek':
+                case 'openrouter':
+                    if (response.choices && response.choices[0]?.message?.content) {
+                        responseText = response.choices[0].message.content;
+                    }
+                    break;
+                case 'ollama':
+                    if (response.message && response.message.content) {
+                        responseText = response.message.content;
+                    }
+                    break;
+                case 'chrome-ai':
+                    if (response.summary) {
+                        responseText = response.summary;
+                    }
+                    break;
+            }
+            
+            if (responseText) {
+                alert(`连接测试成功!\n\n响应: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
+            } else {
+                alert(`连接成功，但响应格式不符合预期。请查看控制台获取详细信息。`);
+                console.error('响应格式不符合预期:', response);
+            }
+        } else {
+            alert('测试失败: 未收到响应');
+        }
+    } catch (error) {
+        console.error('测试连接时出错:', error);
+        alert(`测试失败: ${error.message}`);
+    } finally {
+        // Reset button state
+        testButton.textContent = originalText;
+        testButton.disabled = false;
+    }
+}
+
 // Initialize event listeners and load settings
 document.addEventListener('DOMContentLoaded', async () => {
     // Fetch Ollama models before loading other settings
@@ -185,8 +330,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         await saveSettings();
     });
 
+    // Add test connection button event listener
+    const testButton = document.getElementById('test-connection');
+    testButton.addEventListener('click', testProviderConnection);
+
     // Add cancel button event listener
-    const cancelButton = document.querySelector('button[type="button"]');
+    const cancelButton = document.querySelector('button[type="button"]:not(#test-connection)');
     cancelButton.addEventListener('click', () => {
         window.close();
     });
