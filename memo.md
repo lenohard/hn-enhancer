@@ -34,11 +34,11 @@ Break down content.js into logical modules following a more organized structure:
 
 ### Phase 1: Initial Setup
 - [x] Create memo.md for tracking progress
-- [ ] Create basic module structure and files
-- [ ] Set up module imports/exports
+- [x] Create basic module structure and files
+- [x] Set up module imports/exports
 
 ### Phase 2: Extract Core Functionality
-- [ ] Extract HNState class to hn-state.js
+- [x] Extract HNState class to hn-state.js
 - [ ] Create minimal HNEnhancer class in hn-enhancer.js
 - [ ] Set up initialization flow
 
@@ -52,9 +52,9 @@ Break down content.js into logical modules following a more organized structure:
 - [ ] Ensure summary-panel.js integration
 
 ### Phase 5: Extract Utilities
-- [ ] Move API communication to api-client.js
-- [ ] Move markdown utilities to markdown-utils.js
-- [ ] Move DOM utilities to dom-utils.js
+- [x] Move API communication to api-client.js
+- [x] Move markdown utilities to markdown-utils.js
+- [x] Move DOM utilities to dom-utils.js
 
 ### Phase 6: Testing & Refinement
 - [ ] Test all features after refactoring

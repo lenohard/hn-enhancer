@@ -1,7 +1,4 @@
-import HNState from './hn-state.js';
-import ApiClient from './api-client.js';
-import MarkdownUtils from './markdown-utils.js';
-import DomUtils from './dom-utils.js';
+import HNEnhancer from './hn-enhancer.js';
 
 const SummarizeCheckStatus = {
     OK: 'ok',
@@ -9,71 +6,6 @@ const SummarizeCheckStatus = {
     THREAD_TOO_SHALLOW: 'too_shallow',
     THREAD_TOO_DEEP: 'chrome_depth_limit'
 };
-
-class HNEnhancer {
-
-    static DEBUG = false;  // Set to true when debugging
-
-    logDebug(...args) {
-        if (HNEnhancer.DEBUG) {
-            console.log('[DEBUG] ', ...args);
-        }
-    }
-
-    logInfo(...args) {
-        console.log('[INFO] ', ...args);
-    }
-
-    static CHROME_AI_AVAILABLE = {
-        YES: 'readily',
-        NO: 'no',
-        AFTER_DOWNLOAD: 'after-download'
-    }
-
-    constructor() {
-
-        this.authorComments = this.createAuthorCommentsMap();    // Create a map of comment elements by author
-        this.popup = this.createAuthorPopup();
-        this.postAuthor = this.getPostAuthor();
-
-        this.currentComment = null;         // Track currently focused comment
-
-        this.helpModal = this.createHelpModal();
-
-        this.createHelpIcon();
-
-        // Initialize the page based on type - home page vs. comments page
-        if (this.isHomePage) {
-
-            this.currentPostIndex = -1;     // initialize to -1 to indicate that it is not set
-            this.allPosts = null;
-
-            this.initHomePageNavigation();
-
-        } else if (this.isCommentsPage) {
-            // Initialize custom navigation in Comments page - author comments, comment navigation and summary panel,
-            this.initCommentsPageNavigation();
-
-            // Navigate to first comment, but don't scroll to it (to avoid jarring effect when you first come to the page)
-            this.navigateToFirstComment(false);
-
-            this.initChromeBuiltinAI();
-
-            this.summaryPanel = new SummaryPanel();
-        }
-
-        // set up all keyboard shortcuts - global and page-specific (Home pages vs. Comments page)
-        this.setupKeyBoardShortcuts();
-    }
-
-    get isHomePage() {
-        const pathname = window.location.pathname;
-        return pathname === '/' || pathname === '/news' || pathname === '/newest' || pathname === '/ask' || pathname === '/show' || pathname === '/front' || pathname === '/shownew';
-    }
-
-    get isCommentsPage() {
-        return window.location.pathname === '/item';
-    }
 
     initHomePageNavigation() {
         this.allPosts = document.querySelectorAll('.athing');
