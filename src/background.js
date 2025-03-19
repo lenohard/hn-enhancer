@@ -229,9 +229,17 @@ async function handleOpenAIRequest(data) {
             throw new Error(`OpenAI API Error: HTTP error code: ${response.status} \nBody: ${errorText}`);
         }
         
-        return await response.json();
+        const responseData = await response.json();
+        console.log('OpenAI API响应数据结构:', JSON.stringify({
+            hasData: !!responseData,
+            hasChoices: !!(responseData && responseData.choices),
+            choicesCount: responseData && responseData.choices ? responseData.choices.length : 0
+        }, null, 2));
+        
+        return responseData;
     } catch (error) {
         console.error('OpenAI API请求失败:', error);
+        console.error('错误详情:', error.stack);
         throw error;
     }
 }
@@ -273,7 +281,8 @@ async function handleAnthropicRequest(data) {
             headers: {
                 'Content-Type': 'application/json',
                 'x-api-key': apiKey,
-                'anthropic-version': '2023-06-01'
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true' // this is required to resolve CORS issue
             },
             body: JSON.stringify(payload)
         });
@@ -290,9 +299,17 @@ async function handleAnthropicRequest(data) {
             throw new Error(`Anthropic API Error: HTTP error code: ${response.status} \nBody: ${errorText}`);
         }
         
-        return await response.json();
+        const responseData = await response.json();
+        console.log('Anthropic API响应数据结构:', JSON.stringify({
+            hasData: !!responseData,
+            hasContent: !!(responseData && responseData.content),
+            contentLength: responseData && responseData.content ? responseData.content.length : 0
+        }, null, 2));
+        
+        return responseData;
     } catch (error) {
         console.error('Anthropic API请求失败:', error);
+        console.error('错误详情:', error.stack);
         throw error;
     }
 }
@@ -342,9 +359,17 @@ async function handleDeepSeekRequest(data) {
             throw new Error(`DeepSeek API Error: HTTP error code: ${response.status} \nBody: ${errorText}`);
         }
         
-        return await response.json();
+        const responseData = await response.json();
+        console.log('DeepSeek API响应数据结构:', JSON.stringify({
+            hasData: !!responseData,
+            hasChoices: !!(responseData && responseData.choices),
+            choicesCount: responseData && responseData.choices ? responseData.choices.length : 0
+        }, null, 2));
+        
+        return responseData;
     } catch (error) {
         console.error('DeepSeek API请求失败:', error);
+        console.error('错误详情:', error.stack);
         throw error;
     }
 }
@@ -392,9 +417,17 @@ async function handleOllamaRequest(data) {
             throw new Error(`Ollama API Error: HTTP error code: ${response.status} \nBody: ${errorText}`);
         }
         
-        return await response.json();
+        const responseData = await response.json();
+        console.log('Ollama API响应数据结构:', JSON.stringify({
+            hasData: !!responseData,
+            hasMessage: !!(responseData && responseData.message),
+            hasContent: !!(responseData && responseData.message && responseData.message.content)
+        }, null, 2));
+        
+        return responseData;
     } catch (error) {
         console.error('Ollama API请求失败:', error);
+        console.error('错误详情:', error.stack);
         throw error;
     }
 }
@@ -446,9 +479,17 @@ async function handleOpenRouterRequest(data) {
             throw new Error(`OpenRouter API Error: HTTP error code: ${response.status} \nBody: ${errorText}`);
         }
         
-        return await response.json();
+        const responseData = await response.json();
+        console.log('OpenRouter API响应数据结构:', JSON.stringify({
+            hasData: !!responseData,
+            hasChoices: !!(responseData && responseData.choices),
+            choicesCount: responseData && responseData.choices ? responseData.choices.length : 0
+        }, null, 2));
+        
+        return responseData;
     } catch (error) {
         console.error('OpenRouter API请求失败:', error);
+        console.error('错误详情:', error.stack);
         throw error;
     }
 }

@@ -1668,7 +1668,7 @@ class HNEnhancer {
     async summarizeUsingOpenRouter(text, model, apiKey, commentPathToIdMap) {
         // Validate required parameters
         if (!text || !model || !apiKey) {
-            console.error('Missing required parameters for OpenAI summarization');
+            console.error('Missing required parameters for OpenRouter summarization');
             this.summaryPanel.updateContent({
                 title: 'Error',
                 text: 'Missing API configuration'
@@ -1676,63 +1676,42 @@ class HNEnhancer {
             return;
         }
 
-        // Rate Limit for OpenRouter
-        const tokenLimit = 60000;
-        const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
+        try {
+            // Rate Limit for OpenRouter
+            const tokenLimit = 60000;
+            const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
 
-        // Set up the API request
-        const endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+            // Create the system and user prompts for better summarization
+            const systemPrompt = this.getSystemMessage();
+            const postTitle = this.getHNPostTitle();
+            const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
 
-        // Create the system and user prompts for better summarization
-        const systemPrompt = this.getSystemMessage();
-        // this.logDebug('2. System prompt:', systemPrompt);
+            // OpenRouter, just like OpenAI, takes system and user messages as an array with role (system / user) and content
+            const messages = [{
+                role: "system",
+                content: systemPrompt
+            }, {
+                role: "user",
+                content: userPrompt
+            }];
 
-        const postTitle = this.getHNPostTitle()
-        const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
-        // this.logDebug('3. User prompt:', userPrompt);
+            // Make the API request using background message
+            const response = await this.sendBackgroundMessage('OPENROUTER_API_REQUEST', {
+                apiKey: apiKey,
+                model: model,
+                messages: messages
+            });
 
-        // OpenRouter, just like OpenAI, takes system and user messages as an array with role (system / user) and content
-        const messages = [{
-            role: "system",
-            content: systemPrompt
-        }, {
-            role: "user",
-            content: userPrompt
-        }];
-
-        // Prepare the request payload
-        const payload = {
-            model: model,
-            messages: messages
-        };
-
-        // Make the API request using background message
-        this.sendBackgroundMessage('FETCH_API_REQUEST', {
-            url: endpoint,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-                'HTTP-Referer': 'https://chromewebstore.google.com/detail/hacker-news-companion/khfcainelcaedmmhjicphbkpigklejgf', // Optional. Site URL for rankings on openrouter.ai.
-                'X-Title': 'Hacker News Companion', // Optional. Site title for rankings on openrouter.ai.
-            },
-            body: JSON.stringify(payload)
-        }).then(data => {
-            // disable the warning unresolved variable in this specific instance
-            // noinspection JSUnresolvedVariable
-            const summary = data?.choices[0]?.message?.content;
-
+            // Extract summary from response
+            const summary = response?.choices[0]?.message?.content;
             if (!summary) {
                 throw new Error('No summary generated from API response');
             }
-            // console.log('4. Summary:', summary);
 
             // Update the summary panel with the generated summary
-            this.showSummaryInPanel(summary, commentPathToIdMap, data.duration).catch(error => {
-                console.error('Error showing summary:', error);
-            });
+            await this.showSummaryInPanel(summary, commentPathToIdMap, response.duration);
 
-        }).catch(error => {
+        } catch (error) {
             console.error('Error in OpenRouter summarization:', error);
 
             // Update the summary panel with an error message
@@ -1754,7 +1733,7 @@ class HNEnhancer {
                 title: 'Error',
                 text: errorMessage
             });
-        });
+        }
     }
 
     async summarizeUsingOpenAI(text, model, apiKey, commentPathToIdMap) {
@@ -1768,66 +1747,44 @@ class HNEnhancer {
             return;
         }
 
-        // Rate Limit for OpenAI
-        // gpt-4-turbo      - 30,000 TPM
-        // gpt-3.5-turbo    - 16,000 TPM
-        const tokenLimit = model === 'gpt-4-turbo' ? 25_000 : 15_000;
-        const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
+        try {
+            // Rate Limit for OpenAI
+            // gpt-4-turbo      - 30,000 TPM
+            // gpt-3.5-turbo    - 16,000 TPM
+            const tokenLimit = model === 'gpt-4-turbo' ? 25_000 : 15_000;
+            const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
 
-        // Set up the API request
-        const endpoint = 'https://api.openai.com/v1/chat/completions';
+            // Create the system and user prompts for better summarization
+            const systemPrompt = this.getSystemMessage();
+            const postTitle = this.getHNPostTitle();
+            const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
 
-        // Create the system and user prompts for better summarization
-        const systemPrompt = this.getSystemMessage();
-        // this.logDebug('2. System prompt:', systemPrompt);
+            // OpenAI takes system and user messages as an array with role (system / user) and content
+            const messages = [{
+                role: "system",
+                content: systemPrompt
+            }, {
+                role: "user",
+                content: userPrompt
+            }];
 
-        const postTitle = this.getHNPostTitle()
-        const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
-        // this.logDebug('3. User prompt:', userPrompt);
+            // Make the API request using background message
+            const response = await this.sendBackgroundMessage('OPENAI_API_REQUEST', {
+                apiKey: apiKey,
+                model: model,
+                messages: messages
+            });
 
-        // OpenAI takes system and user messages as an array with role (system / user) and content
-        const messages = [{
-            role: "system",
-            content: systemPrompt
-        }, {
-            role: "user",
-            content: userPrompt
-        }];
-
-        // Prepare the request payload
-        const payload = {
-            model: model,
-            messages: messages,
-            top_p: 1,
-            frequency_penalty: 0,
-            presence_penalty: 0
-        };
-
-        // Make the API request using background message
-        this.sendBackgroundMessage('FETCH_API_REQUEST', {
-            url: endpoint,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify(payload)
-        }).then(data => {
-            // disable thw warning unresolved variable in this specific instance
-            // noinspection JSUnresolvedVariable
-            const summary = data?.choices[0]?.message?.content;
-
+            // Extract summary from response
+            const summary = response?.choices[0]?.message?.content;
             if (!summary) {
                 throw new Error('No summary generated from API response');
             }
-            // console.log('4. Summary:', summary);
 
             // Update the summary panel with the generated summary
-            this.showSummaryInPanel(summary, commentPathToIdMap, data.duration).catch(error => {
-                console.error('Error showing summary:', error);
-            });
+            await this.showSummaryInPanel(summary, commentPathToIdMap, response.duration);
 
-        }).catch(error => {
+        } catch (error) {
             console.error('Error in OpenAI summarization:', error);
 
             // Update the summary panel with an error message
@@ -1847,7 +1804,7 @@ class HNEnhancer {
                 title: 'Error',
                 text: errorMessage
             });
-        });
+        }
     }
 
     async summarizeUsingAnthropic(text, model, apiKey, commentPathToIdMap) {
@@ -1861,63 +1818,42 @@ class HNEnhancer {
             return;
         }
 
-        // Limit the input text to 40,000 tokens for Anthropic
-        const tokenLimitText = this.splitInputTextAtTokenLimit(text, 40_000);
+        try {
+            // Limit the input text to 40,000 tokens for Anthropic
+            const tokenLimitText = this.splitInputTextAtTokenLimit(text, 40_000);
 
-        // Set up the API request
-        const endpoint = 'https://api.anthropic.com/v1/messages';
+            // Create the system and user prompts for better summarization
+            const systemPrompt = this.getSystemMessage();
+            const postTitle = this.getHNPostTitle();
+            const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
 
-        // Create the system and user prompts for better summarization
-        const systemPrompt = this.getSystemMessage();
-        // console.log('2. System prompt:', systemPrompt);
+            // Anthropic takes system messages at the top level, whereas user messages as an array with role "user" and content.
+            const messages = [{
+                role: "user",
+                content: userPrompt
+            }];
 
-        const postTitle = this.getHNPostTitle()
-        const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
-        // console.log('3. User prompt:', userPrompt);
+            // Make the API request using background message
+            const response = await this.sendBackgroundMessage('ANTHROPIC_API_REQUEST', {
+                apiKey: apiKey,
+                model: model,
+                messages: messages
+            });
 
-        // Anthropic takes system messages at the top level, whereas user messages as an array with role "user" and content.
-        const messages = [{
-            role: "user",
-            content: userPrompt
-        }];
-
-        // Prepare the request payload
-        const payload = {
-            model: model,
-            max_tokens: 1024,
-            system: systemPrompt,
-            messages: messages
-        };
-
-        // Make the API request using background message
-        this.sendBackgroundMessage('FETCH_API_REQUEST', {
-            url: endpoint,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': apiKey,
-                'anthropic-version': '2023-06-01',
-                'anthropic-dangerous-direct-browser-access': 'true' // this is required to resolve CORS issue
-            },
-            body: JSON.stringify(payload)
-        }).then(data => {
-
-            if(!data || !data.content || data.content.length === 0) {
-                throw new Error(`Summary response data is empty. ${data}`);
+            // Extract summary from response
+            if(!response || !response.content || response.content.length === 0) {
+                throw new Error(`Summary response data is empty.`);
             }
-            const summary = data.content[0].text;
+            const summary = response.content[0].text;
 
             if (!summary) {
                 throw new Error('No summary generated from API response');
             }
-            // console.log('4. Summary:', summary);
 
             // Update the summary panel with the generated summary
-            this.showSummaryInPanel(summary, commentPathToIdMap, data.duration).catch(error => {
-                console.error('Error showing summary:', error);
-            });
+            await this.showSummaryInPanel(summary, commentPathToIdMap, response.duration);
 
-        }).catch(error => {
+        } catch (error) {
             console.error('Error in Anthropic summarization:', error);
 
             // Update the summary panel with an error message
@@ -1934,7 +1870,7 @@ class HNEnhancer {
                 title: 'Error',
                 text: errorMessage
             });
-        });
+        }
     }
 
     async summarizeUsingDeepSeek(text, model, apiKey, commentPathToIdMap) {
@@ -1948,63 +1884,41 @@ class HNEnhancer {
             return;
         }
 
-        // Limit the input text to 40,000 tokens for DeepSeek
-        const tokenLimitText = this.splitInputTextAtTokenLimit(text, 40_000);
+        try {
+            // Limit the input text to 40,000 tokens for DeepSeek
+            const tokenLimitText = this.splitInputTextAtTokenLimit(text, 40_000);
 
-        // Set up the API request
-        const endpoint = 'https://api.deepseek.com/v1/chat/completions';
+            // Create the system and user prompts for better summarization
+            const systemPrompt = this.getSystemMessage();
+            const postTitle = this.getHNPostTitle();
+            const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
 
-        // Create the system and user prompts for better summarization
-        const systemPrompt = this.getSystemMessage();
-        // this.logDebug('2. System prompt:', systemPrompt);
+            // DeepSeek takes system and user messages in the same format as OpenAI - an array with role (system / user) and content
+            const messages = [{
+                role: "system",
+                content: systemPrompt
+            }, {
+                role: "user",
+                content: userPrompt
+            }];
 
-        const postTitle = this.getHNPostTitle()
-        const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
-        // this.logDebug('3. User prompt:', userPrompt);
+            // Make the API request using background message
+            const response = await this.sendBackgroundMessage('DEEPSEEK_API_REQUEST', {
+                apiKey: apiKey,
+                model: model,
+                messages: messages
+            });
 
-        // DeepSeek takes system and user messages in the same format as OpenAI - an array with role (system / user) and content
-        const messages = [{
-            role: "system",
-            content: systemPrompt
-        }, {
-            role: "user",
-            content: userPrompt
-        }];
-
-        // Prepare the request payload
-        const payload = {
-            model: model,
-            messages: messages,
-            top_p: 1,
-            frequency_penalty: 0,
-            presence_penalty: 0
-        };
-
-        // Make the API request using background message
-        this.sendBackgroundMessage('FETCH_API_REQUEST', {
-            url: endpoint,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify(payload)
-        }).then(data => {
-            // disable thw warning unresolved variable in this specific instance
-            // noinspection JSUnresolvedVariable
-            const summary = data?.choices[0]?.message?.content;
-
+            // Extract summary from response
+            const summary = response?.choices[0]?.message?.content;
             if (!summary) {
                 throw new Error('No summary generated from API response');
             }
-            // console.log('4. Summary:', summary);
 
             // Update the summary panel with the generated summary
-            this.showSummaryInPanel(summary, commentPathToIdMap, data.duration).catch(error => {
-                console.error('Error showing summary:', error);
-            });
+            await this.showSummaryInPanel(summary, commentPathToIdMap, response.duration);
 
-        }).catch(error => {
+        } catch (error) {
             console.error('Error in DeepSeek summarization:', error);
 
             // Update the summary panel with an error message
@@ -2024,7 +1938,7 @@ class HNEnhancer {
                 title: 'Error',
                 text: errorMessage
             });
-        });
+        }
     }
 
     getSystemMessage() {
@@ -2264,50 +2178,33 @@ ${languageInstruction}`;
             return;
         }
 
-        // Set up the API request
-        const endpoint = 'http://localhost:11434/api/generate';
+        try {
+            // Create the system message for better summarization
+            const systemMessage = this.getSystemMessage();
 
-        // Create the system message for better summarization
-        const systemMessage = this.getSystemMessage();
+            // Create the user message with the text to summarize
+            const title = this.getHNPostTitle();
+            const userMessage = await this.getUserMessage(title, text);
 
-        // Create the user message with the text to summarize
-        const title = this.getHNPostTitle();
-        const userMessage = await this.getUserMessage(title, text);
+            // Make the API request using background message
+            const response = await this.sendBackgroundMessage('OLLAMA_API_REQUEST', {
+                model: model,
+                messages: [
+                    { role: "system", content: systemMessage },
+                    { role: "user", content: userMessage }
+                ]
+            });
 
-        // this.logDebug('2. System message:', systemMessage);
-        // this.logDebug('3. User message:', userMessage);
+            // Extract summary from response
+            const summary = response.message?.content;
+            if (!summary) {
+                throw new Error('No summary generated from API response');
+            }
 
-        // Prepare the request payload
-        const payload = {
-            model: model,
-            system: systemMessage,
-            prompt: userMessage,
-            stream: false
-        };
+            // Update the summary panel with the generated summary
+            await this.showSummaryInPanel(summary, commentPathToIdMap, response.duration);
 
-        // Make the API request using background message
-        this.sendBackgroundMessage('FETCH_API_REQUEST', {
-            url: endpoint,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-            timeout: 180_000 // Longer timeout for summarization
-        })
-            .then(data => {
-                const summary = data.response;
-                if (!summary) {
-                    throw new Error('No summary generated from API response');
-                }
-                // this.logDebug('4. Summary:', summary);
-
-                // Update the summary panel with the generated summary
-                this.showSummaryInPanel(summary, commentPathToIdMap, data.duration).catch(error => {
-                    console.error('Error showing summary:', error);
-                });
-
-            }).catch(error => {
+        } catch (error) {
             console.error('Error in Ollama summarization:', error);
 
             // Update the summary panel with an error message
@@ -2316,7 +2213,7 @@ ${languageInstruction}`;
                 title: 'Error',
                 text: errorMessage
             });
-        });
+        }
     }
 
     async summarizeUsingGemini(text, model, commentPathToIdMap) {
