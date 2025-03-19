@@ -63,7 +63,7 @@
       "summarization.js",
       "author-tracking.js",
       "ui-components.js",
-      "hn-enhancer.js"
+      "src/hn-enhancer.js"
     ],
     "matches": ["https://news.ycombinator.com/*"]
   }]
