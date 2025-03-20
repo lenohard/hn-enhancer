@@ -14,8 +14,8 @@ const OUTPUT_FILE_FIREFOX = `hn-companion-firefox-v${VERSION}.zip`;
 
 // Files to be included in the extension
 const FILES_TO_COPY = [
-    "src/background.js",
-    "src/content.js",
+    "background.js",
+    "content.js",
     "src/options/options-styles.css",
     "src/options/options.html",
     "src/options/options.js",
@@ -48,9 +48,17 @@ async function build() {
 
         // Build for Chrome
         await buildForBrowser(OUTPUT_DIR_CHROME, OUTPUT_FILE_CHROME, manifestChrome);
+    
+        // Copy src directory for Chrome
+        console.log("Copying src directory for Chrome...");
+        copySrcDirectory(path.join(DIST_DIR, OUTPUT_DIR_CHROME));
 
         // Build for Firefox
         await buildForBrowser(OUTPUT_DIR_FIREFOX, OUTPUT_FILE_FIREFOX, manifestFirefox,);
+    
+        // Copy src directory for Firefox
+        console.log("Copying src directory for Firefox...");
+        copySrcDirectory(path.join(DIST_DIR, OUTPUT_DIR_FIREFOX));
     } catch (error) {
         console.error("Build failed:", error);
         process.exit(1);
@@ -117,6 +125,40 @@ function validateFiles() {
     if (missingFiles.length > 0) {
         throw new Error(`Missing required files: ${missingFiles.join(", ")}`);
     }
+}
+
+function copySrcDirectory(targetDir) {
+    // Create src directory in target
+    const srcTargetPath = path.join(targetDir, "src");
+    if (!fs.existsSync(srcTargetPath)) {
+        fs.mkdirSync(srcTargetPath);
+    }
+    
+    // List of JavaScript files to copy from src directory
+    const srcFiles = [
+        "hn-state.js",
+        "api-client.js",
+        "markdown-utils.js",
+        "dom-utils.js",
+        "summary-panel.js",
+        "navigation.js",
+        "summarization.js",
+        "author-tracking.js",
+        "ui-components.js",
+        "hn-enhancer.js"
+    ];
+    
+    // Copy each file
+    srcFiles.forEach(file => {
+        const sourcePath = path.join("src", file);
+        const destPath = path.join(srcTargetPath, file);
+        if (fs.existsSync(sourcePath)) {
+            fs.copyFileSync(sourcePath, destPath);
+            console.log(`Copied ${sourcePath} to ${destPath}`);
+        } else {
+            console.warn(`Warning: Source file ${sourcePath} does not exist, skipping.`);
+        }
+    });
 }
 
 // Run the build
