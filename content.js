@@ -1,7 +1,3 @@
-// Initialize the HNEnhancer
-// This script runs after the DOM is loaded and all other scripts have finished executing
-// This guarantees that the DOM of the main HN page is loaded by the time this script runs.
-
 // 动态加载所有必要的脚本
 (function() {
   const scripts = [
