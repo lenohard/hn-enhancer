@@ -44,6 +44,16 @@
         "styles.css"
       ],
       "js": [
+        "src/hn-state.js",
+        "src/api-client.js",
+        "src/markdown-utils.js",
+        "src/dom-utils.js",
+        "src/summary-panel.js",
+        "src/navigation.js",
+        "src/summarization.js",
+        "src/author-tracking.js",
+        "src/ui-components.js",
+        "src/hn-enhancer.js",
         "content.js"
       ],
       "run_at": "document_end"
