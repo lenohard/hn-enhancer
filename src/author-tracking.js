@@ -4,9 +4,9 @@
 class AuthorTracking {
     constructor(enhancer) {
         this.enhancer = enhancer;
-        this.authorComments = new Map();
         this.popup = this.createAuthorPopup();
         this.postAuthor = this.getPostAuthor();
+        this.authorComments = this.createAuthorCommentsMap();
     }
 
     /**
@@ -65,8 +65,14 @@ class AuthorTracking {
         const authorElement = comment.querySelector('.hnuser');
         if (authorElement && !authorElement.querySelector('.comment-count')) {
             const author = authorElement.textContent;
-            const count = this.authorComments.get(author).length;
-
+            const authorComments = this.authorComments.get(author);
+            
+            // Skip if no comments found for this author
+            if (!authorComments) {
+                return;
+            }
+            
+            const count = authorComments.length;
             const container = document.createElement('span');
 
             const countSpan = document.createElement('span');
