@@ -18,22 +18,22 @@
       { default: UIComponents },
       { default: HNEnhancer }
     ] = await Promise.all([
-      import(chrome.runtime.getURL('hn-state.js')),
-      import(chrome.runtime.getURL('api-client.js')),
-      import(chrome.runtime.getURL('markdown-utils.js')),
-      import(chrome.runtime.getURL('dom-utils.js')),
-      import(chrome.runtime.getURL('summary-panel.js')),
-      import(chrome.runtime.getURL('navigation.js')),
-      import(chrome.runtime.getURL('summarization.js')),
-      import(chrome.runtime.getURL('author-tracking.js')),
-      import(chrome.runtime.getURL('ui-components.js')),
-      import(chrome.runtime.getURL('hn-enhancer.js'))
+      import(chrome.runtime.getURL('src/hn-state.js')),
+      import(chrome.runtime.getURL('src/api-client.js')),
+      import(chrome.runtime.getURL('src/markdown-utils.js')),
+      import(chrome.runtime.getURL('src/dom-utils.js')),
+      import(chrome.runtime.getURL('src/summary-panel.js')),
+      import(chrome.runtime.getURL('src/navigation.js')),
+      import(chrome.runtime.getURL('src/summarization.js')),
+      import(chrome.runtime.getURL('src/author-tracking.js')),
+      import(chrome.runtime.getURL('src/ui-components.js')),
+      import(chrome.runtime.getURL('src/hn-enhancer.js'))
     ]);
 
     // 初始化 HNEnhancer
     document.hnEnhancer = new HNEnhancer();
     console.log('HN Companion 扩展已成功加载');
-    
+
     // 添加调试信息，检查是否成功初始化
     console.log('HNEnhancer 实例:', document.hnEnhancer);
     console.log('是否为主页:', document.hnEnhancer.isHomePage);
