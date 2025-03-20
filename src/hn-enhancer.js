@@ -2,17 +2,7 @@
  * Main class for the Hacker News Companion extension
  * Coordinates all functionality and initializes components
  */
-import HNState from './hn-state.js';
-import ApiClient from './api-client.js';
-import MarkdownUtils from './markdown-utils.js';
-import DomUtils from './dom-utils.js';
-import SummaryPanel from './summary-panel.js';
-import Navigation from './navigation.js';
-import Summarization from './summarization.js';
-import AuthorTracking from './author-tracking.js';
-import UIComponents from './ui-components.js';
-
-export default class HNEnhancer {
+class HNEnhancer {
     static DEBUG = false;  // Set to true when debugging
     
     static CHROME_AI_AVAILABLE = {
