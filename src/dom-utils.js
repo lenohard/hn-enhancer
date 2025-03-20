@@ -71,4 +71,5 @@ class DomUtils {
     }
 }
 
-export default DomUtils;
+// Make the class available globally
+window.DomUtils = DomUtils;

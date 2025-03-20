@@ -46,4 +46,5 @@ class HNState {
     }
 }
 
-export default HNState;
+// Make the class available globally
+window.HNState = HNState;

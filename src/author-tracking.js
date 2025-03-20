@@ -180,4 +180,5 @@ class AuthorTracking {
     }
 }
 
-export default AuthorTracking;
+// Make the class available globally
+window.AuthorTracking = AuthorTracking;

@@ -1301,4 +1301,5 @@ ${languageInstruction}`;
     }
 }
 
-export default Summarization;
+// Make the class available globally
+window.Summarization = Summarization;

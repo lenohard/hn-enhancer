@@ -111,4 +111,5 @@ class ApiClient {
     }
 }
 
-export default ApiClient;
+// Make the class available globally
+window.ApiClient = ApiClient;

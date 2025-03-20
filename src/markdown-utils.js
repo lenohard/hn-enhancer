@@ -108,4 +108,5 @@ class MarkdownUtils {
     }
 }
 
-export default MarkdownUtils;
+// Make the class available globally
+window.MarkdownUtils = MarkdownUtils;

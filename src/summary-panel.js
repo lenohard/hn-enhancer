@@ -1,4 +1,4 @@
-export default class SummaryPanel {
+class SummaryPanel {
     constructor() {
         this.panel = this.createPanel();
         this.resizer = this.createResizer();
@@ -192,3 +192,6 @@ export default class SummaryPanel {
         if (text && textElement) textElement.innerHTML = text;
     }
 }
+
+// Make the class available globally
+window.SummaryPanel = SummaryPanel;

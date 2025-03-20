@@ -153,4 +153,5 @@ class UIComponents {
     }
 }
 
-export default UIComponents;
+// Make the class available globally
+window.UIComponents = UIComponents;

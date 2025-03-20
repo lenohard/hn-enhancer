@@ -210,4 +210,5 @@ class Navigation {
 
 }
 
-export default Navigation;
+// Make the class available globally
+window.Navigation = Navigation;

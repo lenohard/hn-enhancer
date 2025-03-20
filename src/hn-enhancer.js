@@ -2,7 +2,7 @@
  * Main class for the Hacker News Companion extension
  * Coordinates all functionality and initializes components
  */
-class HNEnhancer {
+window.HNEnhancer = class HNEnhancer {
     static DEBUG = false;  // Set to true when debugging
     
     static CHROME_AI_AVAILABLE = {
