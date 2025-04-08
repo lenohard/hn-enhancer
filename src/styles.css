@@ -441,3 +441,112 @@
     margin-right: 10px;
     vertical-align: middle;
 }
+
+/* Statistics Panel */
+.hn-statistics-panel {
+    background-color: #f6f6ef; /* HN background color */
+    border-radius: 4px;
+    padding: 12px 18px; /* Increased padding */
+    margin: 10px; /* Added top margin */
+    font-family: Verdana, Geneva, sans-serif;
+    font-size: 13px;
+    color: black;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); /* Added subtle shadow */
+}
+
+.hn-statistics-panel h3 {
+    color: #ff6600; /* HN orange */
+    font-size: 14px;
+    margin-top: 0;
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #eee;
+}
+
+/* Styles for the definition list layout */
+.hn-stats-list {
+    display: flex;
+    flex-wrap: wrap; /* Allow wrapping if needed, though unlikely here */
+}
+
+.hn-stats-list dt {
+    flex: 0 0 200px; /* Fixed width for the label column */
+    padding: 6px 10px 6px 0; /* Padding: top right bottom left */
+    font-weight: normal; /* Keep labels normal weight */
+    color: #828282; /* Standard HN text color */
+    text-align: left;
+}
+
+.hn-stats-list dd {
+    flex: 1 1 auto; /* Allow value column to grow/shrink */
+    margin-left: 0; /* Reset default dl margin */
+    padding: 6px 0;
+    text-align: left;
+}
+
+.hn-stats-list ul {
+    list-style: none; /* Remove default bullets */
+    padding: 0;
+    margin: 0;
+}
+
+.hn-stats-list li {
+    margin-bottom: 3px; /* Space between list items */
+}
+
+.hn-stats-list li::before {
+    content: "•"; /* Use a bullet character */
+    color: #ff6600; /* HN orange bullet */
+    display: inline-block;
+    width: 1em; /* Ensure space for the bullet */
+    margin-left: -1em; /* Align with text */
+}
+
+.hn-stats-list a {
+    color: #000000; /* Black links for stats */
+    text-decoration: none;
+}
+
+.hn-stats-list a:hover {
+    color: #ff6600; /* HN orange on hover */
+    text-decoration: underline;
+}
+
+/* --- HN Enhancer Comment Toggle (using noshow class) --- */
+
+/* Hide comment body and reply link when the parent row has 'noshow' */
+/* Use more specific selectors and !important to ensure override */
+tr.athing.comtr.noshow > td > .comment,
+tr.athing.comtr.noshow > td > div > .comment, /* Handle potential div wrapper */
+tr.athing.comtr.noshow > td > .reply,
+tr.athing.comtr.noshow > td > div > .reply { /* Handle potential div wrapper */
+    display: none !important;
+}
+
+/* Ensure the comment header remains visible */
+tr.athing.comtr.noshow > td > .comhead {
+    display: block !important; /* Or inline-block, depending on original style */
+}
+tr.athing.comtr.noshow > td > div > .comhead { /* Handle potential div wrapper */
+    display: block !important;
+}
+
+/* Ensure the toggle link itself remains visible */
+tr.athing.comtr.noshow .comhead .togg {
+    display: inline !important;
+}
+
+/* Style for the toggle grandchildren link */
+.toggle-grandchildren-link {
+    cursor: pointer;
+    color: #828282; /* Standard HN link color */
+}
+.toggle-grandchildren-link:hover {
+    color: #ff6600; /* HN orange on hover */
+    text-decoration: underline;
+}
+
+/* Highlight for comment targeted by statistics panel link */
+.highlight-stat-target > td {
+    animation: highlight-pulse 2s ease-out;
+}

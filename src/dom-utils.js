@@ -1,74 +1,242 @@
-/**
- * Utility functions for DOM manipulation
- */
+// dom-utils.js
 class DomUtils {
-    /**
-     * Gets the post ID from a post element
-     * @param {Element} post - The post element
-     * @returns {string|null} The post ID or null if not found
-     */
-    static getPostId(post) {
-        // Extract post ID from the comments link
-        const subtext = post.nextElementSibling;
-        if (subtext) {
-            const commentsLink = subtext.querySelector('a[href^="item?id="]');
-            if (commentsLink) {
-                const match = commentsLink.href.match(/id=(\d+)/);
-                return match ? match[1] : null;
-            }
+  /**
+   * Gets the post ID from a post element.
+   * @param {HTMLElement} post - The post element.
+   * @returns {string|null} The post ID or null if not found.
+   */
+  static getPostId(post) {
+    const linkElement = post.querySelector(".athing .title a.storylink");
+    if (!linkElement) {
+      return null;
+    }
+    const href = linkElement.getAttribute("href");
+    const params = new URLSearchParams(href);
+    return params.get("id");
+  }
+
+  static getCurrentHNItemId() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get("id");
+  }
+
+  /**
+   * Gets the indentation level of a comment element.
+   * HN uses a 40px width spacer image for each level of indentation.
+   * @param {HTMLElement} commentElement - The comment element (usually the TR.athing.comtr).
+   * @returns {number|null} The indentation level (0 for top-level) or null if it cannot be determined.
+   */
+  static getCommentIndentLevel(commentElement) {
+    if (!commentElement) {
+      console.warn("getCommentIndentLevel called with null element");
+      return null;
+    }
+    // Ensure we are working with the TR element if a child was passed
+    const commentRow =
+      commentElement.closest("tr.athing.comtr") || commentElement;
+
+    const indentElement = commentRow.querySelector(".ind img");
+    if (!indentElement) {
+      // Check if it's a comment row at all. If it has an ID, assume it's level 0 if no indent img.
+      // Otherwise, it might not be a comment row.
+      return commentRow.id ? 0 : null;
+    }
+
+    const widthAttr = indentElement.getAttribute("width");
+    if (widthAttr === null) {
+      console.warn(
+        "Indent image found but missing width attribute for comment:",
+        commentRow.id
+      );
+      return null; // Cannot determine level
+    }
+
+    const width = parseInt(widthAttr, 10);
+    if (isNaN(width)) {
+      console.warn(
+        "Indent image width attribute is not a number:",
+        widthAttr,
+        "for comment:",
+        commentRow.id
+      );
+      return null; // Cannot determine level
+    }
+
+    // HN uses 40px width per indent level.
+    return Math.round(width / 40);
+  }
+
+  static getDownvoteCount(commentTextDiv) {
+    const downvoteSpan = commentTextDiv.querySelector(".downvotes");
+    if (!downvoteSpan) {
+      return 0; // or null, or handle as appropriate
+    }
+
+    const countText = downvoteSpan.textContent.trim();
+    const num = parseInt(countText, 10);
+    return isNaN(num) ? 0 : num;
+  }
+
+  static getUpvoteCount(commentElement) {
+    const scoreElement = commentElement.querySelector(".score");
+    if (!scoreElement) {
+      return 0;
+    }
+    const scoreText = scoreElement.textContent.trim();
+    const pointsMatch = scoreText.match(/(\d+)\s+points?/);
+    if (pointsMatch && pointsMatch[1]) {
+      const num = parseInt(pointsMatch[1], 10);
+      return isNaN(num) ? 0 : num;
+    }
+    return 0;
+  }
+
+  static calculateCommentStatistics() {
+    const allCommentRows = document.querySelectorAll("tr.athing.comtr");
+    if (!allCommentRows.length) {
+      // Return empty arrays if no comments found
+      return {
+        topDeepest: [],
+        topMostDirectReplies: [], // Renamed from topMostComments
+        topLongest: [],
+      };
+    }
+
+    const commentData = new Map(); // Store data per comment ID { id: { id, element, depth, textLength, upvotes, parentId, descendantCount } }
+    const tree = {}; // Store tree structure { id: { data: {...}, children: [ids...] } }
+
+    // --- Pass 1: Gather basic info and build node map ---
+    allCommentRows.forEach((commentRow) => {
+      const commentId = commentRow.id;
+      if (!commentId) return; // Skip if no ID
+
+      const commentTextDiv = commentRow.querySelector(".commtext");
+      const indentElement = commentRow.querySelector(".ind img");
+      // HN uses 40px width per indent level. No indent means depth 0.
+      const depth = indentElement
+        ? Math.round(parseInt(indentElement.getAttribute("width"), 10) / 40)
+        : 0;
+      const upvotes = DomUtils.getUpvoteCount(commentRow); // Keep upvotes for potential future use, but won't be in top 5 result
+      const commentText = commentTextDiv
+        ? commentTextDiv.textContent.trim()
+        : "";
+
+      const data = {
+        id: commentId,
+        element: commentRow, // Keep element reference if needed elsewhere, but link is primary for stats
+        depth: depth,
+        textLength: commentText.length,
+        upvotes: upvotes,
+        parentId: null, // Determined in Pass 2
+        descendantCount: 0, // Calculated in Pass 3
+      };
+      commentData.set(commentId, data);
+      tree[commentId] = { data: data, children: [] }; // Initialize tree node
+    });
+
+    // --- Pass 2: Build Tree Structure (Determine Parent/Child Relationships) ---
+    const commentList = Array.from(commentData.values());
+    // Assumes querySelectorAll returns elements in DOM order, which is generally true
+    for (let i = 0; i < commentList.length; i++) {
+      const currentComment = commentList[i];
+      // Find the closest preceding comment with a lesser depth
+      for (let j = i - 1; j >= 0; j--) {
+        const potentialParent = commentList[j];
+        if (potentialParent.depth < currentComment.depth) {
+          currentComment.parentId = potentialParent.id;
+          if (tree[potentialParent.id]) {
+            // Check parent exists before pushing
+            tree[potentialParent.id].children.push(currentComment.id);
+          }
+          break; // Found the immediate parent
         }
-        return null;
+      }
     }
 
-    /**
-     * Gets the current HN item ID from the URL
-     * @returns {string|null} The item ID or null if not found
-     */
-    static getCurrentHNItemId() {
-        const itemIdMatch = window.location.search.match(/id=(\d+)/);
-        return itemIdMatch ? itemIdMatch[1] : null;
+    // --- Pass 3: Calculate Descendant Counts ---
+    const calculatedNodes = new Set(); // Keep track of nodes whose descendants have been counted
+
+    function countDescendants(nodeId) {
+      if (calculatedNodes.has(nodeId)) {
+        return tree[nodeId].data.descendantCount; // Return cached count
+      }
+
+      const node = tree[nodeId];
+      if (!node || !node.children.length) {
+        if (node) calculatedNodes.add(nodeId); // Mark leaf node as calculated
+        return 0; // Base case: no children
+      }
+
+      let count = node.children.length; // Count direct children
+      node.children.forEach((childId) => {
+        count += countDescendants(childId); // Recursively count grandchildren etc.
+      });
+
+      node.data.descendantCount = count; // Store the calculated count
+      calculatedNodes.add(nodeId); // Mark as calculated
+      return count;
     }
 
-    /**
-     * Gets the HN post title from the document title
-     * @returns {string} The post title
-     */
-    static getHNPostTitle() {
-        return document.title;
-    }
+    // Calculate counts for all nodes by iterating through the list
+    commentList.forEach((comment) => {
+      if (!calculatedNodes.has(comment.id)) {
+        countDescendants(comment.id); // This will recursively calculate up the chain if needed
+      }
+    });
 
-    /**
-     * Gets the downvote count from a comment text div
-     * @param {Element} commentTextDiv - The comment text div element
-     * @returns {number} The downvote count
-     */
-    static getDownvoteCount(commentTextDiv) {
-        // Downvotes are represented by the color of the text. The color is a class name like 'c5a', 'c73', etc.
-        const downvotePattern = /c[0-9a-f]{2}/;
+    // --- Pass 4: Sort and Extract Top 5 ---
 
-        // Find the first class that matches the downvote pattern
-        const downvoteClass = [...commentTextDiv.classList.values()]
-            .find(className => downvotePattern.test(className.toLowerCase()))
-            ?.toLowerCase();
+    const formatResult = (comment) => ({
+      value: null, // Placeholder, will be set below
+      link: `#${comment.id}`,
+    });
 
-        if (!downvoteClass) {
-            return 0;
-        }
+    // Top 5 Deepest
+    const sortedByDepth = [...commentList].sort((a, b) => b.depth - a.depth);
+    const topDeepest = sortedByDepth.slice(0, 5).map((c) => ({
+      ...formatResult(c),
+      value: c.depth, // Depth value
+    }));
 
-        const downvoteMap = {
-            'c00': 0,
-            'c5a': 1,
-            'c73': 2,
-            'c82': 3,
-            'c88': 4,
-            'c9c': 5,
-            'cae': 6,
-            'cbe': 7,
-            'cce': 8,
-            'cdd': 9
-        };
-        return downvoteMap[downvoteClass] || 0;
-    }
+    // Top 5 Most Direct Replies
+    const sortedByDirectReplies = [...commentList].sort((a, b) => {
+      const childrenA = tree[a.id]?.children?.length || 0;
+      const childrenB = tree[b.id]?.children?.length || 0;
+      return childrenB - childrenA;
+    });
+    const topMostDirectReplies = sortedByDirectReplies.slice(0, 5).map((c) => ({
+      ...formatResult(c),
+      value: tree[c.id]?.children?.length || 0, // Direct children count
+    }));
+
+    // Top 5 Longest Comments
+    const sortedByLength = [...commentList].sort(
+      (a, b) => b.textLength - a.textLength
+    );
+    const topLongest = sortedByLength.slice(0, 5).map((c) => ({
+      ...formatResult(c),
+      value: c.textLength, // Text length
+    }));
+
+    // --- Return the top 5 lists ---
+    return {
+      topDeepest: topDeepest,
+      topMostDirectReplies: topMostDirectReplies, // Use the new name
+      topLongest: topLongest,
+    };
+  }
+
+  /**
+   * Gets the main post title from the page.
+   * @returns {string|null} The post title or null if not found.
+   */
+  static getHNPostTitle() {
+    // The title link is usually within td.title > span.titleline > a
+    const titleElement = document.querySelector(
+      "td.title > span.titleline > a"
+    );
+    return titleElement ? titleElement.textContent.trim() : null;
+  }
 }
 
 // Make the class available globally
