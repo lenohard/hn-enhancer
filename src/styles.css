@@ -485,22 +485,27 @@
     flex-shrink: 0; /* Prevent label from shrinking */
     font-weight: bold;
     color: #555;
-    margin-right: 10px; /* Slightly increase space */
-    min-width: 190px; /* Slightly increase min-width for better alignment */
-    text-align: right; /* Align label text to the right for consistency */
+    margin-right: 10px; /* Space between label and value */
+    min-width: 190px; /* Fixed width for consistent alignment */
+    text-align: right; /* Right-align labels */
+    display: flex; /* Use flexbox for vertical centering */
+    align-items: center; /* Center vertically */
+    justify-content: flex-end; /* Right-align content */
 }
 
 .stat-value {
     flex-grow: 1; /* Allow value area to take remaining space */
     text-align: left; /* Align value list to the left */
+    display: flex; /* Use flexbox for vertical centering */
+    align-items: center; /* Center vertically */
 }
 
 .stat-value ul {
     list-style: none;
     padding: 0;
     margin: 0;
-    display: inline-block; /* Change from inline to inline-block */
-    vertical-align: top; /* Align with the top of the label */
+    display: inline-block; /* Better than inline for alignment */
+    vertical-align: middle; /* Center vertically with label */
 }
 
 .stat-value li {

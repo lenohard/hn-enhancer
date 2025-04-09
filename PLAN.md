@@ -80,7 +80,9 @@
   - Changed layout to ensure each statistic occupies its own line for better readability.
   - Added subtle dividers between statistics items.
   - Optimized font sizes and spacing for a cleaner appearance.
-  - Improved alignment of labels and values using table-like display.
+  - Improved alignment of labels and values using flexbox layout.
+  - Fixed vertical alignment issues between labels and values.
+  - Ensured consistent display of statistics on the same line.
 
 **Next Steps:**
 

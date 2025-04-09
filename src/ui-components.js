@@ -166,16 +166,16 @@ class UIComponents {
             <h3>Comment Statistics (Top 5)</h3>
             <div class="hn-stats-list">
                 <div class="stat-item">
-                    <span class="stat-label">Deepest Comments (Depth):</span>
-                    <span class="stat-value" data-stat-list="deepest-node"><ul><li>[...]</li></ul></span>
+                    <div class="stat-label">Deepest Comments (Depth):</div>
+                    <div class="stat-value" data-stat-list="deepest-node"><ul><li>[...]</li></ul></div>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label">Most Direct Replies:</span>
-                    <span class="stat-value" data-stat-list="most-direct-replies"><ul><li>[...]</li></ul></span>
+                    <div class="stat-label">Most Direct Replies:</div>
+                    <div class="stat-value" data-stat-list="most-direct-replies"><ul><li>[...]</li></ul></div>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label">Longest Comments (Chars):</span>
-                    <span class="stat-value" data-stat-list="longest-comment"><ul><li>[...]</li></ul></span>
+                    <div class="stat-label">Longest Comments (Chars):</div>
+                    <div class="stat-value" data-stat-list="longest-comment"><ul><li>[...]</li></ul></div>
                 </div>
             </div>
         `;
