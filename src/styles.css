@@ -518,13 +518,9 @@
     text-decoration: underline;
 }
 
-/* Force each stat item to be on its own line */
-.hn-stats-list dt, 
-.hn-stats-list dd {
-    display: table-row; /* Each label-value pair is a table row */
-}
-
 /* Add subtle divider between stat items */
+/* Note: The display: table-row rule previously here was removed 
+   to allow dt and dd to sit side-by-side as table-cells. */
 .hn-stats-list dt:not(:first-child) {
     border-top: 1px solid #f0f0f0;
 }
