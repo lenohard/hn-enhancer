@@ -224,6 +224,24 @@
     - Modified `api-client.js` `sendBackgroundMessage` to log duration separately and not attempt to modify the potentially non-object `response.data`.
   - **Result:** Chat functionality with Gemini provider is now working correctly. Messages are sent, responses are received and displayed without type errors.
 
+- **System Prompt & Message Structure Update (Commit `78edb42`):**
+  - **Goal:** Standardize the prompt sent to the LLM and improve logging.
+  - **Changes:**
+    - **`src/chat-modal.js`:**
+      - Modified `_sendMessageToAI` to construct a new message structure:
+        - A fixed introductory system prompt string is defined.
+        - The comment context (parents + target) is formatted into a single string with clear separators.
+        - Two messages with `role: 'user'` are created:
+          1.  The fixed prompt combined with the formatted context string.
+          2.  The user's actual input message.
+      - Added logging to show the constructed `messages` array before sending it to the background script.
+    - **`background.js`:**
+      - Updated `handleChatRequest` to log the received `messages` array.
+      - Modified the calls to `handleGeminiRequest` and `handleChromeAIRequest` to combine the content of the two incoming 'user' messages into a single string suitable for their respective APIs.
+      - Updated `handleAnthropicRequest` to pass the `messages` array directly without special 'system' role extraction.
+      - Added detailed logging within each API handler (`handleOpenAIRequest`, `handleGeminiRequest`, etc.) to show the exact payload being sent to the external LLM API just before the `fetch` call.
+  - **Result:** The structure of the prompt sent to the LLM is now consistent, using a predefined instruction and formatted context. Debugging is easier due to added logging of message structures and API payloads.
+
 6.  **Refinement & Documentation:**
     - Improve UI/UX of the chat modal.
     - Add error handling (e.g., API errors, context gathering failures).
