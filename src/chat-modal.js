@@ -438,23 +438,21 @@ class ChatModal {
         this._displayMessage(
           `Error from ${aiProvider}: ${errorMessage}`,
           "system"
-        );
-        // Keep input disabled on error to prevent sending more messages
+        // Input remains disabled on error
       }
     } catch (error) {
       console.error(
-        `Error sending message via background for ${aiProvider}:`,
+        `Error sending message or processing response for ${aiProvider}:`,
         error
       );
       this._displayMessage(
-        `Error communicating with ${aiProvider}: ${error.message}`,
+        `Failed to get response: ${error.message}`,
         "system"
       );
       // Keep input disabled on error
     } finally {
-      this.currentLlmMessageElement = null; // Ensure reset
-      // Re-enable input if no error occurred (handled above for success case)
-      // If an error occurred, input remains disabled.
+      this.currentLlmMessageElement = null; // Ensure stream target is reset
+      // Input enabling/disabling is now handled within the try/catch block based on success/failure
     }
   }
 
