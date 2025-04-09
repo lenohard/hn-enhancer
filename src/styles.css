@@ -470,7 +470,7 @@
 
 .stat-item {
     display: flex; /* Use flexbox for label + value alignment */
-    align-items: baseline; /* Align text baselines */
+    align-items: center; /* Vertically center items in the row */
     margin-bottom: 6px; /* Space between stat items */
     padding-bottom: 6px; /* Space below each item */
     border-bottom: 1px dashed #eee; /* Subtle separator */
