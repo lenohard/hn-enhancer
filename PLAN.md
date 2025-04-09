@@ -73,7 +73,7 @@
     - Correctly parse the new statistics object structure.
     - Display the counts/lengths alongside the links in the panel.
 - **Result:** Statistics calculation and display logic corrected.
-- **Deepest Comments Logic Update (2025-04-09):** Modified `calculateCommentStatistics` in `src/dom-utils.js` to consider only *leaf nodes* (comments with no replies) when determining the top 5 deepest comments, sorting them by depth.
+- **Deepest Comments Logic Update (2025-04-09):** Modified `calculateCommentStatistics` in `src/dom-utils.js` to consider only *leaf nodes* (comments with no replies) when determining the top 5 deepest comments, sorting them by depth. (Refactored for clarity in commit `966a581`).
 
 **UI Improvements (2025-04-09):**
 - **Statistics Panel UI Refinement:**
