@@ -9,7 +9,6 @@
     max-width: 450px;
     display: none;
 }
-
 .comment-count {
     color: #666;
     padding-right: 2px;
@@ -544,6 +543,177 @@ tr.athing.comtr.noshow .comhead .togg {
 .toggle-grandchildren-link:hover {
     color: #ff6600; /* HN orange on hover */
     text-decoration: underline;
+}
+
+/* --- Chat Modal Styles --- */
+
+/* Re-use help modal backdrop and basic centering */
+.hn-enhancer-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex; /* Use flex for centering */
+    align-items: center;
+    justify-content: center;
+    z-index: 1001; /* Ensure it's above help icon */
+    overflow-y: auto; /* Allow scrolling if content overflows viewport */
+}
+
+/* Specific chat modal content styling */
+.chat-modal-content {
+    background-color: #f6f6ef; /* HN background */
+    padding: 20px;
+    border-radius: 8px;
+    max-width: 700px; /* Wider than help modal */
+    width: 80%;
+    max-height: 85vh; /* Limit height */
+    display: flex;
+    flex-direction: column; /* Stack header, conversation, input */
+    position: relative; /* For close button positioning */
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    border: 1px solid #ccc;
+}
+
+.chat-modal-content .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    flex-shrink: 0; /* Prevent header from shrinking */
+}
+
+.chat-modal-content .modal-header h2 {
+    margin: 0;
+    color: #ff6600; /* HN orange */
+    font-size: 18px;
+}
+
+.chat-modal-content .modal-close-button {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 0 5px;
+}
+.chat-modal-content .modal-close-button:hover {
+    color: #ff6600;
+}
+
+
+/* Conversation Area */
+.chat-conversation-area {
+    flex-grow: 1; /* Allow conversation area to take up available space */
+    overflow-y: auto; /* Enable scrolling for messages */
+    margin-bottom: 15px;
+    padding-right: 10px; /* Space for scrollbar */
+    border: 1px solid #e0e0e0;
+    background-color: #ffffff; /* White background for chat */
+    border-radius: 4px;
+    padding: 10px;
+    min-height: 200px; /* Ensure a minimum height */
+}
+
+.chat-message {
+    margin-bottom: 12px;
+    line-height: 1.5;
+    font-size: 13px; /* Slightly larger than default HN text */
+}
+
+.chat-message strong {
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.chat-message-user {
+    color: #000000; /* Black for user text */
+}
+.chat-message-user strong {
+    color: #0055cc; /* Blue for 'You:' */
+}
+
+.chat-message-llm {
+    color: #333333; /* Dark gray for LLM text */
+}
+.chat-message-llm strong {
+    color: #ff6600; /* HN orange for 'LLM:' */
+}
+.chat-message-llm span p:first-child {
+    margin-top: 0; /* Remove extra margin from markdown rendering */
+}
+.chat-message-llm span p:last-child {
+    margin-bottom: 0; /* Remove extra margin from markdown rendering */
+}
+
+
+.chat-message-system {
+    color: #666666; /* Gray for system messages */
+    font-style: italic;
+    font-size: 12px;
+    text-align: center;
+    margin-top: 5px;
+    margin-bottom: 15px;
+}
+.chat-message-system strong {
+    color: #555555;
+}
+
+
+/* Input Area */
+.chat-input-area {
+    display: flex;
+    align-items: flex-start; /* Align items to the top */
+    border-top: 1px solid #eee;
+    padding-top: 15px;
+    flex-shrink: 0; /* Prevent input area from shrinking */
+}
+
+.chat-input {
+    flex-grow: 1;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-right: 10px;
+    font-family: Verdana, Geneva, sans-serif;
+    font-size: 13px;
+    resize: vertical; /* Allow vertical resize */
+    min-height: 40px; /* Minimum height for textarea */
+    max-height: 150px; /* Maximum height before scrolling */
+}
+
+.chat-send-button {
+    padding: 8px 15px;
+    background-color: #ff6600;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.2s ease;
+    height: 40px; /* Match min-height of textarea */
+}
+
+.chat-send-button:hover {
+    background-color: #e65c00;
+
+.chat-send-button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+/* Ensure links within chat messages are styled */
+.chat-message a {
+    color: #0055cc;
+    text-decoration: underline;
+}
+.chat-message a:visited {
+    color: #0055cc;
+}
 }
 
 /* Highlight for comment targeted by statistics panel link */
