@@ -91,6 +91,129 @@ class DomUtils {
     return 0;
   }
 
+  /**
+   * Gets the comment ID from a comment element.
+   * @param {HTMLElement} commentElement - The comment element (TR.athing.comtr).
+   * @returns {string|null} The comment ID or null if not found.
+   */
+  static getCommentId(commentElement) {
+    if (!commentElement) return null;
+    // Ensure we are targeting the TR element
+    const commentRow =
+      commentElement.closest("tr.athing.comtr") || commentElement;
+    return commentRow.id || null;
+  }
+
+  /**
+   * Gets the author (username) of a comment element.
+   * @param {HTMLElement} commentElement - The comment element (TR.athing.comtr).
+   * @returns {string|null} The author's username or null if not found.
+   */
+  static getCommentAuthor(commentElement) {
+    if (!commentElement) return null;
+    const authorElement = commentElement.querySelector(".hnuser");
+    return authorElement ? authorElement.textContent.trim() : null;
+  }
+
+  /**
+   * Gets the text content of a comment element.
+   * @param {HTMLElement} commentElement - The comment element (TR.athing.comtr).
+   * @returns {string} The comment text, or an empty string if not found.
+   */
+  static getCommentText(commentElement) {
+    if (!commentElement) return "";
+    const commentTextElement = commentElement.querySelector(".commtext");
+    // Use innerText to handle <p> tags etc. better than textContent
+    // It also roughly approximates what the user sees, excluding hidden elements.
+    return commentTextElement ? commentTextElement.innerText.trim() : "";
+  }
+
+  /**
+   * Finds a comment element (TR.athing.comtr) by its ID.
+   * @param {string} commentId - The ID of the comment to find.
+   * @returns {HTMLElement|null} The comment element or null if not found.
+   */
+  static findCommentElementById(commentId) {
+    if (!commentId) return null;
+    // HN IDs are typically numeric, so direct ID selection should work.
+    return document.getElementById(commentId);
+  }
+
+  /**
+   * Gathers the context for a given comment, including itself and all its parents.
+   * Traverses up the comment tree using the 'parent' links.
+   * @param {HTMLElement} targetCommentElement - The comment element (TR.athing.comtr) to start from.
+   * @returns {Array<{id: string, author: string, text: string}>} An array of comment objects, ordered from root parent to the target comment. Returns empty array on error.
+   */
+  static getCommentContext(targetCommentElement) {
+    const context = [];
+    if (!targetCommentElement) {
+      console.error("getCommentContext: targetCommentElement is null");
+      return context;
+    }
+
+    let currentElement = targetCommentElement;
+    const visitedIds = new Set(); // Prevent infinite loops in case of weird DOM structures
+
+    while (currentElement) {
+      const commentId = DomUtils.getCommentId(currentElement);
+
+      // Prevent loops
+      if (!commentId || visitedIds.has(commentId)) {
+        if (visitedIds.has(commentId))
+          console.warn(
+            `getCommentContext: Loop detected at comment ID: ${commentId}`
+          );
+        break;
+      }
+      visitedIds.add(commentId);
+
+      const author = DomUtils.getCommentAuthor(currentElement);
+      const text = DomUtils.getCommentText(currentElement);
+
+      if (author !== null) {
+        // Only need author and text for context display
+        context.unshift({ id: commentId, author: author, text: text }); // Add to the beginning
+      } else {
+        console.warn(
+          "getCommentContext: Skipping comment due to missing author.",
+          currentElement
+        );
+      }
+
+      // Find the 'parent' link within the current comment's metadata
+      // HN uses 'hnl' class for these navigation links
+      const parentLink = currentElement.querySelector('a.hnl[href*="parent"]');
+      if (!parentLink) {
+        break; // No parent link found, must be a top-level comment
+      }
+
+      // Extract the parent comment ID from the link's href
+      const parentHref = parentLink.getAttribute("href");
+      const parentIdMatch = parentHref.match(/id=(\d+)/);
+      if (!parentIdMatch || !parentIdMatch[1]) {
+        console.warn(
+          "getCommentContext: Could not extract parent ID from link:",
+          parentHref
+        );
+        break; // Cannot proceed without parent ID
+      }
+      const parentId = parentIdMatch[1];
+
+      // Find the parent element by ID
+      currentElement = DomUtils.findCommentElementById(parentId);
+      if (!currentElement) {
+        console.warn(
+          `getCommentContext: Could not find parent element with ID: ${parentId}`
+        );
+        // Attempt to find parent by traversing siblings upwards (more robust but complex) - Future enhancement?
+        break; // Parent element not found in DOM, stop traversal
+      }
+    }
+
+    return context;
+  }
+
   static calculateCommentStatistics() {
     const allCommentRows = document.querySelectorAll("tr.athing.comtr");
     if (!allCommentRows.length) {
