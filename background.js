@@ -694,12 +694,17 @@ async function handleChatRequest(data) {
             "No response content",
         };
 
-      // NOTE: Chrome AI is explicitly disallowed for chat functionality.
-      // case "chrome-ai":
-      //   ... (code removed)
+      case "chrome-ai":
+        const chromeAIResponse = await handleChromeAIRequest({
+          text: messages.find((m) => m.role === "user")?.content || "",
+        });
+        return {
+          success: true,
+          data: chromeAIResponse.summary || "No response content",
+        };
 
       default:
-        throw new Error(`Unsupported chat provider for chat: ${provider}`);
+        throw new Error(`Unsupported chat provider: ${provider}`);
     }
   } catch (error) {
     console.error(`处理 ${provider} 聊天请求时出错:`, error);
