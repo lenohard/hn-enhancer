@@ -203,6 +203,27 @@
     - Verify `chrome.runtime.sendMessage` implementation
     - Add debug logging to trace message flow
 
+- **Debugging Chat (Gemini Provider - 2025-04-09):**
+  - **Issue 1 (Commit `9480d63`):** Clicking "Send" had no effect. Console was empty initially.
+  - **Investigation 1:** Added logging to `_handleSendMessage` and `_sendMessageToAI` in `chat-modal.js`. Found that the message payload for non-Chrome AI providers was incorrect (missing `messages` array expected by `background.js`).
+  - **Fix 1:**
+    - Modified `_sendMessageToAI` to construct the `messages` array including context and user input.
+    - Added logging before sending the message.
+    - Adjusted `api-client.js` `sendBackgroundMessage` to match the new call signature.
+  - **Issue 2 (Commit `c9d76b6`):** Found a duplicate `catch` block in `_sendMessageToAI` in `chat-modal.js`.
+  - **Fix 2:** Removed the redundant `catch` block.
+  - **Issue 3 (Commit `373dd59`):** Console error `TypeError: markdown.replace is not a function` in `_displayMessage` and `ReferenceError: response is not defined` in `_sendMessageToAI`'s `catch` block.
+  - **Investigation 3:** `background.js` `handleChatRequest` was returning `{ success: true, data: responseText }`, which `api-client.js` passed as an object to `_displayMessage`. The `catch` block error was due to accessing `response` outside its scope.
+  - **Fix 3:**
+    - Modified `handleChatRequest` in `background.js` to return the raw text string directly on success and re-throw errors.
+    - Removed the faulty `if (response ...)` block from the `catch` in `_sendMessageToAI`.
+  - **Issue 4 (Commit `43e3ba3`):** Still getting `TypeError: markdown.replace is not a function`.
+  - **Investigation 4:** The `onMessage` listener for `HN_CHAT_REQUEST` in `background.js` was incorrectly wrapping the string result from `handleChatRequest` into `{ success: false, error: undefined }` before `handleAsyncMessage` wrapped it again. `api-client.js` was also trying to add a `duration` property to the string response.
+  - **Fix 4:**
+    - Corrected the `HN_CHAT_REQUEST` handler in `background.js`'s `onMessage` listener to directly return the result of `handleChatRequest`.
+    - Modified `api-client.js` `sendBackgroundMessage` to log duration separately and not attempt to modify the potentially non-object `response.data`.
+  - **Result:** Chat functionality with Gemini provider is now working correctly. Messages are sent, responses are received and displayed without type errors.
+
 6.  **Refinement & Documentation:**
     - Improve UI/UX of the chat modal.
     - Add error handling (e.g., API errors, context gathering failures).
