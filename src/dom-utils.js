@@ -314,11 +314,27 @@ class DomUtils {
       link: `#${comment.id}`,
     });
 
-    // Top 5 Deepest
-    const sortedByDepth = [...commentList].sort((a, b) => b.depth - a.depth);
-    const topDeepest = sortedByDepth.slice(0, 5).map((c) => ({
+    // Top 5 Deepest LEAF Nodes
+    // First, find the maximum depth present in the tree
+    const maxDepth = commentList.reduce(
+      (max, comment) => Math.max(max, comment.depth),
+      0
+    );
+
+    // Filter for nodes at max depth that are also leaf nodes (no children)
+    const deepestLeafNodes = commentList
+      .filter((comment) => {
+        const node = tree[comment.id];
+        return comment.depth === maxDepth && node?.children?.length === 0;
+      })
+      // Sort primarily by depth (desc), then by length (desc) as tie-breaker
+      // Although all filtered nodes have maxDepth, sorting by depth is harmless
+      // and sorting by length provides a secondary criterion.
+      .sort((a, b) => b.depth - a.depth || b.textLength - a.textLength);
+
+    const topDeepest = deepestLeafNodes.slice(0, 5).map((c) => ({
       ...formatResult(c),
-      value: c.depth, // Depth value
+      value: c.depth, // The value displayed is the depth
     }));
 
     // Top 5 Most Direct Replies
