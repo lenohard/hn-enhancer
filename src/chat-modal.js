@@ -14,9 +14,9 @@ class ChatModal {
     this.sendButton = null;
     this.closeButton = null;
     this.targetCommentElement = null; // The comment the chat was initiated from
-    this.aiSession = null; // To hold the Chrome AI session
+    // this.aiSession = null; // Chrome AI session not used for standard providers
     this.currentLlmMessageElement = null; // To hold the element for the currently streaming LLM response
-    this.initialContextPrompt = null; // To store the context prompt for the first message
+    this.conversationHistory = []; // To store the chat history { role: 'system' | 'user' | 'assistant', content: string }
 
     this._createModalElement();
     this._addEventListeners();
@@ -181,29 +181,25 @@ class ChatModal {
     this.sendButton.disabled = true;
     this.currentLlmMessageElement = null; // Reset streaming element holder
 
-    let messageToSend = message;
-    // Check if this is the first message and context needs to be prepended
-    if (this.initialContextPrompt) {
-      this.enhancer.logDebug("Prepending context to the first user message.");
-      messageToSend = this.initialContextPrompt + "User question: " + message;
-      this.initialContextPrompt = null; // Clear context after sending it once
-    }
+    // Add user message to history
+    this.conversationHistory.push({ role: "user", content: message });
 
-    await this._sendMessageToAI(messageToSend); // Send the potentially combined message
+    await this._sendMessageToAI(); // Send the message (reads history internally)
 
-    // Re-enable input after AI responds (or fails) - _sendMessageToAI handles enabling on success
-    // We don't need to check this.aiSession here as _sendMessageToAI handles the state.
-    // if (this.aiSession) { // This check is removed as enabling is handled within _sendMessageToAI
+    // Re-enable input after AI responds (or fails) - _sendMessageToAI handles enabling on success/failure now
+    // Input enabling logic moved inside _sendMessageToAI's try/catch/finally
+    /*
+    // Original re-enabling logic (now moved):
       this.inputElement.disabled = false;
       this.sendButton.disabled = false;
       this.inputElement.focus();
-    }
+    */
   }
 
   /**
    * Displays a message in the conversation area.
    * @param {string} text - The message text.
-   * @param {'user' | 'llm' | 'system'} sender - Who sent the message.
+   * @param {'user' | 'assistant' | 'system'} sender - Who sent the message ('assistant' used internally for LLM).
    * @private
    */
   _displayMessage(text, sender, isStreaming = false) {
@@ -227,8 +223,8 @@ class ChatModal {
       }
     }
 
-    // If streaming and it's an LLM message, update the existing element
-    if (sender === "llm" && isStreaming && this.currentLlmMessageElement) {
+    // If streaming and it's an assistant (LLM) message, update the existing element
+    if (sender === "assistant" && isStreaming && this.currentLlmMessageElement) {
       // Append text, rendering markdown for the new chunk
       // Note: Simple markdown rendering might not perfectly handle partial tags across chunks.
       this.currentLlmMessageElement.innerHTML +=
@@ -239,8 +235,9 @@ class ChatModal {
       messageElement.classList.add("chat-message", `chat-message-${sender}`);
 
       const senderElement = document.createElement("strong");
+      // Display "LLM:" for assistant role for UI consistency
       senderElement.textContent =
-        sender === "user" ? "You: " : sender === "llm" ? "LLM: " : "System: ";
+        sender === "user" ? "You: " : sender === "assistant" ? "LLM: " : "System: ";
 
       const textElement = document.createElement("span");
       // Render markdown for the complete initial text
@@ -251,11 +248,11 @@ class ChatModal {
       messageElement.appendChild(textElement);
       this.conversationArea.appendChild(messageElement);
 
-      // If it's the start of an LLM stream, store the text element reference
-      if (sender === "llm" && isStreaming) {
+      // If it's the start of an assistant (LLM) stream, store the text element reference
+      if (sender === "assistant" && isStreaming) {
         this.currentLlmMessageElement = textElement;
       } else {
-        this.currentLlmMessageElement = null; // Reset if not streaming LLM
+        this.currentLlmMessageElement = null; // Reset if not streaming assistant
       }
     }
 
@@ -270,11 +267,11 @@ class ChatModal {
   async _gatherContextAndInitiateChat() {
     if (!this.targetCommentElement) return;
     // Reset state for a new chat session
-    this.aiSession = null;
+    // this.aiSession = null; // Not used
     this.currentLlmMessageElement = null;
     this.currentAiProvider = null;
     this.currentModel = null;
-    this.initialContextPrompt = null; // Reset context prompt
+    this.conversationHistory = []; // Reset history for new chat
 
     const commentId = this.enhancer.domUtils.getCommentId(
       this.targetCommentElement
@@ -340,19 +337,23 @@ class ChatModal {
         `Chat: Using AI Provider: ${aiProvider}, Model: ${model || "default"}`
       );
 
-      // --- Construct Initial Prompt ---
-      let initialPrompt =
-        "You are a helpful assistant discussing a Hacker News comment thread.\n\n";
-      initialPrompt += "=== Start of Context ===\n";
+      // --- Construct System Prompt with Context ---
+      let contextPrompt =
+        "You are a helpful assistant discussing a Hacker News comment thread.\n\n" +
+        "=== Start of Context ===\n";
       contextArray.forEach((comment) => {
-        initialPrompt += `--- Comment by ${comment.author} (ID: ${comment.id}) ---\n`;
-        initialPrompt += `${comment.text}\n\n`;
+        contextPrompt += `--- Comment by ${comment.author} (ID: ${comment.id}) ---\n`;
+        contextPrompt += `${comment.text}\n\n`;
       });
-      initialPrompt += "=== End of Context ===\n\n";
-      initialPrompt += `Start the discussion about the last comment in the context (ID: ${commentId}). What are your thoughts on it? Keep your initial response concise.`;
+      contextPrompt += "=== End of Context ===\n\n" +
+                       `The user wants to discuss the last comment in the context (ID: ${commentId}). Please respond to their questions about it.`;
 
+      // Add the system prompt to the history
+      this.conversationHistory.push({ role: "system", content: contextPrompt });
+
+      // Display status message
       this._displayMessage(
-        `Context loaded (${contextArray.length} comments). Starting chat with ${aiProvider}...`,
+        `Context loaded (${contextArray.length} comments) for ${aiProvider}. Ask your question below.`,
         "system"
       );
 
@@ -372,11 +373,11 @@ class ChatModal {
   }
 
   /**
-   * Sends a message to the AI session and handles the streamed response.
-   * @param {string} message - The message text to send.
+   * Sends the current conversation history to the AI and handles the response.
+   * Reads history from `this.conversationHistory`.
    * @private
    */
-  async _sendMessageToAI(message) {
+  async _sendMessageToAI() { // Removed message parameter
     // Use the stored provider for the current chat session
     const aiProvider = this.currentAiProvider;
     const model = this.currentModel;
@@ -399,48 +400,46 @@ class ChatModal {
     this.sendButton.disabled = true;
 
     this.enhancer.logDebug(
-      "Sending message to AI:",
-      message.substring(0, 100) + "..."
-    ); // Log truncated message
+        `Sending history (${this.conversationHistory.length} messages) to AI via background...`
+    );
     this.currentLlmMessageElement = null; // Reset stream target before sending
 
     try {
-      // TODO: Implement conversation history management if needed by the API
-      // For now, just send the single message. Background script might need adjustment.
+      // Send the entire conversation history
       const requestPayload = {
-        type: "HN_CHAT_REQUEST", // Define a new message type
+        type: "HN_CHAT_REQUEST",
         data: {
           provider: aiProvider,
           model: model,
-          // The 'message' parameter already contains the full text (context + first query, or just subsequent query)
-          prompt: message,
-          // TODO: Implement actual history management if needed by APIs
-          // history: this._getConversationHistory(),
+          messages: this.conversationHistory, // Send the history array
         },
       };
 
-      // TODO: Handle potential streaming response from background script
-      // For now, assume a single response object like { success: true, response: "..." } or { success: false, error: "..." }
+      // Assume a single response object: { success: true, response: "..." } or { success: false, error: "..." }
       const response = await this.enhancer.apiClient.sendBackgroundMessage(
-        requestPayload
+        requestPayload.type, // Pass type and data separately
+        requestPayload.data
       );
 
       if (response && response.success && response.response) {
-        this._displayMessage(response.response, "llm", false); // Display full response
-        this.enhancer.logDebug(`${aiProvider} response received.`);
-        // Re-enable input
+        const aiResponseText = response.response;
+        this._displayMessage(aiResponseText, "assistant", false); // Display full response using 'assistant' role
+        // Add AI response to history
+        this.conversationHistory.push({ role: "assistant", content: aiResponseText });
+        this.enhancer.logDebug(`${aiProvider} response received and added to history.`);
+        // Re-enable input on success
         this.inputElement.disabled = false;
         this.sendButton.disabled = false;
         this.inputElement.focus();
       } else {
         const errorMessage =
-          response?.error || "Unknown error from background script.";
+          response?.error || "Unknown error receiving response from background script.";
         console.error(`Error from ${aiProvider} via background:`, errorMessage);
         this._displayMessage(
-          `Error communicating with ${aiProvider}: ${errorMessage}`,
+          `Error from ${aiProvider}: ${errorMessage}`,
           "system"
         );
-        // Keep input disabled on error
+        // Keep input disabled on error to prevent sending more messages
       }
     } catch (error) {
       console.error(
