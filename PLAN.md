@@ -74,6 +74,14 @@
     - Display the counts/lengths alongside the links in the panel.
 - **Result:** Statistics calculation and display logic corrected.
 
+**UI Improvements (2025-04-09):**
+- **Statistics Panel UI Refinement:**
+  - Made the statistics panel more compact with reduced padding and margins.
+  - Changed layout to ensure each statistic occupies its own line for better readability.
+  - Added subtle dividers between statistics items.
+  - Optimized font sizes and spacing for a cleaner appearance.
+  - Improved alignment of labels and values using table-like display.
+
 **Next Steps:**
 
 - Build the extension using `pnpm run dev-build`.

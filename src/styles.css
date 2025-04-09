@@ -445,70 +445,92 @@
 .hn-statistics-panel {
     background-color: #f6f6ef; /* HN background color */
     border-radius: 4px;
-    padding: 12px 18px; /* Increased padding */
-    margin: 10px; /* Added top margin */
+    padding: 8px 12px; /* Reduced padding for more compact look */
+    margin: 8px; /* Slightly reduced margin */
     font-family: Verdana, Geneva, sans-serif;
-    font-size: 13px;
+    font-size: 12px; /* Slightly smaller font */
     color: black;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); /* Added subtle shadow */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .hn-statistics-panel h3 {
     color: #ff6600; /* HN orange */
-    font-size: 14px;
+    font-size: 13px; /* Slightly smaller heading */
     margin-top: 0;
-    margin-bottom: 10px;
-    padding-bottom: 5px;
+    margin-bottom: 6px; /* Reduced margin */
+    padding-bottom: 4px; /* Reduced padding */
     border-bottom: 1px solid #eee;
 }
 
-/* Styles for the definition list layout */
+/* Styles for the definition list layout - changed to table-like for compactness */
 .hn-stats-list {
-    display: flex;
-    flex-wrap: wrap; /* Allow wrapping if needed, though unlikely here */
+    display: table; /* Use table layout for more compact alignment */
+    width: 100%;
+    border-spacing: 0;
 }
 
 .hn-stats-list dt {
-    flex: 0 0 200px; /* Fixed width for the label column */
-    padding: 6px 10px 6px 0; /* Padding: top right bottom left */
-    font-weight: normal; /* Keep labels normal weight */
-    color: #828282; /* Standard HN text color */
+    display: table-cell;
+    width: 180px; /* Slightly narrower label column */
+    padding: 3px 8px 3px 0; /* Reduced padding */
+    font-weight: normal;
+    color: #828282;
     text-align: left;
+    vertical-align: top; /* Align to top for multi-line values */
 }
 
 .hn-stats-list dd {
-    flex: 1 1 auto; /* Allow value column to grow/shrink */
-    margin-left: 0; /* Reset default dl margin */
-    padding: 6px 0;
+    display: table-cell;
+    padding: 3px 0;
+    margin-left: 0;
     text-align: left;
+    vertical-align: top;
 }
 
 .hn-stats-list ul {
-    list-style: none; /* Remove default bullets */
+    list-style: none;
     padding: 0;
     margin: 0;
 }
 
 .hn-stats-list li {
-    margin-bottom: 3px; /* Space between list items */
+    margin-bottom: 2px; /* Reduced spacing between items */
+    white-space: nowrap; /* Keep each item on a single line */
+    overflow: hidden;
+    text-overflow: ellipsis; /* Add ellipsis for very long items */
 }
 
 .hn-stats-list li::before {
-    content: "•"; /* Use a bullet character */
-    color: #ff6600; /* HN orange bullet */
+    content: "•";
+    color: #ff6600;
     display: inline-block;
-    width: 1em; /* Ensure space for the bullet */
-    margin-left: -1em; /* Align with text */
+    width: 0.8em; /* Slightly narrower bullet space */
+    margin-left: -0.8em;
 }
 
 .hn-stats-list a {
-    color: #000000; /* Black links for stats */
+    color: #000000;
     text-decoration: none;
 }
 
 .hn-stats-list a:hover {
-    color: #ff6600; /* HN orange on hover */
+    color: #ff6600;
     text-decoration: underline;
+}
+
+/* Force each stat item to be on its own line */
+.hn-stats-list dt, 
+.hn-stats-list dd {
+    display: table-row; /* Each label-value pair is a table row */
+}
+
+/* Add subtle divider between stat items */
+.hn-stats-list dt:not(:first-child) {
+    border-top: 1px solid #f0f0f0;
+}
+
+.hn-stats-list dd:not(:first-child) {
+    border-top: 1px solid #f0f0f0;
 }
 
 /* --- HN Enhancer Comment Toggle (using noshow class) --- */
