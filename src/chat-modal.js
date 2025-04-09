@@ -161,10 +161,22 @@ class ChatModal {
    * @private
    */
   async _handleSendMessage() {
-    // Make async
     const message = this.inputElement.value.trim();
-    // Don't send if no message or no AI session active
-    if (!message || !this.aiSession) return;
+    this.enhancer.logDebug("Send button clicked. Message:", message); // <-- 添加日志
+
+    // Don't send if message is empty. Check for AI session later based on provider.
+    if (!message) {
+        this.enhancer.logDebug("Empty message, not sending.");
+        return;
+    }
+
+    // Check for Chrome AI session specifically if that's the provider
+    if (this.currentAiProvider === 'chrome-ai' && !this.aiSession) {
+        this.enhancer.logDebug("Chrome AI selected but no active session, not sending.");
+        this._displayMessage("Error: Chrome AI session is not active. Please try reopening the chat.", "system");
+        return;
+    }
+
 
     this.enhancer.logDebug(`User message to send: ${message}`);
     this._displayMessage(message, "user"); // Display user message immediately
@@ -453,23 +465,57 @@ class ChatModal {
     this.currentLlmMessageElement = null; // Reset stream target before sending
 
     try {
-      // TODO: Implement conversation history management if needed by the API
-      // For now, just send the single message. Background script might need adjustment.
+      // --- Construct the messages array ---
+      // Start with the initial context (if available)
+      // Format context similar to OpenAI/Anthropic message format
+      const conversationHistory = this.currentChatContext
+        ? this.currentChatContext.map((c, index) => ({
+            role: index === this.currentChatContext.length - 1 ? "user" : "system", // Treat last context item as user, others as system/context
+            content: `Context Comment by ${c.author}:\n${c.text}`,
+          }))
+        : [];
+
+      // Add the current user message
+      conversationHistory.push({ role: "user", content: message });
+      this.enhancer.logDebug("Constructed conversation history:", conversationHistory);
+      // ------------------------------------
+
       const requestPayload = {
-        type: "HN_CHAT_REQUEST", // Define a new message type
+        type: "HN_CHAT_REQUEST",
         data: {
           provider: aiProvider,
           model: model,
-          // apiKey: await this._getApiKeyForProvider(aiProvider), // Need a way to get API key securely
-          prompt: message,
-          // history: this._getConversationHistory(), // Optional: Send history
+          messages: conversationHistory, // Use 'messages' array instead of 'prompt'
         },
       };
 
-      // TODO: Handle potential streaming response from background script
-      // For now, assume a single response object like { success: true, response: "..." } or { success: false, error: "..." }
-      const response = await this.enhancer.apiClient.sendBackgroundMessage(
-        requestPayload
+      this.enhancer.logDebug("Sending HN_CHAT_REQUEST to background:", requestPayload); // <-- 添加日志
+
+      // Assume a single response object like { success: true, data: "..." } or { success: false, error: "..." }
+      // Note: sendBackgroundMessage now returns response.data directly if successful
+      const responseText = await this.enhancer.apiClient.sendBackgroundMessage(
+          requestPayload.type, // Pass type and data separately
+          requestPayload.data
+      );
+
+      // sendBackgroundMessage throws on error or unsuccessful response, so we assume success here
+      this._displayMessage(responseText, "llm", false); // Display full response
+      this.enhancer.logDebug(`${aiProvider} response received.`);
+      // Re-enable input
+      this.inputElement.disabled = false;
+      this.sendButton.disabled = false;
+      this.inputElement.focus();
+
+    } catch (error) {
+      // Error handling was moved inside sendBackgroundMessage, but keep this catch for other potential errors
+      console.error(
+        `Error sending message via background for ${aiProvider}:`,
+        error
+      );
+      // Display the error message from the caught error
+      this._displayMessage(
+        `Error communicating with ${aiProvider}: ${error.message}`,
+        "system"
       );
 
       if (response && response.success && response.response) {

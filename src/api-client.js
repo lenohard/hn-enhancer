@@ -28,9 +28,12 @@ class ApiClient {
    * Sends a message to the background script and handles the response
    * @param {string} type - The type of message to send
    * @param {Object} data - The data to send with the message
-   * @returns {Promise<any>} The response data
+   * @param {string} type - The type of message to send
+   * @param {Object} [data={}] - The data payload to send with the message
+   * @returns {Promise<any>} The response data if successful, otherwise throws an error
+   * @throws {Error} If the background script returns an error or no response
    */
-  async sendBackgroundMessage(type, data) {
+  async sendBackgroundMessage(type, data = {}) { // Add default value for data
     this.logDebug(`Sending browser runtime message ${type}:`, data);
 
     let response;
@@ -71,8 +74,11 @@ class ApiClient {
       throw new Error(response.error);
     }
 
-    // Add the duration to the response for displaying in the summary panel
-    response.data.duration = duration;
+    // Add the duration to the response data if it exists
+    if (response.data) {
+        response.data.duration = duration;
+    }
+    // Return only the data part of the response
     return response.data;
   }
 
