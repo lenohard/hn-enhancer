@@ -11,15 +11,16 @@ async function onInstalled() {
   }
 }
 
-// Uncomment this line to enable the onInstalled handler
 // Handle Gemini API requests
 async function handleGeminiRequest(data) {
-  const { apiKey, model, systemPrompt, userPrompt } = data;
+  // Now expects messages array instead of systemPrompt/userPrompt
+  const { apiKey, model, messages } = data;
 
   console.log("处理Gemini API请求，模型:", model);
 
-  if (!apiKey || !model) {
-    console.error("Gemini API请求缺少必要参数");
+  // Validate required parameters
+  if (!apiKey || !model || !messages || messages.length === 0) {
+    console.error("Gemini API请求缺少必要参数 (apiKey, model, or messages)");
     throw new Error("Missing required parameters for Gemini API request");
   }
 
@@ -31,36 +32,30 @@ async function handleGeminiRequest(data) {
 
   console.log("Gemini API端点:", endpoint);
 
+  // Construct Gemini payload from messages array
+  // Gemini expects alternating user/model roles.
+  // Since we send [{role: user, content: context+prompt}, {role: user, content: question}],
+  // we'll combine them into a single user message for simplicity here.
+  // A more complex implementation could handle history with alternating roles.
+  const combinedContent = messages.map(m => m.content).join("\n\n---\n\n");
+
   const payload = {
     contents: [
       {
-        role: "user",
-        parts: [{ text: systemPrompt }, { text: userPrompt }],
+        role: "user", // Treat the combined input as a single user turn
+        parts: [{ text: combinedContent }],
       },
     ],
     generationConfig: {
       temperature: 0.7,
       topP: 0.95,
       topK: 40,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 8192, // Consider making this configurable later
     },
   };
 
-  console.log(
-    "Gemini请求负载结构:",
-    JSON.stringify(
-      {
-        endpoint: endpoint,
-        method: "POST",
-        payloadSize: JSON.stringify(payload).length,
-        apiKeyLength: apiKey ? apiKey.length : 0,
-        systemPromptLength: systemPrompt ? systemPrompt.length : 0,
-        userPromptLength: userPrompt ? userPrompt.length : 0,
-      },
-      null,
-      2
-    )
-  );
+  // Log the final payload being sent
+  console.log("Gemini 请求负载:", JSON.stringify(payload, null, 2));
 
   try {
     console.log("发送Gemini API请求...");
@@ -230,8 +225,11 @@ async function handleOpenAIRequest(data) {
     model: model,
     messages: messages,
     temperature: 0.7,
-    max_tokens: 2048,
+    max_tokens: 2048, // Consider making this configurable later
   };
+
+  // Log the payload being sent
+  console.log("OpenAI 请求负载:", JSON.stringify(payload, null, 2));
 
   try {
     console.log("发送OpenAI API请求...");
@@ -298,20 +296,16 @@ async function handleAnthropicRequest(data) {
 
   console.log("Anthropic API端点:", endpoint);
 
-  // 将消息转换为Anthropic格式
-  const systemMessage = messages.find((m) => m.role === "system");
-  const userMessages = messages.filter((m) => m.role === "user");
-
+  // Use the messages array directly as received
   const payload = {
     model: model,
-    messages: userMessages,
+    messages: messages, // Pass the full messages array
     max_tokens: 2048,
+    // No separate system prompt extraction needed anymore
   };
 
-  // 如果有系统消息，添加到请求中
-  if (systemMessage) {
-    payload.system = systemMessage.content;
-  }
+  // Log the payload being sent
+  console.log("Anthropic 请求负载:", JSON.stringify(payload, null, 2));
 
   try {
     console.log("发送Anthropic API请求...");
@@ -384,8 +378,11 @@ async function handleDeepSeekRequest(data) {
     model: model,
     messages: messages,
     temperature: 0.7,
-    max_tokens: 2048,
+    max_tokens: 2048, // Consider making this configurable later
   };
+
+  // Log the payload being sent
+  console.log("DeepSeek 请求负载:", JSON.stringify(payload, null, 2));
 
   try {
     console.log("发送DeepSeek API请求...");
@@ -455,8 +452,11 @@ async function handleOllamaRequest(data) {
   const payload = {
     model: model,
     messages: messages,
-    stream: false,
+    stream: false, // Keep stream false for simple request/response
   };
+
+  // Log the payload being sent
+  console.log("Ollama 请求负载:", JSON.stringify(payload, null, 2));
 
   try {
     console.log("发送Ollama API请求...");
@@ -527,8 +527,11 @@ async function handleOpenRouterRequest(data) {
     model: model,
     messages: messages,
     temperature: 0.7,
-    max_tokens: 2048,
+    max_tokens: 2048, // Consider making this configurable later
   };
+
+   // Log the payload being sent
+  console.log("OpenRouter 请求负载:", JSON.stringify(payload, null, 2));
 
   try {
     console.log("发送OpenRouter API请求...");
@@ -585,11 +588,14 @@ async function handleOpenRouterRequest(data) {
 // Handle Chat Request (routes to specific provider handlers)
 async function handleChatRequest(data) {
   const { provider, model, messages } = data;
+  // Log the received messages structure
   console.log(`处理聊天请求，提供者: ${provider}, 模型: ${model}`);
+  console.log("收到的消息结构:", JSON.stringify(messages, null, 2));
 
-  if (!provider || !model || !messages) {
-    console.error("聊天请求缺少必要参数");
-    throw new Error("Missing required parameters for chat request");
+
+  if (!provider || !model || !messages || messages.length === 0) { // Check messages array is not empty
+    console.error("聊天请求缺少必要参数或消息为空");
+    throw new Error("Missing required parameters or empty messages for chat request");
   }
 
   // 1. Get API Key (securely from storage)
@@ -615,15 +621,17 @@ async function handleChatRequest(data) {
         return openaiResponse.choices[0]?.message?.content || "No response content";
 
       case "anthropic":
+        // Pass messages array directly
         const anthropicResponse = await handleAnthropicRequest({
           apiKey,
           model,
-          messages,
+          messages, // Pass the original messages array
         });
         // Directly return the text content on success
         return anthropicResponse.content[0]?.text || "No response content";
 
       case "deepseek":
+        // Pass messages array directly
         const deepseekResponse = await handleDeepSeekRequest({
           apiKey,
           model,
@@ -633,14 +641,16 @@ async function handleChatRequest(data) {
         return deepseekResponse.choices[0]?.message?.content || "No response content";
 
       case "ollama":
+         // Pass messages array directly
         const ollamaResponse = await handleOllamaRequest({
           model,
-          messages,
+          messages, // Pass the original messages array
         });
         // Directly return the text content on success
         return ollamaResponse.message?.content || "No response content";
 
       case "openrouter":
+         // Pass messages array directly
         const openrouterResponse = await handleOpenRouterRequest({
           apiKey,
           model,
@@ -650,19 +660,25 @@ async function handleChatRequest(data) {
         return openrouterResponse.choices[0]?.message?.content || "No response content";
 
       case "gemini":
+        // Combine context and user question for Gemini
+        // Gemini expects alternating user/model roles, sending two 'user' might fail.
+        // Combine into a single user message for simplicity.
+        const geminiCombinedContent = messages.map(m => m.content).join("\n\n---\n\n");
         const geminiResponse = await handleGeminiRequest({
           apiKey,
           model,
-          systemPrompt:
-            messages.find((m) => m.role === "system")?.content || "",
-          userPrompt: messages.find((m) => m.role === "user")?.content || "",
+          // Pass the combined content as a single user message structure
+          messages: [{ role: "user", content: geminiCombinedContent }],
         });
         // Directly return the text content on success
         return geminiResponse.candidates[0]?.content?.parts[0]?.text || "No response content";
 
       case "chrome-ai":
+         // Combine context and user question for Chrome AI
+        const chromeAICombinedContent = messages.map(m => m.content).join("\n\n---\n\n");
         const chromeAIResponse = await handleChromeAIRequest({
-          text: messages.find((m) => m.role === "user")?.content || "",
+            // Pass the combined content as a single text structure
+            messages: [{ role: "user", content: chromeAICombinedContent }],
         });
         // Directly return the text content on success
         return chromeAIResponse.summary || "No response content";
@@ -679,14 +695,18 @@ async function handleChatRequest(data) {
 
 // Handle Chrome AI API requests
 async function handleChromeAIRequest(data) {
-  const { text } = data;
+  // Now expects messages array instead of text
+  const { messages } = data;
 
   console.log("处理Chrome AI API请求");
 
-  if (!text) {
-    console.error("Chrome AI API请求缺少必要参数");
+  if (!messages || messages.length === 0) {
+    console.error("Chrome AI API请求缺少必要参数 (messages)");
     throw new Error("Missing required parameters for Chrome AI API request");
   }
+
+  // Combine message content into a single string for the API
+  const combinedText = messages.map(m => m.content).join("\n\n---\n\n");
 
   try {
     console.log("检查Chrome AI API是否可用...");
@@ -699,14 +719,16 @@ async function handleChromeAIRequest(data) {
     }
 
     console.log("发送Chrome AI API请求...");
+    console.log("Chrome AI 请求文本 (组合后):", combinedText.substring(0, 500) + "..."); // Log combined text (truncated)
 
     // 使用Chrome的内置摘要API
     const summary = await chrome.summarization.summarize({
-      text: text,
-      type: "default",
+      text: combinedText, // Use the combined text
+      type: "default", // Or consider other types if needed
     });
 
     console.log("收到Chrome AI API响应:", summary ? "成功" : "失败");
+    console.log("Chrome AI 响应摘要:", summary);
 
     if (!summary) {
       throw new Error("Chrome AI未能生成摘要");

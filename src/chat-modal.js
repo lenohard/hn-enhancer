@@ -465,19 +465,27 @@ class ChatModal {
     this.currentLlmMessageElement = null; // Reset stream target before sending
 
     try {
-      // --- Construct the messages array ---
-      // Start with the initial context (if available)
-      // Format context similar to OpenAI/Anthropic message format
-      const conversationHistory = this.currentChatContext
-        ? this.currentChatContext.map((c, index) => ({
-            role: index === this.currentChatContext.length - 1 ? "user" : "system", // Treat last context item as user, others as system/context
-            content: `Context Comment by ${c.author}:\n${c.text}`,
-          }))
-        : [];
+      // --- Construct the messages array (New Format) ---
+      const systemPrompt = "下面是在HN网站上的某个post下的一系列评论，最上面的评论是关于这个post链接到的文章的，而之后的每个comment都是对上一个评论。基于这些评论来回答用户给出的问题";
 
-      // Add the current user message
-      conversationHistory.push({ role: "user", content: message });
-      this.enhancer.logDebug("Constructed conversation history:", conversationHistory);
+      // Format context into a single string
+      const contextString = this.currentChatContext
+        ? this.currentChatContext
+            .map(
+              (c, index) =>
+                `评论 ${index + 1} (作者: ${c.author}):\n${c.text}\n-------`
+            )
+            .join("\n\n")
+        : "没有可用的评论上下文。";
+
+      // Construct the messages array with two user messages
+      const messages = [
+        {
+          role: "user",
+          content: `${systemPrompt}\n\n${contextString}`,
+        },
+        { role: "user", content: message },
+      ];
       // ------------------------------------
 
       const requestPayload = {
@@ -485,11 +493,13 @@ class ChatModal {
         data: {
           provider: aiProvider,
           model: model,
-          messages: conversationHistory, // Use 'messages' array instead of 'prompt'
+          messages: messages, // Send the new messages array
         },
       };
 
-      this.enhancer.logDebug("Sending HN_CHAT_REQUEST to background:", requestPayload); // <-- 添加日志
+      // Log the exact messages being sent
+      this.enhancer.logDebug("Constructed messages for background:", JSON.stringify(messages, null, 2));
+      this.enhancer.logDebug("Sending HN_CHAT_REQUEST to background with payload:", requestPayload);
 
       // Assume a single response object like { success: true, data: "..." } or { success: false, error: "..." }
       // Note: sendBackgroundMessage now returns response.data directly if successful
