@@ -328,16 +328,8 @@ class ChatModal {
         "system"
       );
 
-      // --- Initiate Chat based on Provider ---
-        // Handle other providers (OpenAI, Ollama, Anthropic, etc.) via background script
-        this.enhancer.logDebug(
-          `Initiating chat via background for provider: ${aiProvider}`
-        );
-        await this._sendMessageToAI(initialPrompt);
-
-      // Enable input if chat initiation was potentially successful (session created or message sent)
-      // _sendMessageToAI will handle disabling/errors during the actual call
-      if (this.aiSession || aiProvider !== "chrome-ai") {
+      // Enable input now that context is ready and provider is determined
+      if (aiProvider) { // Only enable if a provider is configured
         this.inputElement.disabled = false;
         this.sendButton.disabled = false;
         this.inputElement.focus();
