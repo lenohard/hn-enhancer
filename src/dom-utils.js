@@ -315,24 +315,21 @@ class DomUtils {
     });
 
     // Top 5 Deepest LEAF Nodes
-    // First, find the maximum depth present in the tree
-    const maxDepth = commentList.reduce(
-      (max, comment) => Math.max(max, comment.depth),
-      0
+    // Filter for all leaf nodes (comments with no children/replies)
+    const leafNodes = commentList.filter((comment) => {
+      const node = tree[comment.id];
+      // Ensure the node exists in the tree and has no children
+      return node && (!node.children || node.children.length === 0);
+    });
+
+    // Sort the leaf nodes primarily by depth (descending),
+    // then by text length (descending) as a tie-breaker.
+    const sortedLeafNodes = leafNodes.sort(
+      (a, b) => b.depth - a.depth || b.textLength - a.textLength
     );
 
-    // Filter for nodes at max depth that are also leaf nodes (no children)
-    const deepestLeafNodes = commentList
-      .filter((comment) => {
-        const node = tree[comment.id];
-        return comment.depth === maxDepth && node?.children?.length === 0;
-      })
-      // Sort primarily by depth (desc), then by length (desc) as tie-breaker
-      // Although all filtered nodes have maxDepth, sorting by depth is harmless
-      // and sorting by length provides a secondary criterion.
-      .sort((a, b) => b.depth - a.depth || b.textLength - a.textLength);
-
-    const topDeepest = deepestLeafNodes.slice(0, 5).map((c) => ({
+    // Take the top 5 deepest leaf nodes
+    const topDeepest = sortedLeafNodes.slice(0, 5).map((c) => ({
       ...formatResult(c),
       value: c.depth, // The value displayed is the depth
     }));
