@@ -535,16 +535,6 @@ class ChatModal {
         );
         // Keep input disabled on error
       }
-    } catch (error) {
-      console.error(
-        `Error sending message via background for ${aiProvider}:`,
-        error
-      );
-      this._displayMessage(
-        `Error communicating with ${aiProvider}: ${error.message}`,
-        "system"
-      );
-      // Keep input disabled on error
     } finally {
       this.currentLlmMessageElement = null; // Ensure reset
       // Re-enable input if no error occurred (handled above for success case)
