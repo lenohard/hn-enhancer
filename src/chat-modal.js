@@ -302,15 +302,36 @@ class ChatModal {
       );
 
       // --- Determine AI Provider ---
-      const { aiProvider, model } =
+      let { aiProvider, model } =
         await this.enhancer.summarization.getAIProviderModel(); // Reuse summarization's method
+
+      // --- Disallow Chrome AI for Chat ---
+      if (aiProvider === "chrome-ai") {
+          this.enhancer.logInfo("Chat: Chrome AI is not supported for chat. Please configure another provider.");
+          this._displayMessage("Chat functionality requires a configured provider other than Chrome AI. Please configure one in the options page.", "system");
+          // Clear the provider so subsequent logic treats it as unconfigured
+          aiProvider = null;
+          model = null;
+      }
+      // --- End Disallow Chrome AI ---
+
       this.currentAiProvider = aiProvider;
       this.currentModel = model;
 
       if (!aiProvider) {
-        this.enhancer.logInfo("Chat: AI provider not configured.");
-        this.enhancer.summarization.showConfigureAIMessage(
-          this.conversationArea
+        // This block will now also catch the case where Chrome AI was selected
+        this.enhancer.logInfo("Chat: AI provider not configured or Chrome AI selected.");
+        // Display a generic message or the specific Chrome AI message if that was the case
+        if (!this.conversationArea.querySelector('.chat-message-system:last-child')?.textContent.includes("Chrome AI")) {
+            this.enhancer.summarization.showConfigureAIMessage(
+              this.conversationArea
+            ); // Reuse message display, passing target element
+        }
+        return;
+      }
+
+      this.enhancer.logInfo(
+        `Chat: Using AI Provider: ${aiProvider}, Model: ${model || "default"}`
         ); // Reuse message display, passing target element
         return;
       }
