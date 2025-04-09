@@ -625,12 +625,8 @@ async function handleChatRequest(data) {
           model,
           messages,
         });
-        return {
-          success: true,
-          data:
-            openaiResponse.choices[0]?.message?.content ||
-            "No response content",
-        };
+        // Directly return the text content on success
+        return openaiResponse.choices[0]?.message?.content || "No response content";
 
       case "anthropic":
         const anthropicResponse = await handleAnthropicRequest({
@@ -638,10 +634,8 @@ async function handleChatRequest(data) {
           model,
           messages,
         });
-        return {
-          success: true,
-          data: anthropicResponse.content[0]?.text || "No response content",
-        };
+        // Directly return the text content on success
+        return anthropicResponse.content[0]?.text || "No response content";
 
       case "deepseek":
         const deepseekResponse = await handleDeepSeekRequest({
@@ -649,22 +643,16 @@ async function handleChatRequest(data) {
           model,
           messages,
         });
-        return {
-          success: true,
-          data:
-            deepseekResponse.choices[0]?.message?.content ||
-            "No response content",
-        };
+        // Directly return the text content on success
+        return deepseekResponse.choices[0]?.message?.content || "No response content";
 
       case "ollama":
         const ollamaResponse = await handleOllamaRequest({
           model,
           messages,
         });
-        return {
-          success: true,
-          data: ollamaResponse.message?.content || "No response content",
-        };
+        // Directly return the text content on success
+        return ollamaResponse.message?.content || "No response content";
 
       case "openrouter":
         const openrouterResponse = await handleOpenRouterRequest({
@@ -672,12 +660,8 @@ async function handleChatRequest(data) {
           model,
           messages,
         });
-        return {
-          success: true,
-          data:
-            openrouterResponse.choices[0]?.message?.content ||
-            "No response content",
-        };
+        // Directly return the text content on success
+        return openrouterResponse.choices[0]?.message?.content || "No response content";
 
       case "gemini":
         const geminiResponse = await handleGeminiRequest({
@@ -687,31 +671,23 @@ async function handleChatRequest(data) {
             messages.find((m) => m.role === "system")?.content || "",
           userPrompt: messages.find((m) => m.role === "user")?.content || "",
         });
-        return {
-          success: true,
-          data:
-            geminiResponse.candidates[0]?.content?.parts[0]?.text ||
-            "No response content",
-        };
+        // Directly return the text content on success
+        return geminiResponse.candidates[0]?.content?.parts[0]?.text || "No response content";
 
       case "chrome-ai":
         const chromeAIResponse = await handleChromeAIRequest({
           text: messages.find((m) => m.role === "user")?.content || "",
         });
-        return {
-          success: true,
-          data: chromeAIResponse.summary || "No response content",
-        };
+        // Directly return the text content on success
+        return chromeAIResponse.summary || "No response content";
 
       default:
         throw new Error(`Unsupported chat provider: ${provider}`);
     }
   } catch (error) {
     console.error(`处理 ${provider} 聊天请求时出错:`, error);
-    return {
-      success: false,
-      error: error.message,
-    };
+    // Re-throw the error so handleAsyncMessage catches it and sends { success: false, error: ... }
+    throw error;
   }
 }
 

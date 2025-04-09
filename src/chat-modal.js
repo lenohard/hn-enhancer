@@ -517,27 +517,10 @@ class ChatModal {
         `Error communicating with ${aiProvider}: ${error.message}`,
         "system"
       );
-
-      if (response && response.success && response.response) {
-        this._displayMessage(response.response, "llm", false); // Display full response
-        this.enhancer.logDebug(`${aiProvider} response received.`);
-        // Re-enable input
-        this.inputElement.disabled = false;
-        this.sendButton.disabled = false;
-        this.inputElement.focus();
-      } else {
-        const errorMessage =
-          response?.error || "Unknown error from background script.";
-        console.error(`Error from ${aiProvider} via background:`, errorMessage);
-        this._displayMessage(
-          `Error communicating with ${aiProvider}: ${errorMessage}`,
-          "system"
-        );
-        // Keep input disabled on error
-      }
+      // Keep input disabled on error (already handled by the flow)
     } finally {
       this.currentLlmMessageElement = null; // Ensure reset
-      // Re-enable input if no error occurred (handled above for success case)
+      // Re-enable input only if no error occurred (handled in the try block)
       // If an error occurred, input remains disabled.
     }
   }
