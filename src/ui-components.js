@@ -5,7 +5,6 @@ class UIComponents {
   constructor(enhancer) {
     this.enhancer = enhancer;
   }
-
   /**
    * Creates the help icon
    * @returns {Element} The help icon element
