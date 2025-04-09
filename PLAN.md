@@ -112,14 +112,38 @@
 
 3.  **LLM Interaction & Chat Logic:**
 
-    - **LLM Choice:** Prioritize using Chrome's built-in AI (`window.ai`) if available (`HNEnhancer.isChomeAiAvailable`). Fallback to an external API via `ApiClient` if Chrome AI is not ready or if configured by the user (future enhancement).
+    - **LLM Choice:** Use the LLM Provider selected in the extension settings for summarization
     - **Prompting:** Construct an initial prompt containing the extracted parent context and the target comment. Example: "You are discussing a Hacker News comment thread. Here is the context:\n\nParent 1 (author):\n[Parent 1 text]\n\nParent 2 (author):\n[Parent 2 text]\n\nTarget Comment (author):\n[Target comment text]\n\nStart the discussion about the target comment."
     - **Chat Interface:** Implement the modal with:
       - A display area for the conversation history (user messages and LLM responses).
       - An input field for the user to type messages.
       - A "Send" button.
     - **Communication:** Handle sending the user's input (prepended with conversation history for context) to the LLM and displaying the streamed or complete response.
-    - **Files:** `src/chat-modal.js`, `src/summarization.js` (if reusing Chrome AI logic), `src/api-client.js` (if using external API).
+    - **Files:** `src/chat-modal.js`, `src/summarization.js` , `src/api-client.js` .
+
+为了实现“Chat with LLM about Comment”功能，
+所有需要修改的文件及其相关符号：
+ • src/hn-enhancer.js
+    • injectChatLink(): 注入 "Chat" 链接并添加事件监听器。
+    • openChatModal(): 实现打开聊天模态框的逻辑。
+ • src/chat-modal.js (需要添加此文件到聊天中)
+    • ChatModal 类: 实现聊天 UI 和核心逻辑。
+    • _gatherContextAndInitiateChat(): 获取评论上下文并开始聊天。
+    • _sendMessageToAI(): 将消息发送给 AI 提供者。
+    • _displayMessage(): 显示聊天消息 (需要修复 Markdown 渲染调用)。
+ • src/styles.css
+    • 添加聊天模态框和链接的 CSS 规则 (例如 .hn-enhancer-modal, .chat-modal-content, .hn-chat-link)。
+ • src/api-client.js
+    • sendBackgroundMessage(): 确保能正确处理发送到 background 脚本的聊天请求消息。
+ • src/summarization.js
+    • showConfigureAIMessage(): 修改以支持在聊天模态框中显示配置消息。
+    • getAIProviderModel(): 可能被 ChatModal 用来获取当前 AI 设置。
+ • background.js
+    • onMessage 监听器: 添加处理 HN_CHAT_REQUEST 消息类型的 case。
+    • handleChatRequest(): 添加此新函数来处理聊天请求，调用相应的 LLM API 处理器。
+ • src/dom-utils.js
+    • getCommentContext(): 需要实现或完善此函数以获取目标评论及其父评论的文本内容。
+
 
 4.  **Integration:**
 
