@@ -183,21 +183,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "HN_CHAT_REQUEST":
       return handleAsyncMessage(
         message,
-        async () => {
-          const response = await handleChatRequest(message.data);
-          // Transform response to expected format
-          if (response.success) {
-            return {
-              success: true,
-              response: response.data,
-            };
-          } else {
-            return {
-              success: false,
-              error: response.error,
-            };
-          }
-        },
+        async () => await handleChatRequest(message.data), // Directly return the result (string or thrown error)
         sendResponse
       );
 

@@ -74,10 +74,18 @@ class ApiClient {
       throw new Error(response.error);
     }
 
-    // Add the duration to the response data if it exists
-    if (response.data) {
-        response.data.duration = duration;
+    // Add duration to the response object itself if data exists
+    // Note: response.data might be a string or an object depending on the request type
+    if (response.data !== undefined && response.data !== null) {
+        // Check if response.data is an object before adding duration to it
+        // This handles cases where background script returns simple strings (like chat)
+        // or objects (like user info). We ideally want duration alongside the data.
+        // A cleaner approach might be for the background script *always* to return an object,
+        // e.g., { success: true, data: "chat response", duration: 5 }
+        // But for now, we return the raw data and log duration separately.
+        this.logDebug(`Background message '${type}' successful. Duration: ${duration}s.`);
     }
+
     // Return only the data part of the response
     return response.data;
   }
