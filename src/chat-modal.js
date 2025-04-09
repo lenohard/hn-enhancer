@@ -300,23 +300,18 @@ class ChatModal {
         `Chat: Using AI Provider: ${aiProvider}, Model: ${model || "default"}`
       );
 
-      // --- Construct Initial Prompt ---
-      let initialPrompt =
-        "You are a helpful assistant discussing a Hacker News comment thread.\n\n";
-      initialPrompt += "=== Start of Context ===\n";
-      contextArray.forEach((comment) => {
-        initialPrompt += `--- Comment by ${comment.author} (ID: ${comment.id}) ---\n`;
-        initialPrompt += `${comment.text}\n\n`;
-      });
-      initialPrompt += "=== End of Context ===\n\n";
-      initialPrompt += `Start the discussion about the last comment in the context (ID: ${commentId}). What are your thoughts on it? Keep your initial response concise.`;
+      // Store context for later use when the user sends the first message
+      this.currentChatContext = contextArray; // Store the gathered context
 
+      // Display context loaded message and enable input
+      const totalChars = contextArray.reduce((sum, c) => sum + c.text.length, 0);
       this._displayMessage(
-        `Context loaded (${contextArray.length} comments). Starting chat with ${aiProvider}...`,
-        "system"
+          `Context loaded: ${contextArray.length} comments (${totalChars} chars). Ready for your message.`,
+          "system"
       );
 
-      // --- Initiate Chat based on Provider ---
+
+      // --- Prepare Chat based on Provider (but don't send initial message) ---
       if (aiProvider === "chrome-ai") {
         // Check availability specifically for chrome-ai
         if (
@@ -343,8 +338,9 @@ class ChatModal {
           this._displayMessage("Initializing Chrome AI session...", "system");
           try {
             this.aiSession = await window.ai.createTextSession(); // Default options
-            this.enhancer.logDebug("Chrome AI session created.");
-            await this._sendMessageToAI(initialPrompt); // Send initial prompt
+            this.enhancer.logDebug("Chrome AI session created, ready for user input.");
+            // Do NOT send initial prompt automatically
+            // await this._sendMessageToAI(initialPrompt);
           } catch (aiError) {
             console.error("Error creating Chrome AI session:", aiError);
             this._displayMessage(
@@ -364,21 +360,22 @@ class ChatModal {
       } else {
         // Handle other providers (OpenAI, Ollama, Anthropic, etc.) via background script
         this.enhancer.logDebug(
-          `Initiating chat via background for provider: ${aiProvider}`
+          `Ready for user input for provider: ${aiProvider}`
         );
-        // We don't need a persistent session like window.ai, just send the message
-        await this._sendMessageToAI(initialPrompt);
+        // Do NOT send initial prompt automatically
+        // await this._sendMessageToAI(initialPrompt);
       }
 
-      // Enable input if chat initiation was potentially successful (session created or message sent)
-      // _sendMessageToAI will handle disabling/errors during the actual call
-      if (this.aiSession || aiProvider !== "chrome-ai") {
-        this.inputElement.disabled = false;
-        this.sendButton.disabled = false;
-        this.inputElement.focus();
-      }
+      // Enable input now that context is loaded and AI provider is determined (or session created for Chrome AI)
+      this.inputElement.disabled = false;
+      this.sendButton.disabled = false;
+      this.inputElement.focus();
+
     } catch (error) {
       console.error("Error gathering context or initializing chat:", error);
+      // Still enable input even if context loading failed, user might want to ask general questions
+      this.inputElement.disabled = false;
+      this.sendButton.disabled = false;
       this._displayMessage(
         "Error preparing chat. Please check console.",
         "system"
