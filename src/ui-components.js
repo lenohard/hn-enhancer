@@ -159,24 +159,26 @@ class UIComponents {
    */
   createStatisticsPanel() {
     const panel = document.createElement("div");
-    panel.className = "hn-statistics-panel"; // Use a specific class
-    panel.style.display = "none"; // Initially hidden until data is ready
+    panel.className = "hn-statistics-panel";
+    panel.style.display = "none"; // Initially hidden
 
-    // Use a definition list (dl) for better semantics and styling flexibility
     panel.innerHTML = `
             <h3>Comment Statistics (Top 5)</h3>
-            <dl class="hn-stats-list">
-                <dt>Deepest Comments (Depth):</dt>
-                <dd data-stat-list="deepest-node"><ul><li>[...]</li></ul></dd>
-
-                <dt>Most Direct Replies:</dt>
-                <dd data-stat-list="most-direct-replies"><ul><li>[...]</li></ul></dd>
-
-                <dt>Longest Comments (Characters):</dt>
-                <dd data-stat-list="longest-comment"><ul><li>[...]</li></ul></dd>
-            </dl>
+            <div class="hn-stats-list">
+                <div class="stat-item">
+                    <span class="stat-label">Deepest Comments (Depth):</span>
+                    <span class="stat-value" data-stat-list="deepest-node"><ul><li>[...]</li></ul></span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Most Direct Replies:</span>
+                    <span class="stat-value" data-stat-list="most-direct-replies"><ul><li>[...]</li></ul></span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Longest Comments (Chars):</span>
+                    <span class="stat-value" data-stat-list="longest-comment"><ul><li>[...]</li></ul></span>
+                </div>
+            </div>
         `;
-    // We'll append this panel to the DOM elsewhere (e.g., in hn-enhancer.js)
     return panel;
   }
 }
