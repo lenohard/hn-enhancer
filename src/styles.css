@@ -485,8 +485,9 @@
     flex-shrink: 0; /* Prevent label from shrinking */
     font-weight: bold;
     color: #555;
-    margin-right: 8px; /* Space between label and value */
-    min-width: 180px; /* Ensure labels align nicely */
+    margin-right: 10px; /* Slightly increase space */
+    min-width: 190px; /* Slightly increase min-width for better alignment */
+    text-align: right; /* Align label text to the right for consistency */
 }
 
 .stat-value {
@@ -498,7 +499,8 @@
     list-style: none;
     padding: 0;
     margin: 0;
-    display: inline; /* Display list items inline */
+    display: inline-block; /* Change from inline to inline-block */
+    vertical-align: top; /* Align with the top of the label */
 }
 
 .stat-value li {
