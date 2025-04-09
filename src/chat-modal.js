@@ -164,8 +164,15 @@ class ChatModal {
   async _handleSendMessage() {
     // Make async
     const message = this.inputElement.value.trim();
-    // Don't send if no message or no AI session active
-    if (!message || !this.aiSession) return;
+    // Don't send if no message or no AI provider determined
+    if (!message || !this.currentAiProvider) {
+        this.enhancer.logDebug("Send message aborted: No message or AI provider not set.");
+        // Optionally display a system message if provider is missing
+        if (!this.currentAiProvider) {
+            this._displayMessage("Cannot send message: AI provider not configured or found.", "system");
+        }
+        return;
+    }
 
     this.enhancer.logDebug(`User message to send: ${message}`);
     this._displayMessage(message, "user"); // Display user message immediately
