@@ -16,6 +16,7 @@ class ChatModal {
     this.targetCommentElement = null; // The comment the chat was initiated from
     this.aiSession = null; // To hold the Chrome AI session
     this.currentLlmMessageElement = null; // To hold the element for the currently streaming LLM response
+    this.initialContextPrompt = null; // To store the context prompt for the first message
 
     this._createModalElement();
     this._addEventListeners();
@@ -173,10 +174,19 @@ class ChatModal {
     this.sendButton.disabled = true;
     this.currentLlmMessageElement = null; // Reset streaming element holder
 
-    await this._sendMessageToAI(message); // Send message to AI
+    let messageToSend = message;
+    // Check if this is the first message and context needs to be prepended
+    if (this.initialContextPrompt) {
+      this.enhancer.logDebug("Prepending context to the first user message.");
+      messageToSend = this.initialContextPrompt + "User question: " + message;
+      this.initialContextPrompt = null; // Clear context after sending it once
+    }
 
-    // Re-enable input only if AI session is still valid
-    if (this.aiSession) {
+    await this._sendMessageToAI(messageToSend); // Send the potentially combined message
+
+    // Re-enable input after AI responds (or fails) - _sendMessageToAI handles enabling on success
+    // We don't need to check this.aiSession here as _sendMessageToAI handles the state.
+    // if (this.aiSession) { // This check is removed as enabling is handled within _sendMessageToAI
       this.inputElement.disabled = false;
       this.sendButton.disabled = false;
       this.inputElement.focus();
@@ -252,10 +262,12 @@ class ChatModal {
    */
   async _gatherContextAndInitiateChat() {
     if (!this.targetCommentElement) return;
-    this.aiSession = null; // Reset session on open
+    // Reset state for a new chat session
+    this.aiSession = null;
     this.currentLlmMessageElement = null;
-    this.currentAiProvider = null; // Store the provider for this session
-    this.currentModel = null; // Store the model for this session
+    this.currentAiProvider = null;
+    this.currentModel = null;
+    this.initialContextPrompt = null; // Reset context prompt
 
     const commentId = this.enhancer.domUtils.getCommentId(
       this.targetCommentElement
@@ -380,9 +392,10 @@ class ChatModal {
         data: {
           provider: aiProvider,
           model: model,
-          // apiKey: await this._getApiKeyForProvider(aiProvider), // Need a way to get API key securely
+          // The 'message' parameter already contains the full text (context + first query, or just subsequent query)
           prompt: message,
-          // history: this._getConversationHistory(), // Optional: Send history
+          // TODO: Implement actual history management if needed by APIs
+          // history: this._getConversationHistory(),
         },
       };
 
