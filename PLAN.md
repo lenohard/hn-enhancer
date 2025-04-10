@@ -269,3 +269,10 @@ After each fix or implementation or research, the changes and info are documente
     - Add error handling (e.g., API errors, context gathering failures).
     - Consider adding features like copying chat history, clearing chat.
     - Document the new feature in `README.md` or help modal.
+
+
+
+# Known Bugs:
+1. 当有的评论被折叠后，就无法通过点击统计面板里的链接定位到该评论.
+
+# TODO
