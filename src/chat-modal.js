@@ -16,6 +16,7 @@ class ChatModal {
     this.targetCommentElement = null; // The comment the chat was initiated from
     this.aiSession = null; // To hold the Chrome AI session
     this.currentLlmMessageElement = null; // To hold the element for the currently streaming LLM response
+    this.conversationHistory = []; // To store the full chat history { role, content }
 
     this._createModalElement();
     this._addEventListeners();
@@ -138,6 +139,7 @@ class ChatModal {
     this.inputElement.value = "";
     this.inputElement.disabled = true; // Disable input until context is loaded
     this.sendButton.disabled = true;
+    this.conversationHistory = []; // Clear history for new chat
 
     this.modalElement.style.display = "flex"; // Show the modal
     this.inputElement.focus(); // Focus the input field
@@ -185,10 +187,19 @@ class ChatModal {
     this.sendButton.disabled = true;
     this.currentLlmMessageElement = null; // Reset streaming element holder
 
-    await this._sendMessageToAI(message); // Send message to AI
+    // Add user message to history
+    this.conversationHistory.push({ role: "user", content: message });
+    this.enhancer.logDebug("Added user message to history:", this.conversationHistory);
 
-    // Re-enable input only if AI session is still valid
-    if (this.aiSession) {
+    // Send the entire history to the AI
+    await this._sendMessageToAI(this.conversationHistory);
+
+    // Re-enable input only if AI session is still valid (for Chrome AI) or if not Chrome AI
+    // Note: Input re-enabling is now handled within _sendMessageToAI for non-streaming providers
+    // and after the stream for Chrome AI. This block might need further adjustment
+    // depending on the final flow in _sendMessageToAI.
+    // Let's keep the original re-enable logic for Chrome AI for now.
+    if (this.currentAiProvider === 'chrome-ai' && this.aiSession) {
       this.inputElement.disabled = false;
       this.sendButton.disabled = false;
       this.inputElement.focus();
@@ -452,12 +463,34 @@ class ChatModal {
       }
       this.enhancer.logDebug("Sending message to Chrome AI...");
       this.currentLlmMessageElement = null; // Reset stream target
+      let fullResponse = ""; // Accumulate response for history
       try {
-        const stream = this.aiSession.promptStreaming(message);
+        // Chrome AI's promptStreaming expects the latest user message.
+        // We need to adapt the history for it if we want multi-turn,
+        // but its API is designed for single prompts or requires manual history management.
+        // For simplicity, let's send only the *last* user message from the history.
+        // This means Chrome AI won't have multi-turn context via this method.
+        const lastUserMessage = conversationHistory.filter(m => m.role === 'user').pop()?.content || "";
+        if (!lastUserMessage) {
+            throw new Error("No user message found in history to send to Chrome AI.");
+        }
+
+        this.enhancer.logDebug("Sending last user message to Chrome AI:", lastUserMessage);
+        const stream = this.aiSession.promptStreaming(lastUserMessage);
         for await (const chunk of stream) {
           this._displayMessage(chunk, "llm", true);
+          fullResponse += chunk; // Accumulate the response
         }
         this.enhancer.logDebug("Chrome AI response stream finished.");
+        // Add accumulated response to history
+        this.conversationHistory.push({ role: "assistant", content: fullResponse });
+        this.enhancer.logDebug("Added Chrome AI response to history.");
+
+        // Re-enable input after successful stream completion for Chrome AI
+        this.inputElement.disabled = false;
+        this.sendButton.disabled = false;
+        this.inputElement.focus();
+
       } catch (error) {
         console.error("Error during Chrome AI interaction:", error);
         this._displayMessage(
