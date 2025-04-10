@@ -185,22 +185,35 @@ class DomUtils {
         );
       }
 
-      // Find the 'parent' link within the current comment's metadata
-      // HN uses 'hnl' class for these navigation links
+      // Find the 'parent' link within the current comment's metadata (.comhead .navs)
       console.log("[DEBUG] getCommentContext: Searching for parent link inside element:", currentElement.id, "HTML:", currentElement.innerHTML.substring(0, 250) + "..."); // Added log
-      const parentLink = currentElement.querySelector('a.hnl[href*="parent"]');
+
+      const navsSpan = currentElement.querySelector('.comhead .navs');
+      let parentLink = null;
+      if (navsSpan) {
+          const links = navsSpan.querySelectorAll('a');
+          for (const link of links) {
+              // Find the link with the exact text "parent"
+              if (link.textContent.trim() === 'parent') {
+                  parentLink = link;
+                  break;
+              }
+          }
+      }
+
       if (!parentLink) {
-        console.log("[DEBUG] getCommentContext: No parent link found using selector 'a.hnl[href*=\"parent\"]' for comment:", commentId, ". Stopping traversal."); // Updated log
-        break; // No parent link found, must be a top-level comment
+        console.log("[DEBUG] getCommentContext: No 'parent' link found within .comhead .navs for comment:", commentId, ". Stopping traversal."); // Updated log
+        break; // No parent link found, must be a top-level comment or structure changed
       }
       console.log("[DEBUG] getCommentContext: Found parent link:", parentLink.href); // Added log
 
-      // Extract the parent comment ID from the link's href
+      // Extract the parent comment ID from the link's href (which should be like "#12345")
       const parentHref = parentLink.getAttribute("href");
-      const parentIdMatch = parentHref.match(/id=(\d+)/);
+      // Updated regex to match the anchor format #ID
+      const parentIdMatch = parentHref.match(/#(\d+)/);
       if (!parentIdMatch || !parentIdMatch[1]) {
         console.warn(
-          "getCommentContext: Could not extract parent ID from link:",
+          "getCommentContext: Could not extract parent ID from parent link href:",
           parentHref
         );
         break; // Cannot proceed without parent ID
