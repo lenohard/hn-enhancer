@@ -350,7 +350,7 @@ After each fix or implementation or research, the changes and info are documente
         - Clear conversation area and `conversationHistory`.
         - Call `_gatherContextAndInitiateChat` with the `newContextType`.
         - Disable input while context is loading.
-4.  **Prompting & Context Structure Update (chat-modal.js, dom-utils.js):** (Decision Made 2025-04-10)
+4.  **Prompting & Context Structure Update (chat-modal.js, dom-utils.js):** (Decision Made 2025-04-10) (Completed 2025-04-10)
     - **Decision:** 使用与摘要功能相同的评论结构格式，而不是简单的文本或JSON格式。这种格式包含层级路径、分数、回复数等元数据，使LLM能更好地理解评论的重要性和关系。
     - **格式示例:** `[层级路径] (score: 分数) <replies: 回复数> {downvotes: 踩数} 作者名: 评论内容`
     - **实现计划:**
@@ -362,7 +362,7 @@ After each fix or implementation or research, the changes and info are documente
             - 修改 `_gatherContextAndInitiateChat` 以使用新的格式化函数处理评论
             - 更新系统提示词 (`systemPrompt`) 以解释评论格式的含义
             - 确保在切换上下文类型时重新计算所有元数据
-5.  **测试:** (下一步)
+5.  **测试:** (Completed, 2025-04-10)
     - 测试打开聊天模态框（默认为"父评论"上下文）
     - 测试切换到"后代评论"上下文，对于具有不同层级回复的评论
     - 测试切换到"直接子评论"上下文
@@ -377,22 +377,6 @@ After each fix or implementation or research, the changes and info are documente
   - **Investigation:** 检查 `src/dom-utils.js` 文件内容，发现 `getDirectChildComments` *已经* 正确地定义为 `DomUtils` 类内部的 `static` 方法。
   - **Conclusion:** 之前的移动函数的尝试是基于错误的诊断，因此撤销了相关更改。原始的 TypeError 可能源于 `chat-modal.js` 中 `this.enhancer.domUtils` 实例的初始化或访问时机问题，但在后续测试中该错误已不再出现。
   - **Result:** 确认函数位置正确，无需代码更改。聊天上下文切换功能经测试已正常工作。
-
-**下一步实施计划:**
-
-1. **创建辅助函数:**
-   - 在 `dom-utils.js` 中实现 `formatCommentForLLM` 函数
-   - 实现计算评论分数和归一化的逻辑（类似于摘要功能）
-
-2. **修改上下文收集函数:**
-   - 更新 `getCommentContext` 以计算父评论的层级路径（如 [1], [1.1], 等）
-   - 更新 `getDescendantComments` 以计算后代评论的层级路径
-   - 更新 `getDirectChildComments` 以计算子评论的层级路径
-
-3. **更新聊天模态框逻辑:**
-   - 修改 `_gatherContextAndInitiateChat` 以使用新的格式化函数
-   - 更新系统提示词以解释新的评论格式
-   - 确保在切换上下文时正确重置和重新计算所有元数据
 
 
 # Known Bugs:
