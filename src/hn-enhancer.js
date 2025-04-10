@@ -30,7 +30,9 @@ window.HNEnhancer = class HNEnhancer {
       this.helpModal = this.uiComponents.createHelpModal();
       this.authorTracking = new AuthorTracking(this);
       this.navigation = new Navigation(this);
+      this.chatModal = new ChatModal(this); // Instantiate ChatModal
 
+      this.uiComponents.createHelpIcon();
       this.uiComponents.createHelpIcon();
 
       // Initialize based on page type
@@ -175,8 +177,10 @@ window.HNEnhancer = class HNEnhancer {
       // customize the default next/prev/root/parent links to do the Companion behavior
       this.navigation.customizeDefaultNavLinks(comment);
 
-      // Insert summarize thread link at the end
+      // Insert summarize thread link
       this.injectSummarizeThreadLinks(comment);
+      // Insert chat link
+      this.injectChatLink(comment); // <-- Add chat link injection
       // Insert toggle grandchildren button
       this.injectToggleGrandchildrenButton(comment);
     });
@@ -626,6 +630,59 @@ window.HNEnhancer = class HNEnhancer {
   }
 
   /**
+   * Injects a 'Chat' link into a comment element.
+   * @param {HTMLElement} comment - The comment element (.athing.comtr)
+   */
+  injectChatLink(comment) {
+    // Target the navigation links span in the comment header
+    const navsSpan = comment.querySelector(".comhead .navs");
+    if (!navsSpan) {
+      this.logDebug(
+        `Could not find .navs span for comment ${comment.id} (chat link)`
+      );
+      return; // Skip if navs span not found
+    }
+
+    // Check if chat link already exists within the navs span
+    if (navsSpan.querySelector(".hn-chat-link")) {
+      this.logDebug(`Chat link already exists for comment ${comment.id}`);
+      return;
+    }
+
+    const chatLink = document.createElement("a");
+    chatLink.href = "#"; // Prevent page jump, will add JS listener later
+    chatLink.textContent = "Chat";
+    chatLink.className = "hn-enhancer-link hn-chat-link"; // Add classes for styling and selection
+    chatLink.dataset.commentId = this.domUtils.getCommentId(comment); // Store comment ID for later use
+
+    // Add spacing before the link
+    const space = document.createTextNode(" | ");
+
+    // Append the separator and the chat link to the navs span
+    navsSpan.appendChild(space);
+    navsSpan.appendChild(chatLink);
+
+    // Add event listener (placeholder for now, will be implemented later)
+    chatLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.logInfo(
+        `Chat link clicked for comment ID: ${chatLink.dataset.commentId}`
+      );
+      // TODO: Implement opening the chat modal here - DONE
+      const commentElement = this.domUtils.findCommentElementById(
+        chatLink.dataset.commentId
+      );
+      if (commentElement) {
+        this.openChatModal(commentElement);
+      }
+    });
+
+    this.logDebug(
+      `Injected chat link for comment ${chatLink.dataset.commentId}`
+    );
+  }
+
+  /**
    * Toggles the collapse state of all grandchildren of a given comment.
    * It determines whether to collapse or expand based on the state of the first grandchild found.
    * @param {HTMLElement} commentElement - The parent comment element whose grandchildren should be toggled.
@@ -940,9 +997,20 @@ window.HNEnhancer = class HNEnhancer {
       commentElement?.id
     );
     return false;
-  }
-};
+  } // <-- Added semicolon here
 
+  /**
+   * Opens the chat modal for a specific comment.
+   * @param {HTMLElement} commentElement - The comment element to chat about.
+   */
+  openChatModal(commentElement) {
+    if (this.chatModal) {
+      this.chatModal.open(commentElement);
+    } else {
+      console.error("ChatModal instance not found.");
+    }
+  }
+}; // <-- Moved openChatModal inside the class and kept the final brace
 // Initialize the extension
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", () => new HNEnhancer());
