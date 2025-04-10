@@ -251,10 +251,10 @@ After each fix or implementation or research, the changes and info are documente
         - Clear conversation area and `conversationHistory`.
         - Call `_gatherContextAndInitiateChat` with the `newContextType`.
         - Disable input while context is loading.
-4.  **Prompting Update (chat-modal.js, background.js):**
-    - Modify the system prompt generation in `_gatherContextAndInitiateChat` to clearly state the context type being provided (e.g., "Context below includes the target comment and all its parents:", "Context below includes the target comment and all its descendants:", etc.).
-    - Ensure `background.js` handlers receive and can potentially log the context structure if needed for debugging, but the primary change is in the system prompt sent *from* `chat-modal.js`.
-5.  **Testing:**
+4.  **Prompting Update (chat-modal.js):** (Completed 2025-04-10)
+    - Modified the system prompt generation in `_gatherContextAndInitiateChat` to clearly state the context type being provided.
+    - Updated the "Context loaded..." message.
+5.  **Testing:** (Next Step)
     - Test opening the chat modal (defaults to "Parents" context).
     - Test switching to "Descendants" context for comments with varying levels of replies.
     - Test switching to "Direct Children" context.
@@ -331,15 +331,15 @@ After each fix or implementation or research, the changes and info are documente
 
 **Sub-tasks:**
 
-1.  **UI Implementation (chat-modal.js, styles.css):**
-    - Add UI elements (e.g., radio buttons, dropdown) in the chat modal header or near the input area to select context type: "Parents" (default), "Descendants", "Direct Children".
-    - Style the new UI elements for clarity and consistency.
-2.  **Context Gathering Logic (dom-utils.js):**
-    - Implement `getDescendantComments(targetCommentElement)`: Traverse DOM *downwards* from the target comment, collecting all comments with greater indentation until indentation returns to the target's level or less. Handle nested structures correctly.
-    - Move/Refactor `_getDirectChildComments` from `hn-enhancer.js` to `dom-utils.js` as `getDirectChildComments(targetCommentElement)` and ensure it works correctly.
-3.  **Chat Modal Logic Update (chat-modal.js):**
-    - Add state variable `currentContextType` (default: 'parents').
-    - Modify `_gatherContextAndInitiateChat` to:
+1.  **UI Implementation (chat-modal.js, styles.css):** (Completed 2025-04-10)
+    - Added radio buttons for context selection ("Parents", "Descendants", "Children") below the header in the chat modal.
+    - Added CSS styles for the context selector container and radio buttons.
+2.  **Context Gathering Logic (dom-utils.js):** (Completed 2025-04-10)
+    - Implemented `getDescendantComments(targetCommentElement)`.
+    - Moved and refactored `_getDirectChildComments` from `hn-enhancer.js` to `dom-utils.js`.
+3.  **Chat Modal Logic Update (chat-modal.js):** (Completed 2025-04-10)
+    - Added state variable `currentContextType`.
+    - Modified `_gatherContextAndInitiateChat` to:
         - Accept `contextType` parameter.
         - Call the appropriate `dom-utils` function (`getCommentContext`, `getDescendantComments`, `getDirectChildComments`) based on `contextType`.
         - Format the gathered comments into the initial `conversationHistory` (system prompt).
@@ -363,7 +363,7 @@ After each fix or implementation or research, the changes and info are documente
 
 **Next Steps:**
 
-- Implement context gathering logic (`getDescendantComments`, `getDirectChildComments`) in `src/dom-utils.js`.
+- Test the context switching feature thoroughly.
 
 
 # Known Bugs:
