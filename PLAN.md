@@ -406,9 +406,23 @@ After each fix or implementation or research, the changes and info are documente
 # Known Bugs:
 1. 当有的评论被折叠后，就无法通过点击统计面板里的链接定位到该评论.
 2. 点击 "Chat" 链接后，模态框会打开，会有多余的一条消息：Gathering parents context.... 但是再点击其他上下文之后就没有了。只有正常的: Context loaded (xxx) xxxxx
+
 # TODO:
 1. 通过点击聊天中的评论来在页面里定位到那里。
 2. 删除不必要的logging
+
+# 已完成改进 (2025-04-10):
+
+## 聊天历史保存机制改进
+- **问题**: 之前的实现会在打开聊天或切换上下文时就保存初始系统消息，即使用户没有发送任何消息
+- **改进**: 
+  - 只有在模型成功返回回复后才保存对话历史
+  - 加载历史时简化系统消息显示，只显示上下文类型和统计信息，不显示完整评论内容
+  - 添加了 `_extractContextInfoFromSystemMessage` 辅助方法来从系统消息中提取上下文信息
+- **好处**:
+  - 减少存储空间使用
+  - 避免保存未完成的对话
+  - 提高历史记录加载时的可读性
 
 
 # Notes:

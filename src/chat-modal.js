@@ -333,9 +333,19 @@ class ChatModal {
             this.enhancer.logInfo(`Loaded existing chat history for ${postId}/${commentId}/${contextType}`);
             this.conversationHistory = loadedHistory;
 
-            // Render loaded history
+            // Render loaded history with simplified system message
             this.conversationHistory.forEach(message => {
-                this._displayMessage(message.content, message.role === 'assistant' ? 'llm' : message.role); // Map 'assistant' to 'llm' for display
+                if (message.role === 'system') {
+                    // Extract and display simplified system message
+                    const contextInfo = this._extractContextInfoFromSystemMessage(message.content);
+                    this._displayMessage(
+                        `Loaded previous chat with ${contextInfo.contextType} context: ${contextInfo.commentCount} comments (${contextInfo.charCount} chars).`, 
+                        "system"
+                    );
+                } else {
+                    // Display user and assistant messages normally
+                    this._displayMessage(message.content, message.role === 'assistant' ? 'llm' : message.role);
+                }
             });
 
             // Determine AI provider from settings (needed for sending new messages)
@@ -533,11 +543,9 @@ ${contextStructureDesc}
       this.conversationHistory.push(initialSystemMessage);
       this.enhancer.logDebug("Initialized conversation history with system prompt and context.");
 
-      // --- Save Initial History ---
-      // Save the history containing only the system prompt and context
-      await this.enhancer.hnState.saveChatHistory(postId, commentId, contextType, this.conversationHistory);
-      this.enhancer.logDebug(`Saved initial history for ${postId}/${commentId}/${contextType}`);
-
+      // Do NOT save initial history here - only save after first AI response
+      // Just store it in memory until then
+      
       // Display context loaded message reflecting the type and enable input
       const totalChars = contextArray.reduce((sum, c) => sum + (c.text?.length || 0), 0);
       this._displayMessage(
@@ -659,7 +667,7 @@ ${contextStructureDesc}
         this.conversationHistory.push({ role: "assistant", content: fullResponse });
         this.enhancer.logDebug("Added Chrome AI response to history.");
 
-        // --- Save History (Chrome AI) ---
+        // --- Save History (Chrome AI) - Only save after getting a response ---
         await this.enhancer.hnState.saveChatHistory(
             this.currentPostId,
             this.enhancer.domUtils.getCommentId(this.targetCommentElement),
@@ -731,14 +739,14 @@ ${contextStructureDesc}
       this.conversationHistory.push({ role: "assistant", content: responseText });
       this.enhancer.logDebug(`Added ${aiProvider} response to history:`, this.conversationHistory);
 
-      // --- Save History (Background Provider) ---
+      // --- Save History (Background Provider) - Only save after getting a response ---
       await this.enhancer.hnState.saveChatHistory(
           this.currentPostId,
           this.enhancer.domUtils.getCommentId(this.targetCommentElement),
           this.currentContextType,
           this.conversationHistory
       );
-       this.enhancer.logDebug(`Saved history after ${aiProvider} response.`);
+      this.enhancer.logDebug(`Saved history after ${aiProvider} response.`);
 
       // Re-enable input
       this.inputElement.disabled = false;
@@ -793,6 +801,51 @@ ${contextStructureDesc}
       //    _gatherContextAndInitiateChat will handle displaying loading message and re-enabling input.
       // _gatherContextAndInitiateChat will handle loading/saving for the new context.
       await this._gatherContextAndInitiateChat(newContextType);
+  }
+
+  /**
+   * Extracts context information from a system message.
+   * @param {string} systemMessage - The system message content.
+   * @returns {object} Object containing contextType, commentCount, and charCount.
+   * @private
+   */
+  _extractContextInfoFromSystemMessage(systemMessage) {
+      // Default values
+      const result = {
+          contextType: "unknown",
+          commentCount: 0,
+          charCount: 0
+      };
+      
+      try {
+          // Try to determine context type from the message
+          if (systemMessage.includes("父评论 -> 目标评论")) {
+              result.contextType = "parents";
+          } else if (systemMessage.includes("目标评论 -> 后代评论")) {
+              result.contextType = "descendants";
+          } else if (systemMessage.includes("目标评论 -> 直接子评论")) {
+              result.contextType = "children";
+          }
+          
+          // Count comments by looking for comment format pattern
+          const commentPattern = /\[\d+(?:\.\d+)*\] \(score:/g;
+          const matches = systemMessage.match(commentPattern);
+          result.commentCount = matches ? matches.length : 0;
+          
+          // Estimate character count (this is approximate)
+          // Remove the prompt part and count the rest
+          const promptEndIndex = systemMessage.indexOf("评论上下文:");
+          if (promptEndIndex > 0) {
+              const contextPart = systemMessage.substring(promptEndIndex);
+              result.charCount = contextPart.length;
+          } else {
+              result.charCount = systemMessage.length;
+          }
+      } catch (error) {
+          console.error("Error extracting context info from system message:", error);
+      }
+      
+      return result;
   }
 
   /**
