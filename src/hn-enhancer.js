@@ -903,7 +903,13 @@ window.HNEnhancer = class HNEnhancer {
    */
   openChatModal(commentElement) {
     if (this.chatModal) {
-      this.chatModal.open(commentElement);
+      const postId = this.domUtils.getCurrentHNItemId(); // Get the current post ID
+      if (!postId) {
+        console.error("Could not determine post ID to open chat modal.");
+        // Optionally display an error to the user
+        return;
+      }
+      this.chatModal.open(commentElement, postId); // Pass postId to open method
     } else {
       console.error("ChatModal instance not found.");
     }
