@@ -459,8 +459,21 @@ class ChatModal {
     this.currentLlmMessageElement = null; // Reset stream target before sending
 
     try {
-      // --- Construct the messages array (New Format) ---
-      const systemPrompt = "下面是在HN网站上的某个post下的一系列评论，最上面的评论是关于这个post链接到的文章的，而之后的每个comment都是对上一个评论。基于这些评论来回答用户给出的问题";
+      const systemPrompt = `你是一个 Hacker News (HN) 评论助手。下面提供了一系列 HN
+评论，这些评论来自同一个帖子下的一个讨论分支。评论按时间顺序排列，从最顶层的父评论开始，一直到用户发起聊天的目标评论。
+每个评论都包含了作者和内容。
+
+评论上下文结构如下：
+评论 1 (作者: [作者名]):
+[评论内容]
+-------
+评论 2 (作者: [作者名]):
+[评论内容]
+-------
+...
+
+你的任务是：基于提供的评论上下文，清晰、简洁地回答用户关于这些评论的问题。请专注于评论内容本身，并根据上下文进行推理。
+如果用户的问题超出了评论范围，请说明无法回答。`;
 
       // Format context into a single string
       const contextString = this.currentChatContext
