@@ -402,6 +402,23 @@ class DomUtils {
   }
 
   /**
+   * Formats a comment for LLM consumption with metadata in a standardized format.
+   * @param {Object} comment - The comment object with id, author, text properties.
+   * @param {string} path - The hierarchical path of the comment (e.g., "1.2.3").
+   * @param {number} replyCount - Number of direct replies to this comment.
+   * @param {number} score - Normalized importance score (0-1000).
+   * @param {number} downvotes - Number of downvotes or negative reactions.
+   * @returns {string} Formatted comment string.
+   */
+  static formatCommentForLLM(comment, path, replyCount = 0, score = 500, downvotes = 0) {
+    if (!comment || !comment.author) {
+      return `[${path}] (score: ${score}) <replies: ${replyCount}> {downvotes: ${downvotes}} [unknown]: [missing content]`;
+    }
+    
+    return `[${path}] (score: ${score}) <replies: ${replyCount}> {downvotes: ${downvotes}} ${comment.author}: ${comment.text}`;
+  }
+
+  /**
    * Gets all direct child comments of a given parent comment.
    * Relies on DomUtils.getCommentIndentLevel.
    * @param {HTMLElement} parentComment - The parent comment element (TR.athing.comtr).

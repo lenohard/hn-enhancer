@@ -405,24 +405,32 @@ class ChatModal {
       }
 
       const systemPrompt = `${systemPromptIntro}
-每个评论都包含了作者和内容。
+每个评论都使用以下格式呈现，包含了评论的层级结构和元数据：
+
+[层级路径] (score: 分数) <replies: 回复数> {downvotes: 踩数} 作者名: 评论内容
+
+其中：
+- 层级路径：如 [1], [1.2], [1.2.3] 表示评论在树中的位置
+- 分数：表示评论的重要性分数（1000为最高）
+- 回复数：表示该评论的直接回复数量
+- 踩数：表示评论收到的负面评价数量
 
 ${contextStructureDesc}
-评论 1 (作者: [作者名]):
-[评论内容]
--------
-评论 2 (作者: [作者名]):
-[评论内容]
--------
-...
 
 `;
-      // Format context into a single string (using the gathered contextArray)
+      // Format context into a structured format similar to the summarization feature
+      // This uses a format like: [path] (score: X) <replies: Y> {downvotes: Z} author: text
       const contextString = contextArray
-            .map(
-              (c, index) =>
-                `评论 ${index + 1} (作者: ${c.author}):\n${c.text}\n-------`
-            )
+            .map((c, index) => {
+              // For simplicity, use index+1 as path for now (will be enhanced later)
+              const path = `[${index + 1}]`;
+              // Use placeholder values for score/replies/downvotes until we implement full metadata
+              const score = 500; // Placeholder score
+              const replies = 0;  // Placeholder replies count
+              const downvotes = 0; // Placeholder downvotes
+              
+              return `${path} (score: ${score}) <replies: ${replies}> {downvotes: ${downvotes}} ${c.author}: ${c.text}`;
+            })
             .join("\n\n");
 
       // Add the system prompt and context as the first message(s) in the history

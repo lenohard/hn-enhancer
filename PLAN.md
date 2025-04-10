@@ -351,31 +351,41 @@ After each fix or implementation or research, the changes and info are documente
         - Call `_gatherContextAndInitiateChat` with the `newContextType`.
         - Disable input while context is loading.
 4.  **Prompting & Context Structure Update (chat-modal.js, dom-utils.js):** (Decision Made 2025-04-10)
-    - **Decision:** Use JSON format (flat list with `parent_id`) to represent the comment context structure for the LLM, instead of relying on indentation. This provides a more explicit and reliable way for the LLM to understand comment relationships.
-    - **Reasoning:** JSON is standard, easily handled in JS, and less ambiguous for LLMs than inferring structure from indentation. A flat list with `parent_id` balances structural clarity with implementation simplicity compared to a fully nested JSON tree.
-    - **Implementation Plan:**
-        - **`dom-utils.js`:** Modify `getCommentContext`, `getDescendantComments`, `getDirectChildComments` to include `parent_id` (if feasible based on traversal logic) and an `is_target` boolean flag in the returned comment objects.
+    - **Decision:** 使用与摘要功能相同的评论结构格式，而不是简单的文本或JSON格式。这种格式包含层级路径、分数、回复数等元数据，使LLM能更好地理解评论的重要性和关系。
+    - **格式示例:** `[层级路径] (score: 分数) <replies: 回复数> {downvotes: 踩数} 作者名: 评论内容`
+    - **实现计划:**
+        - **`dom-utils.js`:** 
+            - 创建新的辅助函数 `formatCommentForLLM(comment, path, replyCount, score, downvotes)` 来生成统一格式的评论文本
+            - 修改 `getCommentContext`, `getDescendantComments`, `getDirectChildComments` 以计算并包含层级路径、回复数、分数等元数据
+            - 为每种上下文类型（父评论、后代评论、直接子评论）实现适当的路径计算逻辑
         - **`chat-modal.js`:**
-            - In `_gatherContextAndInitiateChat`, serialize the `contextArray` (containing comment objects with `id`, `author`, `text`, `parent_id`, `is_target`) into a JSON string.
-            - Update the system prompt (`systemPrompt`) to:
-                - Explain that the context is provided as a JSON array.
-                - Define the fields in each JSON object (`id`, `author`, `text`, `parent_id`, `is_target`).
-                - Instruct the LLM on how to use `parent_id` (where `null` indicates a root of the snippet) to understand the comment hierarchy.
-                - Mention the `is_target` flag identifies the comment the user initiated the chat from.
-5.  **Testing:** (Next Step)
-    - Test opening the chat modal (defaults to "Parents" context).
-    - Test switching to "Descendants" context for comments with varying levels of replies.
-    - Test switching to "Direct Children" context.
-    - Test switching back and forth between context types.
-    - Verify the correct comments are included in the initial system prompt (as JSON) for each context type.
-    - Verify chat functionality works correctly after switching context.
-    - Verify LLM responses indicate understanding of the comment structure based on the JSON.
+            - 修改 `_gatherContextAndInitiateChat` 以使用新的格式化函数处理评论
+            - 更新系统提示词 (`systemPrompt`) 以解释评论格式的含义
+            - 确保在切换上下文类型时重新计算所有元数据
+5.  **测试:** (下一步)
+    - 测试打开聊天模态框（默认为"父评论"上下文）
+    - 测试切换到"后代评论"上下文，对于具有不同层级回复的评论
+    - 测试切换到"直接子评论"上下文
+    - 测试在不同上下文类型之间来回切换
+    - 验证每种上下文类型的初始系统提示中包含正确格式的评论
+    - 验证切换上下文后聊天功能正常工作
+    - 验证LLM响应表明它理解了评论结构和元数据的含义
 
-**Next Steps:**
+**下一步实施计划:**
 
-- Implement the JSON context structure changes:
-    - Modify `dom-utils.js` context gathering functions to include `parent_id` and `is_target`.
-    - Modify `chat-modal.js` to serialize context to JSON and update the system prompt accordingly.
+1. **创建辅助函数:**
+   - 在 `dom-utils.js` 中实现 `formatCommentForLLM` 函数
+   - 实现计算评论分数和归一化的逻辑（类似于摘要功能）
+
+2. **修改上下文收集函数:**
+   - 更新 `getCommentContext` 以计算父评论的层级路径（如 [1], [1.1], 等）
+   - 更新 `getDescendantComments` 以计算后代评论的层级路径
+   - 更新 `getDirectChildComments` 以计算子评论的层级路径
+
+3. **更新聊天模态框逻辑:**
+   - 修改 `_gatherContextAndInitiateChat` 以使用新的格式化函数
+   - 更新系统提示词以解释新的评论格式
+   - 确保在切换上下文时正确重置和重新计算所有元数据
 
 
 # Known Bugs:
