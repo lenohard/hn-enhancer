@@ -187,9 +187,10 @@ class DomUtils {
 
       // Find the 'parent' link within the current comment's metadata
       // HN uses 'hnl' class for these navigation links
+      console.log("[DEBUG] getCommentContext: Searching for parent link inside element:", currentElement.id, "HTML:", currentElement.innerHTML.substring(0, 250) + "..."); // Added log
       const parentLink = currentElement.querySelector('a.hnl[href*="parent"]');
       if (!parentLink) {
-        console.log("[DEBUG] getCommentContext: No parent link found for comment:", commentId, ". Stopping traversal."); // Added log
+        console.log("[DEBUG] getCommentContext: No parent link found using selector 'a.hnl[href*=\"parent\"]' for comment:", commentId, ". Stopping traversal."); // Updated log
         break; // No parent link found, must be a top-level comment
       }
       console.log("[DEBUG] getCommentContext: Found parent link:", parentLink.href); // Added log
