@@ -232,9 +232,9 @@ After each fix or implementation or research, the changes and info are documente
 
 **Sub-tasks:**
 
-1.  **UI Implementation (chat-modal.js, styles.css):**
-    - Add UI elements (e.g., radio buttons, dropdown) in the chat modal header or near the input area to select context type: "Parents" (default), "Descendants", "Direct Children".
-    - Style the new UI elements for clarity and consistency.
+1.  **UI Implementation (chat-modal.js, styles.css):** (Completed 2025-04-10)
+    - Added radio buttons for context selection ("Parents", "Descendants", "Children") below the header in the chat modal.
+    - Added CSS styles for the context selector container and radio buttons.
 2.  **Context Gathering Logic (dom-utils.js):**
     - Implement `getDescendantComments(targetCommentElement)`: Traverse DOM *downwards* from the target comment, collecting all comments with greater indentation until indentation returns to the target's level or less. Handle nested structures correctly.
     - Move/Refactor `_getDirectChildComments` from `hn-enhancer.js` to `dom-utils.js` as `getDirectChildComments(targetCommentElement)` and ensure it works correctly.
@@ -363,7 +363,7 @@ After each fix or implementation or research, the changes and info are documente
 
 **Next Steps:**
 
-- Implement UI elements for context switching in `chat-modal.js` and `styles.css`.
+- Implement context gathering logic (`getDescendantComments`, `getDirectChildComments`) in `src/dom-utils.js`.
 
 
 # Known Bugs:
