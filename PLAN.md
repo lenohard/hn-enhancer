@@ -228,6 +228,17 @@ After each fix or implementation or research, the changes and info are documente
     - Modified `api-client.js` `sendBackgroundMessage` to log duration separately and not attempt to modify the potentially non-object `response.data`.
   - **Result:** Chat functionality with Gemini provider is now working correctly. Messages are sent, responses are received and displayed without type errors.
 
+- **Debugging Parent Comment Traversal (Commits `a33a691`, `4a26318`, `5df120a`):**
+  - **Issue:** The `getCommentContext` function in `src/dom-utils.js` failed to find parent comments, logging "No parent link found..." even when the link was visible.
+  - **Investigation:**
+    - Added debug logs to trace the execution flow and inspect the `currentElement`'s HTML.
+    - Confirmed the parent link existed in the HTML (`<a href="#12345" class="clicky">parent</a>`) but lacked the `hnl` class expected by the original selector (`a.hnl[href*="parent"]`).
+  - **Fix:**
+    - Modified `getCommentContext` in `src/dom-utils.js` to:
+      - Search within the `.comhead .navs` span for an `<a>` tag whose `textContent` is exactly "parent".
+      - Updated the regular expression to extract the parent ID from the `href="#<ID>"` format.
+  - **Result:** Parent comment traversal now correctly identifies and follows the parent links in the DOM.
+
 - **System Prompt & Message Structure Update (Commit `78edb42`):**
   - **Goal:** Standardize the prompt sent to the LLM and improve logging.
   - **Changes:**
