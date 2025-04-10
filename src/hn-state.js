@@ -50,13 +50,30 @@ class HNState {
      * @param {string} postId - The ID of the post.
      * @param {string} commentId - The ID of the comment.
      * @param {string} contextType - The context type ('parents', 'descendants', 'children').
+     * @returns {string} The storage key.
+     * @private
+     */
+    static _getChatHistoryKey(postId, commentId, contextType) {
+        return `chatHistory_${postId}_${commentId}_${contextType}`;
+    }
+
+    /**
+     * Saves the chat history for a specific comment and context type.
+     * @param {string} postId - The ID of the post.
+     * @param {string} commentId - The ID of the comment.
+     * @param {string} contextType - The context type ('parents', 'descendants', 'children').
      * @param {Array<object>} history - The conversation history array to save.
      */
     static saveChatHistory(postId, commentId, contextType, history) {
+        if (!postId || !commentId || !contextType || !history) {
+            console.error("saveChatHistory: Missing required arguments.", { postId, commentId, contextType, history });
+            return;
+        }
         const key = this._getChatHistoryKey(postId, commentId, contextType);
         chrome.storage.local.set({ [key]: history }).catch(error => {
             console.error(`Error saving chat history for ${key}:`, error);
         });
+        // console.log(`[HNState] Saved history for ${key}`, history); // Optional debug log
     }
 
     /**
@@ -67,9 +84,14 @@ class HNState {
      * @returns {Promise<Array<object>|null>} The conversation history array or null if not found.
      */
     static async getChatHistory(postId, commentId, contextType) {
+        if (!postId || !commentId || !contextType) {
+            console.error("getChatHistory: Missing required arguments.", { postId, commentId, contextType });
+            return null;
+        }
         const key = this._getChatHistoryKey(postId, commentId, contextType);
         try {
             const data = await chrome.storage.local.get(key);
+            // console.log(`[HNState] Retrieved history for ${key}`, data[key]); // Optional debug log
             return data[key] || null; // Return the history array or null
         } catch (error) {
             console.error(`Error retrieving chat history for ${key}:`, error);
@@ -84,10 +106,15 @@ class HNState {
      * @param {string} contextType - The context type ('parents', 'descendants', 'children').
      */
     static async clearChatHistory(postId, commentId, contextType) {
+        if (!postId || !commentId || !contextType) {
+            console.error("clearChatHistory: Missing required arguments.", { postId, commentId, contextType });
+            return;
+        }
         const key = this._getChatHistoryKey(postId, commentId, contextType);
         chrome.storage.local.remove(key).catch(error => {
             console.error(`Error clearing chat history for ${key}:`, error);
         });
+        // console.log(`[HNState] Cleared history for ${key}`); // Optional debug log
     }
 }
 

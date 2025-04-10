@@ -14,6 +14,7 @@ class ChatModal {
     this.sendButton = null;
     this.closeButton = null;
     this.targetCommentElement = null; // The comment the chat was initiated from
+    this.currentPostId = null; // The ID of the post the comment belongs to
     this.aiSession = null; // To hold the Chrome AI session
     this.currentLlmMessageElement = null; // To hold the element for the currently streaming LLM response
     this.conversationHistory = []; // To store the full chat history { role, content }
@@ -151,11 +152,17 @@ class ChatModal {
   /**
    * Opens the chat modal.
    * @param {HTMLElement} commentElement - The specific comment element (.athing.comtr) to chat about.
+   * @param {string} postId - The ID of the parent post.
    */
-  open(commentElement) {
+  open(commentElement, postId) {
     if (!this.modalElement) {
       this.enhancer.logDebug("Modal element not found, cannot open.");
       return;
+    }
+    if (!postId) {
+        console.error("ChatModal.open called without a postId.");
+        // Optionally display an error to the user
+        return;
     }
     this.targetCommentElement = commentElement;
     const commentId = this.enhancer.domUtils.getCommentId(commentElement);
@@ -164,15 +171,16 @@ class ChatModal {
     // Reset state
     this.conversationArea.innerHTML = "<p><em>Gathering context...</em></p>"; // Clear previous chat
     this.inputElement.value = "";
-    this.inputElement.disabled = true; // Disable input until context is loaded
+    this.inputElement.disabled = true; // Disable input until context/history is loaded
     this.sendButton.disabled = true;
-    this.conversationHistory = []; // Clear history for new chat
+    // DO NOT clear conversationHistory here, it will be loaded or set in _gatherContext...
+    // this.conversationHistory = [];
 
     this.modalElement.style.display = "flex"; // Show the modal
-    this.inputElement.focus(); // Focus the input field
+    // Don't focus input yet, wait for load
 
-    // TODO: Trigger context gathering and initial LLM prompt here
-    this._gatherContextAndInitiateChat();
+    // Trigger context/history loading and potential chat initiation
+    this._gatherContextAndInitiateChat(); // Default context type is used initially
   }
 
   /**
@@ -300,21 +308,65 @@ class ChatModal {
     this.aiSession = null; // Reset session on open/switch
     this.currentLlmMessageElement = null;
     this.currentContextType = contextType; // Update current context type state
-    this.currentAiProvider = null; // Store the provider for this session
-    this.currentModel = null; // Store the model for this session
+    this.currentAiProvider = null; // Reset provider for this session/context
+    this.currentModel = null; // Reset model for this session/context
+    this.conversationHistory = []; // Clear history before loading/gathering
 
-    const commentId = this.enhancer.domUtils.getCommentId(
-      this.targetCommentElement
-    );
-    this.enhancer.logDebug(`Gathering context for comment ${commentId}...`);
-    // Clear previous messages and show gathering status
-    this.conversationArea.innerHTML = "";
-    this._displayMessage(`Gathering ${contextType} context...`, "system"); // Reflect context type
+    const commentId = this.enhancer.domUtils.getCommentId(this.targetCommentElement);
+    const postId = this.currentPostId; // Use stored postId
+
+    if (!postId || !commentId) {
+        console.error("Missing postId or commentId in _gatherContextAndInitiateChat");
+        this._displayMessage("Error: Cannot initiate chat due to missing identifiers.", "system");
+        return;
+    }
+
+    this.enhancer.logDebug(`Initiating chat for post ${postId}, comment ${commentId}, context: ${contextType}`);
+    this.conversationArea.innerHTML = ""; // Clear display area
 
     try {
-      let contextArray = [];
-      const targetCommentId = this.enhancer.domUtils.getCommentId(this.targetCommentElement);
-      const targetAuthor = this.enhancer.domUtils.getCommentAuthor(this.targetCommentElement);
+        // --- Try Loading History First ---
+        const loadedHistory = await this.enhancer.hnState.getChatHistory(postId, commentId, contextType);
+
+        if (loadedHistory && loadedHistory.length > 0) {
+            this.enhancer.logInfo(`Loaded existing chat history for ${postId}/${commentId}/${contextType}`);
+            this.conversationHistory = loadedHistory;
+
+            // Render loaded history
+            this.conversationHistory.forEach(message => {
+                this._displayMessage(message.content, message.role === 'assistant' ? 'llm' : message.role); // Map 'assistant' to 'llm' for display
+            });
+
+            // Determine AI provider from settings (needed for sending new messages)
+            const { aiProvider, model } = await this.enhancer.summarization.getAIProviderModel();
+            this.currentAiProvider = aiProvider;
+            this.currentModel = model;
+
+            if (!aiProvider) {
+                this.enhancer.logInfo("Chat: AI provider not configured (history loaded).");
+                this.enhancer.summarization.showConfigureAIMessage(this.conversationArea);
+                // Don't disable input, user might want to see history anyway
+            } else {
+                 this.enhancer.logInfo(`Chat: Using AI Provider: ${aiProvider}, Model: ${model || "default"} (history loaded)`);
+                 // If Chrome AI, try to create session (needed for sending new messages)
+                 if (aiProvider === 'chrome-ai') {
+                     await this._initializeChromeAISessionIfNeeded(); // Separate helper
+                 }
+                 // Enable input
+                 this.inputElement.disabled = false;
+                 this.sendButton.disabled = false;
+                 this.inputElement.focus();
+            }
+            return; // History loaded, skip context gathering
+        }
+
+        // --- No History Found - Gather Context ---
+        this.enhancer.logDebug(`No history found for ${postId}/${commentId}/${contextType}. Gathering context...`);
+        this._displayMessage(`Gathering ${contextType} context...`, "system"); // Show gathering status
+
+        let contextArray = [];
+        const targetCommentId = this.enhancer.domUtils.getCommentId(this.targetCommentElement);
+        const targetAuthor = this.enhancer.domUtils.getCommentAuthor(this.targetCommentElement);
       const targetText = this.enhancer.domUtils.getCommentText(this.targetCommentElement);
       const targetCommentData = { id: targetCommentId, author: targetAuthor, text: targetText };
 
@@ -475,9 +527,15 @@ ${contextStructureDesc}
       // this.conversationHistory.push({ role: "system", content: `${systemPrompt}\n\n评论上下文:\n${contextString}` });
       // Option 2: System prompt + context as first user message (more compatible?)
       // Let's stick to sending a 'system' message and let background adapt if needed.
-      this.conversationHistory.push({ role: "system", content: `${systemPrompt}\n\n评论上下文:\n${contextString}` });
+      // IMPORTANT: Use 'system' role for the initial prompt/context.
+      const initialSystemMessage = { role: "system", content: `${systemPrompt}\n\n评论上下文:\n${contextString}` };
+      this.conversationHistory.push(initialSystemMessage);
       this.enhancer.logDebug("Initialized conversation history with system prompt and context.");
 
+      // --- Save Initial History ---
+      // Save the history containing only the system prompt and context
+      await this.enhancer.hnState.saveChatHistory(postId, commentId, contextType, this.conversationHistory);
+      this.enhancer.logDebug(`Saved initial history for ${postId}/${commentId}/${contextType}`);
 
       // Display context loaded message reflecting the type and enable input
       const totalChars = contextArray.reduce((sum, c) => sum + (c.text?.length || 0), 0);
@@ -510,20 +568,7 @@ ${contextStructureDesc}
           this.enhancer.isChomeAiAvailable ===
           HNEnhancer.CHROME_AI_AVAILABLE.YES
         ) {
-          this._displayMessage("Initializing Chrome AI session...", "system");
-          try {
-            this.aiSession = await window.ai.createTextSession(); // Default options
-            this.enhancer.logDebug("Chrome AI session created, ready for user input.");
-            // Do NOT send initial prompt automatically
-            // await this._sendMessageToAI(initialPrompt);
-          } catch (aiError) {
-            console.error("Error creating Chrome AI session:", aiError);
-            this._displayMessage(
-              `Error initializing Chrome AI session: ${aiError.message}.`,
-              "system"
-            );
-            this.aiSession = null;
-          }
+           await this._initializeChromeAISessionIfNeeded(); // Use helper
         } else {
           this.enhancer.logDebug("Chrome AI selected but not available/ready.");
           this._displayMessage(
@@ -613,6 +658,15 @@ ${contextStructureDesc}
         this.conversationHistory.push({ role: "assistant", content: fullResponse });
         this.enhancer.logDebug("Added Chrome AI response to history.");
 
+        // --- Save History (Chrome AI) ---
+        await this.enhancer.hnState.saveChatHistory(
+            this.currentPostId,
+            this.enhancer.domUtils.getCommentId(this.targetCommentElement),
+            this.currentContextType,
+            this.conversationHistory
+        );
+        this.enhancer.logDebug("Saved history after Chrome AI response.");
+
         // Re-enable input after successful stream completion for Chrome AI
         this.inputElement.disabled = false;
         this.sendButton.disabled = false;
@@ -675,13 +729,23 @@ ${contextStructureDesc}
       // Add LLM response to history
       this.conversationHistory.push({ role: "assistant", content: responseText });
       this.enhancer.logDebug(`Added ${aiProvider} response to history:`, this.conversationHistory);
+
+      // --- Save History (Background Provider) ---
+      await this.enhancer.hnState.saveChatHistory(
+          this.currentPostId,
+          this.enhancer.domUtils.getCommentId(this.targetCommentElement),
+          this.currentContextType,
+          this.conversationHistory
+      );
+       this.enhancer.logDebug(`Saved history after ${aiProvider} response.`);
+
       // Re-enable input
       this.inputElement.disabled = false;
       this.sendButton.disabled = false;
       this.inputElement.focus();
 
     } catch (error) {
-      // Error handling was moved inside sendBackgroundMessage, but keep this catch for other potential errors
+      // Error handling is mostly within sendBackgroundMessage, but keep this catch
       console.error(
         `Error sending message via background for ${aiProvider}:`,
         error
@@ -726,15 +790,48 @@ ${contextStructureDesc}
 
       // 4. Re-gather context and initiate chat with the new type
       //    _gatherContextAndInitiateChat will handle displaying loading message and re-enabling input.
+      // _gatherContextAndInitiateChat will handle loading/saving for the new context.
       await this._gatherContextAndInitiateChat(newContextType);
   }
 
+  /**
+   * Initializes the Chrome AI session if needed and available.
+   * Displays messages related to session creation or unavailability.
+   * @private
+   */
+  async _initializeChromeAISessionIfNeeded() {
+      if (this.enhancer.isChomeAiAvailable !== HNEnhancer.CHROME_AI_AVAILABLE.YES) {
+          // Re-check availability if not already confirmed as YES
+          try {
+              const availability = await window.ai.canCreateTextSession();
+              this.enhancer.isChomeAiAvailable = availability;
+              this.enhancer.logDebug(`Chrome AI availability re-check: ${availability}`);
+          } catch (err) {
+              console.error("Error re-checking AI availability:", err);
+              this.enhancer.isChomeAiAvailable = HNEnhancer.CHROME_AI_AVAILABLE.NO;
+          }
+      }
 
-  // TODO: Implement helper to securely get API key if needed by background script
-  // async _getApiKeyForProvider(provider) { ... }
-
-  // TODO: Implement helper to get conversation history if needed
-  // _getConversationHistory() { ... }
+      if (this.enhancer.isChomeAiAvailable === HNEnhancer.CHROME_AI_AVAILABLE.YES) {
+          if (!this.aiSession) { // Only create if session doesn't exist
+              this._displayMessage("Initializing Chrome AI session...", "system");
+              try {
+                  this.aiSession = await window.ai.createTextSession(); // Default options
+                  this.enhancer.logDebug("Chrome AI session created.");
+              } catch (aiError) {
+                  console.error("Error creating Chrome AI session:", aiError);
+                  this._displayMessage(`Error initializing Chrome AI session: ${aiError.message}.`, "system");
+                  this.aiSession = null; // Ensure session is null on error
+              }
+          } else {
+              this.enhancer.logDebug("Chrome AI session already exists.");
+          }
+      } else {
+          this.enhancer.logDebug("Chrome AI selected but not available/ready.");
+          this._displayMessage("Chrome Built-in AI is selected but not available or ready.", "system");
+          // Optionally suggest changing settings
+      }
+  }
 }
 
 // Make it available globally if not using modules
