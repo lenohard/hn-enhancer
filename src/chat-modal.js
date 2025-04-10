@@ -136,6 +136,16 @@ class ChatModal {
         this._handleSendMessage();
       }
     });
+
+    // Context selector radio buttons
+    const contextRadios = this.contextSelectorContainer.querySelectorAll('input[name="chatContext"]');
+    contextRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                this._switchContext(e.target.value); // Call switch context method
+            }
+        });
+    });
   }
 
   /**
@@ -281,13 +291,15 @@ class ChatModal {
   }
 
   /**
-   * Gathers context (parent comments) and initiates the chat (placeholder).
+   * Gathers context based on the selected type and initiates the chat.
+   * @param {string} [contextType=this.currentContextType] - The type of context to gather ('parents', 'descendants', 'children'). Defaults to the current selection.
    * @private
    */
-  async _gatherContextAndInitiateChat() {
+  async _gatherContextAndInitiateChat(contextType = this.currentContextType) {
     if (!this.targetCommentElement) return;
-    this.aiSession = null; // Reset session on open
+    this.aiSession = null; // Reset session on open/switch
     this.currentLlmMessageElement = null;
+    this.currentContextType = contextType; // Update current context type state
     this.currentAiProvider = null; // Store the provider for this session
     this.currentModel = null; // Store the model for this session
 
@@ -297,16 +309,55 @@ class ChatModal {
     this.enhancer.logDebug(`Gathering context for comment ${commentId}...`);
     // Clear previous messages and show gathering status
     this.conversationArea.innerHTML = "";
-    this._displayMessage("Gathering context...", "system");
+    this._displayMessage(`Gathering ${contextType} context...`, "system"); // Reflect context type
 
     try {
-      const contextArray = this.enhancer.domUtils.getCommentContext(
-        this.targetCommentElement
-      );
+      let contextArray = [];
+      const targetCommentId = this.enhancer.domUtils.getCommentId(this.targetCommentElement);
+      const targetAuthor = this.enhancer.domUtils.getCommentAuthor(this.targetCommentElement);
+      const targetText = this.enhancer.domUtils.getCommentText(this.targetCommentElement);
+      const targetCommentData = { id: targetCommentId, author: targetAuthor, text: targetText };
+
+      // Call the appropriate function based on contextType
+      switch (contextType) {
+          case 'parents':
+              // getCommentContext already includes the target, ordered root -> target
+              contextArray = this.enhancer.domUtils.getCommentContext(this.targetCommentElement);
+              break;
+          case 'descendants':
+              // getDescendantComments only gets descendants, so add target manually at the beginning
+              const descendants = this.enhancer.domUtils.getDescendantComments(this.targetCommentElement);
+              if (targetCommentId && targetAuthor !== null) {
+                  contextArray = [targetCommentData, ...descendants];
+              } else {
+                  contextArray = descendants; // Add target only if valid
+              }
+              break;
+          case 'children':
+              // getDirectChildComments only gets children, so add target manually at the beginning
+              const childrenElements = this.enhancer.domUtils.getDirectChildComments(this.targetCommentElement);
+              const childrenData = childrenElements.map(el => ({
+                  id: this.enhancer.domUtils.getCommentId(el),
+                  author: this.enhancer.domUtils.getCommentAuthor(el),
+                  text: this.enhancer.domUtils.getCommentText(el)
+              })).filter(c => c.id && c.author !== null); // Filter out invalid children
+
+              if (targetCommentId && targetAuthor !== null) {
+                   contextArray = [targetCommentData, ...childrenData];
+              } else {
+                  contextArray = childrenData; // Add target only if valid
+              }
+              break;
+          default:
+              console.error("Invalid context type:", contextType);
+              this._displayMessage(`Error: Invalid context type selected: ${contextType}.`, "system");
+              return;
+      }
+
 
       if (!contextArray || contextArray.length === 0) {
         this._displayMessage(
-          "Error: Could not gather comment context.",
+          `Error: Could not gather ${contextType} context.`,
           "system"
         );
         return;
@@ -334,12 +385,29 @@ class ChatModal {
         `Chat: Using AI Provider: ${aiProvider}, Model: ${model || "default"}`
       );
 
-      // --- Prepare Initial System Prompt ---
-      const systemPrompt = `你是一个 Hacker News (HN) 评论助手。下面提供了一系列 HN
-评论，这些评论来自同一个帖子下的一个讨论分支。评论按时间顺序排列，从最顶层的父评论开始，一直到用户发起聊天的目标评论。
+      // --- Prepare Initial System Prompt based on Context Type ---
+      let systemPromptIntro = "";
+      let contextStructureDesc = "";
+
+      switch (contextType) {
+          case 'parents':
+              systemPromptIntro = `你是一个 Hacker News (HN) 评论助手。下面提供了一系列 HN 评论，这些评论来自同一个帖子下的一个讨论分支，按时间顺序从最顶层的父评论到用户发起聊天的目标评论排列。`;
+              contextStructureDesc = `评论上下文结构 (父评论 -> 目标评论):`;
+              break;
+          case 'descendants':
+              systemPromptIntro = `你是一个 Hacker News (HN) 评论助手。下面提供了用户发起聊天的目标评论以及它的所有后代评论（回复）。`;
+              contextStructureDesc = `评论上下文结构 (目标评论 -> 后代评论):`;
+              break;
+          case 'children':
+              systemPromptIntro = `你是一个 Hacker News (HN) 评论助手。下面提供了用户发起聊天的目标评论以及它的所有直接子评论（直接回复）。`;
+              contextStructureDesc = `评论上下文结构 (目标评论 -> 直接子评论):`;
+              break;
+      }
+
+      const systemPrompt = `${systemPromptIntro}
 每个评论都包含了作者和内容。
 
-评论上下文结构如下：
+${contextStructureDesc}
 评论 1 (作者: [作者名]):
 [评论内容]
 -------
@@ -349,8 +417,7 @@ class ChatModal {
 ...
 
 `;
-
-      // Format context into a single string
+      // Format context into a single string (using the gathered contextArray)
       const contextString = contextArray
             .map(
               (c, index) =>
@@ -367,13 +434,12 @@ class ChatModal {
       this.enhancer.logDebug("Initialized conversation history with system prompt and context.");
 
 
-      // Display context loaded message and enable input
-      const totalChars = contextArray.reduce((sum, c) => sum + c.text.length, 0);
+      // Display context loaded message reflecting the type and enable input
+      const totalChars = contextArray.reduce((sum, c) => sum + (c.text?.length || 0), 0);
       this._displayMessage(
-          `Context loaded: ${contextArray.length} comments (${totalChars} chars). Ready for your message.`,
+          `Context loaded (${contextType}): ${contextArray.length} comments (${totalChars} chars). Ready for your message.`,
           "system"
       );
-
 
       // --- Prepare Chat based on Provider (but don't send initial message) ---
       if (aiProvider === "chrome-ai") {
@@ -587,6 +653,37 @@ class ChatModal {
       // If an error occurred, input remains disabled.
     }
   }
+
+  /**
+   * Switches the chat context type, clears the conversation, and re-initiates the chat.
+   * @param {string} newContextType - The new context type ('parents', 'descendants', 'children').
+   * @private
+   */
+  async _switchContext(newContextType) {
+      if (newContextType === this.currentContextType) {
+          this.enhancer.logDebug(`Context type already set to ${newContextType}, no change needed.`);
+          return; // No change needed
+      }
+
+      this.enhancer.logInfo(`Switching chat context to: ${newContextType}`);
+
+      // 1. Update state (will be updated again in _gatherContextAndInitiateChat, but good practice)
+      this.currentContextType = newContextType;
+
+      // 2. Clear conversation area and history
+      this.conversationArea.innerHTML = ""; // Clear visually
+      this.conversationHistory = []; // Clear internal history
+      this.currentLlmMessageElement = null; // Reset stream element
+
+      // 3. Disable input while loading new context
+      this.inputElement.disabled = true;
+      this.sendButton.disabled = true;
+
+      // 4. Re-gather context and initiate chat with the new type
+      //    _gatherContextAndInitiateChat will handle displaying loading message and re-enabling input.
+      await this._gatherContextAndInitiateChat(newContextType);
+  }
+
 
   // TODO: Implement helper to securely get API key if needed by background script
   // async _getApiKeyForProvider(provider) { ... }
