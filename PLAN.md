@@ -246,6 +246,13 @@ After each fix or implementation or research, the changes and info are documente
       - Added detailed logging within each API handler (`handleOpenAIRequest`, `handleGeminiRequest`, etc.) to show the exact payload being sent to the external LLM API just before the `fetch` call.
   - **Result:** The structure of the prompt sent to the LLM is now consistent, using a predefined instruction and formatted context. Debugging is easier due to added logging of message structures and API payloads.
 
+- **Chat UI Refinements (2025-04-10):**
+  - **Goal:** Improve the visual flow of messages in the chat modal.
+  - **Changes:**
+    - **`src/chat-modal.js`:** Modified `_displayMessage` to explicitly remove the "System: Gathering context..." message when the "System: Context loaded..." message is shown. (Commit: b523d14)
+    - **`src/styles.css`:** Removed `text-align: center;` from the `.chat-message-system` class to left-align system messages like user and LLM messages. (Commit: 4b03183)
+  - **Result:** System messages are now left-aligned, and the initial "Gathering context..." message is cleanly removed, improving readability.
+
 6.  **Refinement & Documentation:**
     - Improve UI/UX of the chat modal.
     - Add error handling (e.g., API errors, context gathering failures).
