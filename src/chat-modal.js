@@ -339,10 +339,10 @@ class ChatModal {
                     // Extract and display simplified system message
                     const contextInfo = this._extractContextInfoFromSystemMessage(message.content);
                     // 显示指令部分和评论统计信息
-                    const displayText = contextInfo.promptText 
+                    const displayText = contextInfo.promptText
                         ? `${contextInfo.promptText}\n\n[包含 ${contextInfo.commentCount} 条评论，共 ${contextInfo.charCount} 字符]`
                         : `Loaded previous chat with ${contextInfo.contextType} context: ${contextInfo.commentCount} comments (${contextInfo.charCount} chars).`;
-                    
+
                     this._displayMessage(displayText, "system");
                 } else {
                     // Display user and assistant messages normally
@@ -495,15 +495,12 @@ class ChatModal {
       switch (contextType) {
           case 'parents':
               systemPromptIntro = `你是一个 Hacker News (HN) 评论助手。下面提供了一系列 HN 评论，这些评论来自同一个帖子下的一个讨论分支，按时间顺序从最顶层的父评论到用户发起聊天的目标评论排列。`;
-              contextStructureDesc = `评论上下文结构 (父评论 -> 目标评论):`;
               break;
           case 'descendants':
               systemPromptIntro = `你是一个 Hacker News (HN) 评论助手。下面提供了用户发起聊天的目标评论以及它的所有后代评论（回复）。`;
-              contextStructureDesc = `评论上下文结构 (目标评论 -> 后代评论):`;
               break;
           case 'children':
               systemPromptIntro = `你是一个 Hacker News (HN) 评论助手。下面提供了用户发起聊天的目标评论以及它的所有直接子评论（直接回复）。`;
-              contextStructureDesc = `评论上下文结构 (目标评论 -> 直接子评论):`;
               break;
       }
 
@@ -517,8 +514,6 @@ class ChatModal {
 - 分数：表示评论的重要性分数（1000为最高）
 - 回复数：表示该评论的直接回复数量
 - 踩数：表示评论收到的负面评价数量
-
-${contextStructureDesc}
 
 `;
       // Format context using the enhanced metadata from our context gathering functions
@@ -547,7 +542,7 @@ ${contextStructureDesc}
 
       // Do NOT save initial history here - only save after first AI response
       // Just store it in memory until then
-      
+
       // Display context loaded message with prompt text and context statistics
       const totalChars = contextArray.reduce((sum, c) => sum + (c.text?.length || 0), 0);
       // 从系统消息中提取指令部分
@@ -821,14 +816,14 @@ ${contextStructureDesc}
           charCount: 0,
           promptText: "" // 存储指令部分文本
       };
-      
+
       try {
           // 提取指令部分（从开头到"评论上下文:"之前）
           const promptEndIndex = systemMessage.indexOf("评论上下文:");
           if (promptEndIndex > 0) {
               result.promptText = systemMessage.substring(0, promptEndIndex).trim();
           }
-          
+
           // 确定上下文类型
           if (systemMessage.includes("父评论 -> 目标评论")) {
               result.contextType = "parents";
@@ -837,12 +832,12 @@ ${contextStructureDesc}
           } else if (systemMessage.includes("目标评论 -> 直接子评论")) {
               result.contextType = "children";
           }
-          
+
           // 计算评论数量
           const commentPattern = /\[\d+(?:\.\d+)*\] \(score:/g;
           const matches = systemMessage.match(commentPattern);
           result.commentCount = matches ? matches.length : 0;
-          
+
           // 计算评论部分的字符数
           if (promptEndIndex > 0) {
               const contextPart = systemMessage.substring(promptEndIndex);
@@ -853,7 +848,7 @@ ${contextStructureDesc}
       } catch (error) {
           console.error("Error extracting context info from system message:", error);
       }
-      
+
       return result;
   }
 
