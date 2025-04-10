@@ -350,20 +350,32 @@ After each fix or implementation or research, the changes and info are documente
         - Clear conversation area and `conversationHistory`.
         - Call `_gatherContextAndInitiateChat` with the `newContextType`.
         - Disable input while context is loading.
-4.  **Prompting Update (chat-modal.js, background.js):**
-    - Modify the system prompt generation in `_gatherContextAndInitiateChat` to clearly state the context type being provided (e.g., "Context below includes the target comment and all its parents:", "Context below includes the target comment and all its descendants:", etc.).
-    - Ensure `background.js` handlers receive and can potentially log the context structure if needed for debugging, but the primary change is in the system prompt sent *from* `chat-modal.js`.
-5.  **Testing:**
+4.  **Prompting & Context Structure Update (chat-modal.js, dom-utils.js):** (Decision Made 2025-04-10)
+    - **Decision:** Use JSON format (flat list with `parent_id`) to represent the comment context structure for the LLM, instead of relying on indentation. This provides a more explicit and reliable way for the LLM to understand comment relationships.
+    - **Reasoning:** JSON is standard, easily handled in JS, and less ambiguous for LLMs than inferring structure from indentation. A flat list with `parent_id` balances structural clarity with implementation simplicity compared to a fully nested JSON tree.
+    - **Implementation Plan:**
+        - **`dom-utils.js`:** Modify `getCommentContext`, `getDescendantComments`, `getDirectChildComments` to include `parent_id` (if feasible based on traversal logic) and an `is_target` boolean flag in the returned comment objects.
+        - **`chat-modal.js`:**
+            - In `_gatherContextAndInitiateChat`, serialize the `contextArray` (containing comment objects with `id`, `author`, `text`, `parent_id`, `is_target`) into a JSON string.
+            - Update the system prompt (`systemPrompt`) to:
+                - Explain that the context is provided as a JSON array.
+                - Define the fields in each JSON object (`id`, `author`, `text`, `parent_id`, `is_target`).
+                - Instruct the LLM on how to use `parent_id` (where `null` indicates a root of the snippet) to understand the comment hierarchy.
+                - Mention the `is_target` flag identifies the comment the user initiated the chat from.
+5.  **Testing:** (Next Step)
     - Test opening the chat modal (defaults to "Parents" context).
     - Test switching to "Descendants" context for comments with varying levels of replies.
     - Test switching to "Direct Children" context.
     - Test switching back and forth between context types.
-    - Verify the correct comments are included in the initial system prompt for each type.
+    - Verify the correct comments are included in the initial system prompt (as JSON) for each context type.
     - Verify chat functionality works correctly after switching context.
+    - Verify LLM responses indicate understanding of the comment structure based on the JSON.
 
 **Next Steps:**
 
-- update Prompts for different context types in `chat-modal.js`.
+- Implement the JSON context structure changes:
+    - Modify `dom-utils.js` context gathering functions to include `parent_id` and `is_target`.
+    - Modify `chat-modal.js` to serialize context to JSON and update the system prompt accordingly.
 
 
 # Known Bugs:
