@@ -239,29 +239,60 @@ class Summarization {
   }
 
   /**
-   * Shows a message to configure AI provider
+   * Shows a message to configure AI provider in a specified element or the summary panel.
+   * @param {HTMLElement} [targetElement=null] - Optional element to display the message in. Defaults to summary panel.
    */
-  showConfigureAIMessage() {
+  showConfigureAIMessage(targetElement = null) {
     const message =
       "To use the summarization feature, you need to configure an AI provider. <br/><br/>" +
       'Please <a href="#" id="options-page-link">open the settings page</a> to select and configure your preferred AI provider ' +
       '(OpenAI, Anthropic, <a href="https://ollama.com/" target="_blank">Ollama</a>, <a href="https://openrouter.ai/" target="_blank">OpenRouter</a> ' +
       'or <a href="https://developer.chrome.com/docs/ai/built-in" target="_blank">Chrome Built-in AI</a>).';
 
-    this.enhancer.summaryPanel.updateContent({
-      title: "AI Provider Setup Required",
-      text: message,
-    });
+    const container = targetElement || this.enhancer.summaryPanel.panel;
 
-    // Add event listener after updating content
-    const optionsLink =
-      this.enhancer.summaryPanel.panel.querySelector("#options-page-link");
-    if (optionsLink) {
-      optionsLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        this.openOptionsPage();
+    if (!container) {
+      console.error(
+        "Cannot show configure AI message: No target container found."
+      );
+      return;
+    }
+
+    if (targetElement) {
+      // Display directly in the target element (e.g., chat modal)
+      targetElement.innerHTML = `<div class="chat-message chat-message-system"><strong>System:</strong> ${message}</div>`;
+    } else {
+      // Display in the summary panel using its structure
+      if (!this.enhancer.summaryPanel.isVisible) {
+        this.enhancer.summaryPanel.toggle();
+      }
+      this.enhancer.summaryPanel.updateContent({
+        title: "AI Provider Setup Required",
+        metadata: "", // No metadata needed here
+        text: message,
       });
     }
+
+    // Add event listener after updating content, searching within the correct container
+    const optionsLink = container.querySelector("#options-page-link");
+    if (optionsLink) {
+      // Ensure listener isn't added multiple times if message is shown repeatedly
+      optionsLink.removeEventListener("click", this._handleOptionsLinkClick); // Remove previous if exists
+      optionsLink.addEventListener(
+        "click",
+        this._handleOptionsLinkClick.bind(this)
+      );
+    }
+  }
+
+  /**
+   * Handles the click event for the options page link.
+   * @param {Event} e - The click event.
+   * @private
+   */
+  _handleOptionsLinkClick(e) {
+    e.preventDefault();
+    this.openOptionsPage();
   }
 
   /**

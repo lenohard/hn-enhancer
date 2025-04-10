@@ -363,8 +363,9 @@ After each fix or implementation or research, the changes and info are documente
 
 **Next Steps:**
 
-- Test the context switching feature thoroughly.
+- update Prompts for different context types in `chat-modal.js`.
 
 
 # Known Bugs:
 1. 当有的评论被折叠后，就无法通过点击统计面板里的链接定位到该评论.
+2. 点击 "Chat" 链接后，模态框会打开，会有多余的一条消息：Gathering parents context.... 但是再点击其他上下文之后就没有了。只有正常的: Context loaded (xxx) xxxxx
