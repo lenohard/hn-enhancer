@@ -165,10 +165,11 @@ class ChatModal {
         return;
     }
     this.targetCommentElement = commentElement;
+    this.currentPostId = postId; // Store the post ID
     const commentId = this.enhancer.domUtils.getCommentId(commentElement);
-    this.enhancer.logInfo(`Opening chat for comment ID: ${commentId}`);
+    this.enhancer.logInfo(`Opening chat for post ${postId}, comment ID: ${commentId}`);
 
-    // Reset state
+    // Reset state (partially, history might be loaded)
     this.conversationArea.innerHTML = "<p><em>Gathering context...</em></p>"; // Clear previous chat
     this.inputElement.value = "";
     this.inputElement.disabled = true; // Disable input until context/history is loaded
