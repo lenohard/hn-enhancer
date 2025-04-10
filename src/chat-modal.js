@@ -180,6 +180,15 @@ class ChatModal {
     // DO NOT clear conversationHistory here, it will be loaded or set in _gatherContext...
     // this.conversationHistory = [];
 
+    // Ensure 'parents' option is visible for comment-level chat
+    const parentsRadio = this.contextSelectorContainer.querySelector('#context-parents');
+    const parentsLabel = this.contextSelectorContainer.querySelector('label[for="context-parents"]');
+    
+    if (parentsRadio && parentsLabel) {
+      parentsRadio.style.display = '';
+      parentsLabel.style.display = '';
+    }
+
     this.modalElement.style.display = "flex"; // Show the modal
     // Don't focus input yet, wait for load
 
@@ -218,6 +227,23 @@ class ChatModal {
     this.inputElement.disabled = true;
     this.sendButton.disabled = true;
     
+    // Update context selector UI - hide 'parents' option for post chat
+    const parentsRadio = this.contextSelectorContainer.querySelector('#context-parents');
+    const parentsLabel = this.contextSelectorContainer.querySelector('label[for="context-parents"]');
+    
+    if (parentsRadio && parentsLabel) {
+      parentsRadio.style.display = 'none';
+      parentsLabel.style.display = 'none';
+      
+      // Select descendants by default if parents was selected
+      if (parentsRadio.checked) {
+        const descendantsRadio = this.contextSelectorContainer.querySelector('#context-descendants');
+        if (descendantsRadio) {
+          descendantsRadio.checked = true;
+        }
+      }
+    }
+    
     // Show the modal
     this.modalElement.style.display = "flex";
     
@@ -232,7 +258,6 @@ class ChatModal {
     if (!this.modalElement) return;
     this.modalElement.style.display = "none";
     this.targetCommentElement = null; // Clear target comment
-    this.isPostChat = false; // Reset post chat flag
     
     // Reset modal title if it was changed
     const titleElement = this.modalElement.querySelector(".modal-header h2");
@@ -240,6 +265,18 @@ class ChatModal {
       titleElement.textContent = "Chat about Comment";
     }
     
+    // Show 'parents' option again if it was hidden
+    if (this.isPostChat) {
+      const parentsRadio = this.contextSelectorContainer.querySelector('#context-parents');
+      const parentsLabel = this.contextSelectorContainer.querySelector('label[for="context-parents"]');
+      
+      if (parentsRadio && parentsLabel) {
+        parentsRadio.style.display = '';
+        parentsLabel.style.display = '';
+      }
+    }
+    
+    this.isPostChat = false; // Reset post chat flag
     this.enhancer.logDebug("Chat modal closed.");
   }
 
@@ -919,6 +956,12 @@ ${systemPromptIntro}
 
       this.enhancer.logInfo(`Switching chat context to: ${newContextType}`);
 
+      // For post chat, 'parents' is not applicable
+      if (this.isPostChat && newContextType === 'parents') {
+          this.enhancer.logDebug(`'parents' context not applicable for post chat, using 'descendants' instead.`);
+          newContextType = 'descendants';
+      }
+
       // 1. Update state (will be updated again in _gatherContextAndInitiateChat, but good practice)
       this.currentContextType = newContextType;
 
@@ -1020,23 +1063,6 @@ ${systemPromptIntro}
     this.currentModel = null; // Reset model for this session/context
     this.conversationHistory = []; // Clear history before loading/gathering
     this.commentPathToIdMap = new Map(); // 重置评论路径到ID的映射
-    
-    // Update context selector UI - hide 'parents' option for post chat
-    const parentsRadio = this.contextSelectorContainer.querySelector('#context-parents');
-    const parentsLabel = this.contextSelectorContainer.querySelector('label[for="context-parents"]');
-    
-    if (parentsRadio && parentsLabel) {
-      parentsRadio.style.display = 'none';
-      parentsLabel.style.display = 'none';
-      
-      // Select descendants by default if parents was selected
-      if (parentsRadio.checked) {
-        const descendantsRadio = this.contextSelectorContainer.querySelector('#context-descendants');
-        if (descendantsRadio) {
-          descendantsRadio.checked = true;
-        }
-      }
-    }
     
     this.enhancer.logDebug(`Initiating post chat for post ${this.currentPostId}, context: ${contextType}`);
     this.conversationArea.innerHTML = ""; // Clear display area
