@@ -385,10 +385,10 @@ After each fix or implementation or research, the changes and info are documente
 
 **Sub-tasks:**
 
-1.  **Storage Strategy:**
+1.  **Storage Strategy:** (Completed)
     - Use `chrome.storage.local` for persistence.
     - Define storage key: `chatHistory_<postId>_<commentId>_<contextType>`.
-2.  **HNState Integration (`src/hn-state.js`):**
+2.  **HNState Integration (`src/hn-state.js`):** (Completed)
     - Add `saveChatHistory(postId, commentId, contextType, history)` function.
     - Add `getChatHistory(postId, commentId, contextType)` function.
     - Add `clearChatHistory(postId, commentId, contextType)` function (optional for now).
@@ -412,6 +412,8 @@ After each fix or implementation or research, the changes and info are documente
 # Known Bugs:
 1. 当有的评论被折叠后，就无法通过点击统计面板里的链接定位到该评论.
 2. 点击 "Chat" 链接后，模态框会打开，会有多余的一条消息：Gathering parents context.... 但是再点击其他上下文之后就没有了。只有正常的: Context loaded (xxx) xxxxx
+# TODO:
+3. 通过点击聊天中的评论来在页面里定位到那里。
 
 # Notes:
 
