@@ -363,7 +363,7 @@ class ChatModal {
 
         // --- No History Found - Gather Context ---
         this.enhancer.logDebug(`No history found for ${postId}/${commentId}/${contextType}. Gathering context...`);
-        this._displayMessage(`Gathering ${contextType} context...`, "system"); // Show gathering status
+        // this._displayMessage(`Gathering ${contextType} context...`, "system"); // Show gathering status
 
         let contextArray = [];
         const targetCommentId = this.enhancer.domUtils.getCommentId(this.targetCommentElement);
@@ -385,7 +385,7 @@ class ChatModal {
               const targetDownvotes = this.enhancer.domUtils.getDownvoteCount(
                 this.targetCommentElement.querySelector(".commtext")
               ) || 0;
-              
+
               // Create enhanced target comment object
               const enhancedTarget = {
                 id: targetCommentId,
@@ -397,10 +397,10 @@ class ChatModal {
                 downvotes: targetDownvotes,
                 isTarget: true
               };
-              
+
               // Get enhanced descendants
               const descendants = this.enhancer.domUtils.getDescendantComments(this.targetCommentElement);
-              
+
               // Combine target with descendants
               if (targetCommentId && targetAuthor !== null) {
                   contextArray = [enhancedTarget, ...descendants];
@@ -416,7 +416,7 @@ class ChatModal {
               const targetDownvotesForChildren = this.enhancer.domUtils.getDownvoteCount(
                 this.targetCommentElement.querySelector(".commtext")
               ) || 0;
-              
+
               // Create enhanced target comment object
               const enhancedTargetForChildren = {
                 id: targetCommentId,
@@ -428,10 +428,10 @@ class ChatModal {
                 downvotes: targetDownvotesForChildren,
                 isTarget: true
               };
-              
+
               // Get enhanced direct children
               const childrenData = this.enhancer.domUtils.getDirectChildCommentsWithMetadata(this.targetCommentElement);
-              
+
               // Combine target with children
               if (targetCommentId && targetAuthor !== null) {
                   contextArray = [enhancedTargetForChildren, ...childrenData];

@@ -379,7 +379,7 @@ After each fix or implementation or research, the changes and info are documente
   - **Result:** 确认函数位置正确，无需代码更改。聊天上下文切换功能经测试已正常工作。
 
 
-# Feature Plan: Chat History Persistence
+# Feature Plan: Chat History Persistence (Completed)
 
 **Goal:** Implement a mechanism to save and load chat conversations locally, so users can resume their chat about a specific comment and context type after closing and reopening the modal.
 
@@ -392,29 +392,24 @@ After each fix or implementation or research, the changes and info are documente
     - Add `saveChatHistory(postId, commentId, contextType, history)` function.
     - Add `getChatHistory(postId, commentId, contextType)` function.
     - Add `clearChatHistory(postId, commentId, contextType)` function (optional for now).
-3.  **HNEnhancer Update (`src/hn-enhancer.js`):**
+3.  **HNEnhancer Update (`src/hn-enhancer.js`):**(Completed)
     - Modify `openChatModal` to retrieve the current `postId` using `DomUtils.getCurrentHNItemId()`.
     - Pass the `postId` to the `ChatModal.open` method.
-4.  **ChatModal Logic Update (`src/chat-modal.js`):**
+4.  **ChatModal Logic Update (`src/chat-modal.js`):**(Completed)
     - Store `postId` in the `ChatModal` instance.
     - **Loading:** In `_gatherContextAndInitiateChat`, call `HNState.getChatHistory`. If history exists, load it, render messages, and skip initial context generation.
     - **Saving:**
         - In `_gatherContextAndInitiateChat`, after successfully loading *new* context (when no history was found), save the initial history (system prompt + context) using `HNState.saveChatHistory`.
         - In `_sendMessageToAI`, after receiving an AI response and adding it to `this.conversationHistory`, save the updated history using `HNState.saveChatHistory`.
     - **Clearing:** Consider adding a "Clear Chat" button in the future.
-5.  **Testing:**
-    - Start a chat, send messages, close modal.
-    - Reopen chat for the same comment/context, verify history loads.
-    - Switch context, verify new chat starts (or loads previous history for *that* context).
-    - Close and reopen after switching context, verify correct history loads.
-    - Test with different comments and posts.
-- **Result:** Chat history is now saved per post, comment, and context type using `chrome.storage.local`. History is loaded when opening the chat modal, and saved after each AI response or when initial context is generated.
 
 # Known Bugs:
 1. 当有的评论被折叠后，就无法通过点击统计面板里的链接定位到该评论.
 2. 点击 "Chat" 链接后，模态框会打开，会有多余的一条消息：Gathering parents context.... 但是再点击其他上下文之后就没有了。只有正常的: Context loaded (xxx) xxxxx
 # TODO:
-3. 通过点击聊天中的评论来在页面里定位到那里。
+1. 通过点击聊天中的评论来在页面里定位到那里。
+2. 删除不必要的logging
+
 
 # Notes:
 
