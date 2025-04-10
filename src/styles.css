@@ -446,7 +446,7 @@
     background-color: #f6f6ef;
     border-radius: 4px;
     padding: 10px 15px; /* Adjusted padding */
-    margin: 10px 8px; /* Adjusted margin */
+    margin: 10px 8px 30px 8px; /* Adjusted margin */
     font-family: Verdana, Geneva, sans-serif;
     font-size: 12px;
     color: #333; /* Slightly darker text */
