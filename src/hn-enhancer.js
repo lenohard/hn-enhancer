@@ -479,15 +479,8 @@ window.HNEnhancer = class HNEnhancer {
         }
       },
       i: () => {
-        // Toggle collapse/expand grandchildren using the extracted method
-        if (this.currentComment) {
-          // Ensure currentComment is passed correctly
-          this.toggleGrandchildrenCollapse(this.currentComment);
-        } else {
-          console.warn(
-            "[HNE] 'i' shortcut pressed but no current comment selected."
-          );
-        }
+        // 切换显示/隐藏聊天窗口
+        this.toggleChatModal();
       },
     };
   }
@@ -929,6 +922,34 @@ window.HNEnhancer = class HNEnhancer {
       this.chatModal.openForPost(postId); // Use new method for post-level chat
     } else {
       console.error("ChatModal instance not found.");
+    }
+  }
+  
+  /**
+   * 切换聊天窗口的显示/隐藏状态
+   * 如果窗口未打开，则打开帖子级聊天
+   * 如果窗口已打开，则隐藏它
+   */
+  toggleChatModal() {
+    if (!this.chatModal) {
+      console.error("ChatModal instance not found.");
+      return;
+    }
+    
+    // 检查聊天窗口是否已经可见
+    if (this.chatModal.isVisible) {
+      // 如果可见，则隐藏
+      this.chatModal.hide();
+      this.logDebug("Chat modal hidden via keyboard shortcut.");
+    } else {
+      // 如果不可见，则打开帖子级聊天
+      const postId = this.domUtils.getCurrentHNItemId();
+      if (!postId) {
+        console.error("Could not determine post ID to open chat modal.");
+        return;
+      }
+      this.chatModal.openForPost(postId);
+      this.logDebug("Post chat modal opened via keyboard shortcut.");
     }
   }
 }; // <-- Moved openChatModal inside the class and kept the final brace

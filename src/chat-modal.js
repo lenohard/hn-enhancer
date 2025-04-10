@@ -22,6 +22,7 @@ class ChatModal {
     this.contextSelectorContainer = null; // Container for context radio buttons
     this.commentPathToIdMap = new Map(); // 存储评论路径到ID的映射，用于点击跳转
     this.isPostChat = false; // Flag to indicate if this is a post-level chat
+    this.isVisible = false; // 跟踪模态框是否可见
 
     this._createModalElement();
     this._addEventListeners();
@@ -113,19 +114,19 @@ class ChatModal {
     if (!this.modalElement) return;
 
     // Close button
-    this.closeButton.addEventListener("click", () => this.close());
+    this.closeButton.addEventListener("click", () => this.hide());
 
     // Close on Escape key
     this.modalElement.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
-        this.close();
+        this.hide();
       }
     });
 
     // Close on clicking outside the modal content (optional)
     this.modalElement.addEventListener("click", (e) => {
       if (e.target === this.modalElement) {
-        this.close();
+        this.hide();
       }
     });
 
@@ -166,6 +167,13 @@ class ChatModal {
         // Optionally display an error to the user
         return;
     }
+    
+    // 如果模态框已经可见且是相同的评论，则直接返回
+    if (this.isVisible && this.targetCommentElement === commentElement) {
+      this.enhancer.logDebug("Chat modal already open for this comment.");
+      return;
+    }
+    
     this.isPostChat = false; // This is a comment-level chat
     this.targetCommentElement = commentElement;
     this.currentPostId = postId; // Store the post ID
@@ -189,7 +197,7 @@ class ChatModal {
       parentsLabel.style.display = '';
     }
 
-    this.modalElement.style.display = "flex"; // Show the modal
+    this.show(); // 显示模态框
     // Don't focus input yet, wait for load
 
     // Trigger context/history loading and potential chat initiation
@@ -207,6 +215,13 @@ class ChatModal {
     }
     if (!postId) {
       console.error("ChatModal.openForPost called without a postId.");
+      return;
+    }
+    
+    // 如果模态框已经可见且是帖子级聊天，则直接返回或隐藏
+    if (this.isVisible && this.isPostChat) {
+      this.enhancer.logDebug("Post chat modal already open, toggling visibility.");
+      this.hide();
       return;
     }
     
@@ -244,19 +259,18 @@ class ChatModal {
       }
     }
     
-    // Show the modal
-    this.modalElement.style.display = "flex";
+    this.show(); // 显示模态框
     
     // Trigger context gathering for post
     this._gatherPostContextAndInitiateChat();
   }
 
   /**
-   * Closes the chat modal.
+   * 完全关闭聊天模态框，重置所有状态
    */
   close() {
     if (!this.modalElement) return;
-    this.modalElement.style.display = "none";
+    this.hide(); // 隐藏模态框
     this.targetCommentElement = null; // Clear target comment
     
     // Reset modal title if it was changed
@@ -278,6 +292,26 @@ class ChatModal {
     
     this.isPostChat = false; // Reset post chat flag
     this.enhancer.logDebug("Chat modal closed.");
+  }
+
+  /**
+   * 隐藏聊天模态框，但保留状态
+   */
+  hide() {
+    if (!this.modalElement) return;
+    this.modalElement.style.display = "none";
+    this.isVisible = false;
+    this.enhancer.logDebug("Chat modal hidden.");
+  }
+
+  /**
+   * 显示聊天模态框
+   */
+  show() {
+    if (!this.modalElement) return;
+    this.modalElement.style.display = "flex";
+    this.isVisible = true;
+    this.enhancer.logDebug("Chat modal shown.");
   }
 
   /**
