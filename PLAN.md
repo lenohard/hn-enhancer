@@ -98,7 +98,28 @@ After each fix or implementation or research, the changes and info are documente
 
 **Goal:** Allow users to initiate a chat session with an LLM focused on a specific Hacker News comment, automatically providing the context of the comment and its parent thread.
 
-**Sub-tasks:**
+* Related Components  
+ • src/hn-enhancer.js
+    • injectChatLink(): 注入 "Chat" 链接并添加事件监听器。
+    • openChatModal(): 实现打开聊天模态框的逻辑。
+ • src/chat-modal.js (需要添加此文件到聊天中)
+    • ChatModal 类: 实现聊天 UI 和核心逻辑。
+    • _gatherContextAndInitiateChat(): 获取评论上下文并开始聊天。
+    • _sendMessageToAI(): 将消息发送给 AI 提供者。
+    • _displayMessage(): 显示聊天消息 (需要修复 Markdown 渲染调用)。
+ • src/styles.css
+    • 添加聊天模态框和链接的 CSS 规则 (例如 .hn-enhancer-modal, .chat-modal-content, .hn-chat-link)。
+ • src/api-client.js
+    • sendBackgroundMessage(): 确保能正确处理发送到 background 脚本的聊天请求消息。
+ • src/summarization.js
+    • showConfigureAIMessage(): 修改以支持在聊天模态框中显示配置消息。
+    • getAIProviderModel(): 可能被 ChatModal 用来获取当前 AI 设置。
+ • background.js
+    • onMessage 监听器: 添加处理 HN_CHAT_REQUEST 消息类型的 case。
+    • handleChatRequest(): 添加此新函数来处理聊天请求，调用相应的 LLM API 处理器。
+ • src/dom-utils.js
+    • getCommentContext(): 需要实现或完善此函数以获取目标评论及其父评论的文本内容。
+
 
 1.  **UI Integration:**
 
@@ -124,29 +145,6 @@ After each fix or implementation or research, the changes and info are documente
       - A "Send" button.
     - **Communication:** Handle sending the user's input (prepended with conversation history for context) to the LLM and displaying the streamed or complete response.
     - **Files:** `src/chat-modal.js`, `src/summarization.js` , `src/api-client.js` .
-
-为了实现“Chat with LLM about Comment”功能，
-所有需要修改的文件及其相关符号：
- • src/hn-enhancer.js
-    • injectChatLink(): 注入 "Chat" 链接并添加事件监听器。
-    • openChatModal(): 实现打开聊天模态框的逻辑。
- • src/chat-modal.js (需要添加此文件到聊天中)
-    • ChatModal 类: 实现聊天 UI 和核心逻辑。
-    • _gatherContextAndInitiateChat(): 获取评论上下文并开始聊天。
-    • _sendMessageToAI(): 将消息发送给 AI 提供者。
-    • _displayMessage(): 显示聊天消息 (需要修复 Markdown 渲染调用)。
- • src/styles.css
-    • 添加聊天模态框和链接的 CSS 规则 (例如 .hn-enhancer-modal, .chat-modal-content, .hn-chat-link)。
- • src/api-client.js
-    • sendBackgroundMessage(): 确保能正确处理发送到 background 脚本的聊天请求消息。
- • src/summarization.js
-    • showConfigureAIMessage(): 修改以支持在聊天模态框中显示配置消息。
-    • getAIProviderModel(): 可能被 ChatModal 用来获取当前 AI 设置。
- • background.js
-    • onMessage 监听器: 添加处理 HN_CHAT_REQUEST 消息类型的 case。
-    • handleChatRequest(): 添加此新函数来处理聊天请求，调用相应的 LLM API 处理器。
- • src/dom-utils.js
-    • getCommentContext(): 需要实现或完善此函数以获取目标评论及其父评论的文本内容。
 
 
 4.  **Integration:**
@@ -291,5 +289,3 @@ After each fix or implementation or research, the changes and info are documente
 
 # Known Bugs:
 1. 当有的评论被折叠后，就无法通过点击统计面板里的链接定位到该评论.
-
-# TODO
