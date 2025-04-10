@@ -202,25 +202,19 @@ class ChatModal {
    * @private
    */
   _displayMessage(text, sender, isStreaming = false) {
-    // Clear initial "Loading..." or "Gathering context..." message if it's the first non-system message
-    const initialMessage = this.conversationArea.querySelector("p > em");
-    if (initialMessage && sender !== "system") {
-      initialMessage.remove();
+    // Find and remove the specific "Gathering context..." message element if it exists
+    const gatheringMsgElement = Array.from(this.conversationArea.querySelectorAll(".chat-message-system"))
+                                     .find(el => el.textContent.includes("Gathering context..."));
+    if (gatheringMsgElement) {
+        gatheringMsgElement.remove();
     }
-    // Also clear "Gathering context..." if it exists and we are showing the first real message
-    const gatheringMsg = this.conversationArea.querySelector(
-      ".chat-message-system"
-    );
-    if (
-      gatheringMsg &&
-      gatheringMsg.textContent.includes("Gathering context") &&
-      sender !== "system"
-    ) {
-      if (this.conversationArea.children.length <= 1) {
-        // Only remove if it's the only message
-        this.conversationArea.innerHTML = "";
-      }
+
+    // Clear any remaining initial placeholder like "Loading context..."
+    const initialPlaceholder = this.conversationArea.querySelector("p > em");
+    if (initialPlaceholder) {
+        initialPlaceholder.remove();
     }
+
 
     // If streaming and it's an LLM message, update the existing element
     if (sender === "llm" && isStreaming && this.currentLlmMessageElement) {
