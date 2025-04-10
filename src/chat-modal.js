@@ -20,6 +20,7 @@ class ChatModal {
     this.conversationHistory = []; // To store the full chat history { role, content }
     this.currentContextType = 'parents'; // Default context type: 'parents', 'descendants', 'children'
     this.contextSelectorContainer = null; // Container for context radio buttons
+    this.commentPathToIdMap = new Map(); // 存储评论路径到ID的映射，用于点击跳转
 
     this._createModalElement();
     this._addEventListeners();
@@ -262,13 +263,19 @@ class ChatModal {
         initialPlaceholder.remove();
     }
 
-
     // If streaming and it's an LLM message, update the existing element
     if (sender === "llm" && isStreaming && this.currentLlmMessageElement) {
+      // 处理LLM回复中的评论引用
+      const processedText = this.enhancer.markdownUtils.replacePathsWithCommentLinks(
+        this.enhancer.markdownUtils.convertMarkdownToHTML(text),
+        this.commentPathToIdMap
+      );
+      
       // Append text, rendering markdown for the new chunk
-      // Note: Simple markdown rendering might not perfectly handle partial tags across chunks.
-      this.currentLlmMessageElement.innerHTML +=
-        this.enhancer.markdownUtils.renderSimpleMarkdown(text);
+      this.currentLlmMessageElement.innerHTML += processedText;
+      
+      // 为新添加的评论链接添加点击事件
+      this._addCommentLinkHandlers(this.currentLlmMessageElement);
     } else {
       // Otherwise, create a new message element
       const messageElement = document.createElement("div");
@@ -279,9 +286,18 @@ class ChatModal {
         sender === "user" ? "You: " : sender === "llm" ? "LLM: " : "System: ";
 
       const textElement = document.createElement("span");
-      // Render markdown for the complete initial text
-      textElement.innerHTML =
-        this.enhancer.markdownUtils.convertMarkdownToHTML(text);
+      
+      // 根据发送者类型处理文本
+      if (sender === "llm") {
+        // 处理LLM回复中的评论引用
+        textElement.innerHTML = this.enhancer.markdownUtils.replacePathsWithCommentLinks(
+          this.enhancer.markdownUtils.convertMarkdownToHTML(text),
+          this.commentPathToIdMap
+        );
+      } else {
+        // 普通Markdown渲染
+        textElement.innerHTML = this.enhancer.markdownUtils.convertMarkdownToHTML(text);
+      }
 
       messageElement.appendChild(senderElement);
       messageElement.appendChild(textElement);
@@ -293,10 +309,43 @@ class ChatModal {
       } else {
         this.currentLlmMessageElement = null; // Reset if not streaming LLM
       }
+      
+      // 为LLM消息中的评论链接添加点击事件
+      if (sender === "llm") {
+        this._addCommentLinkHandlers(textElement);
+      }
     }
 
     // Scroll to bottom
     this.conversationArea.scrollTop = this.conversationArea.scrollHeight;
+  }
+  
+  /**
+   * 为评论链接添加点击事件处理器
+   * @param {HTMLElement} container - 包含评论链接的容器元素
+   * @private
+   */
+  _addCommentLinkHandlers(container) {
+    const commentLinks = container.querySelectorAll('[data-comment-link="true"]');
+    commentLinks.forEach(link => {
+      // 移除现有的事件监听器（如果有）
+      const newLink = link.cloneNode(true);
+      link.parentNode.replaceChild(newLink, link);
+      
+      newLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        const id = newLink.dataset.commentId;
+        const comment = document.getElementById(id);
+        if (comment) {
+          // 使用navigation模块跳转到评论
+          this.enhancer.navigation.setCurrentComment(comment);
+          // 可选：关闭聊天模态框
+          // this.close();
+        } else {
+          console.error("Failed to find DOM element for comment id:", id);
+        }
+      });
+    });
   }
 
   /**
@@ -312,6 +361,7 @@ class ChatModal {
     this.currentAiProvider = null; // Reset provider for this session/context
     this.currentModel = null; // Reset model for this session/context
     this.conversationHistory = []; // Clear history before loading/gathering
+    this.commentPathToIdMap = new Map(); // 重置评论路径到ID的映射
 
     const commentId = this.enhancer.domUtils.getCommentId(this.targetCommentElement);
     const postId = this.currentPostId; // Use stored postId
@@ -333,6 +383,12 @@ class ChatModal {
             this.enhancer.logInfo(`Loaded existing chat history for ${postId}/${commentId}/${contextType}`);
             this.conversationHistory = loadedHistory;
 
+            // 从系统消息中提取评论路径到ID的映射
+            const systemMessage = this.conversationHistory.find(msg => msg.role === 'system');
+            if (systemMessage) {
+                this._extractCommentPathsFromSystemMessage(systemMessage.content);
+            }
+      
             // Render loaded history with simplified system message
             this.conversationHistory.forEach(message => {
                 if (message.role === 'system') {
@@ -419,6 +475,12 @@ class ChatModal {
               } else {
                   contextArray = descendants;
               }
+      
+              // 构建路径到ID的映射
+              this.commentPathToIdMap = new Map();
+              contextArray.forEach(comment => {
+                  this.commentPathToIdMap.set(comment.path, comment.id);
+              });
               break;
           case 'children':
               // Get target comment with metadata (similar to descendants case)
@@ -450,6 +512,12 @@ class ChatModal {
               } else {
                   contextArray = childrenData;
               }
+      
+              // 构建路径到ID的映射
+              this.commentPathToIdMap = new Map();
+              contextArray.forEach(comment => {
+                  this.commentPathToIdMap.set(comment.path, comment.id);
+              });
               break;
           default:
               console.error("Invalid context type:", contextType);
@@ -534,6 +602,14 @@ ${systemPromptIntro}
               );
             })
             .join("\n\n");
+            
+      // 构建路径到ID的映射（如果之前没有构建）
+      if (this.commentPathToIdMap.size === 0) {
+          this.commentPathToIdMap = new Map();
+          contextArray.forEach(comment => {
+              this.commentPathToIdMap.set(comment.path, comment.id);
+          });
+      }
 
       // Add the system prompt and context as the first message(s) in the history
       // Option 1: Single system message (preferred if APIs handle it well)
@@ -855,6 +931,35 @@ ${systemPromptIntro}
       }
 
       return result;
+  }
+  
+  /**
+   * 从系统消息中提取评论路径到ID的映射
+   * @param {string} systemMessage - 系统消息内容
+   * @private
+   */
+  _extractCommentPathsFromSystemMessage(systemMessage) {
+      try {
+          // 重置映射
+          this.commentPathToIdMap = new Map();
+          
+          // 查找所有评论路径和ID
+          const commentLines = systemMessage.split('\n\n');
+          const pathIdRegex = /\[(\d+(?:\.\d+)*)\].*?(\d+):/;
+          
+          commentLines.forEach(line => {
+              const match = line.match(pathIdRegex);
+              if (match && match.length >= 3) {
+                  const path = match[1];
+                  const id = match[2];
+                  this.commentPathToIdMap.set(path, id);
+              }
+          });
+          
+          this.enhancer.logDebug(`从系统消息中提取了 ${this.commentPathToIdMap.size} 个评论路径到ID的映射`);
+      } catch (error) {
+          console.error("从系统消息中提取评论路径到ID的映射时出错:", error);
+      }
   }
 
   /**
