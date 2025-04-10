@@ -588,6 +588,12 @@ ${systemPromptIntro}
 - 回复数：表示该评论的直接回复数量
 - 踩数：表示评论收到的负面评价数量
 
+当你需要引用特定评论时，请使用其层级路径，格式为 [1.2.3]。这样用户就可以点击这些引用直接跳转到对应的评论。例如：
+- "正如 [1.2] 中提到的..."
+- "我同意 [2.1] 的观点，但是..."
+- "根据 [1] 和 [3.2] 的讨论..."
+
+请确保在你的回复中使用这种格式引用评论，这样用户就可以轻松地查看原始评论内容。
 `;
       // Format context using the enhanced metadata from our context gathering functions
       const contextString = contextArray
