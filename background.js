@@ -13,15 +13,24 @@ async function onInstalled() {
 
 // Handle Gemini API requests
 async function handleGeminiRequest(data) {
-  // Now expects messages array instead of systemPrompt/userPrompt
-  const { apiKey, model, messages } = data;
+  // Handle both formats: messages array or systemPrompt/userPrompt
+  const { apiKey, model, messages, systemPrompt, userPrompt } = data;
 
   console.log("处理Gemini API请求，模型:", model);
 
-  // Validate required parameters
-  if (!apiKey || !model || !messages || messages.length === 0) {
-    console.error("Gemini API请求缺少必要参数 (apiKey, model, or messages)");
+  // Validate required parameters - support both formats
+  if (!apiKey || !model || (!messages && (!systemPrompt || !userPrompt))) {
+    console.error("Gemini API请求缺少必要参数 (apiKey, model, or messages/prompts)");
     throw new Error("Missing required parameters for Gemini API request");
+  }
+
+  // Convert systemPrompt/userPrompt format to messages format if needed
+  let processedMessages = messages;
+  if (!messages && systemPrompt && userPrompt) {
+    processedMessages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ];
   }
 
   const endpoint =
@@ -42,7 +51,7 @@ async function handleGeminiRequest(data) {
   const geminiContents = [];
   let lastRole = null;
 
-  for (const message of messages) {
+  for (const message of processedMessages) {
       if (message.role === 'system') {
           systemPromptContent = message.content;
           continue; // Skip adding system message directly to contents
