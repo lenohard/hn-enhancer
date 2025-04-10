@@ -408,7 +408,7 @@ After each fix or implementation or research, the changes and info are documente
 [x] 2. 点击 "Chat" 链接后，模态框会打开，会有多余的一条消息：Gathering parents context.... 但是再点击其他上下文之后就没有了。只有正常的: Context loaded (xxx) xxxxx 
 
 # TODO:
-1. 通过点击聊天中的评论来在页面里定位到那里。
+1. ~~通过点击聊天中的评论来在页面里定位到那里。~~ (已完成)
 2. 删除不必要的logging
 
 # 已完成改进 (2025-04-10):
@@ -423,6 +423,20 @@ After each fix or implementation or research, the changes and info are documente
   - 减少存储空间使用
   - 避免保存未完成的对话
   - 提高历史记录加载时的可读性
+
+## 聊天模态框中评论引用点击跳转功能
+- **功能**: 在聊天模态框中点击LLM回复中的评论引用（如`[1.2]`格式的路径）可以直接跳转到对应的评论
+- **实现细节**:
+  - 添加了 `commentPathToIdMap` 属性来存储评论路径到ID的映射
+  - 在收集上下文时构建这个映射关系
+  - 修改了 `_displayMessage` 方法，使用 `markdownUtils.replacePathsWithCommentLinks` 处理LLM回复
+  - 添加了 `_addCommentLinkHandlers` 方法为评论链接添加点击事件
+  - 添加了 `_extractCommentPathsFromSystemMessage` 方法从历史系统消息中提取映射
+  - 更新了系统提示，指导LLM使用正确的格式引用评论
+- **好处**:
+  - 提高了聊天体验，使用户可以轻松查看被引用的评论
+  - 与摘要面板中的评论引用功能保持一致
+  - 帮助用户更好地理解LLM回复中提到的具体评论内容
 
 
 # Notes:
