@@ -226,6 +226,46 @@ After each fix or implementation or research, the changes and info are documente
     - Modified `api-client.js` `sendBackgroundMessage` to log duration separately and not attempt to modify the potentially non-object `response.data`.
   - **Result:** Chat functionality with Gemini provider is now working correctly. Messages are sent, responses are received and displayed without type errors.
 
+# Feature Plan: Chat Context Switching
+
+**Goal:** Allow users to switch the context provided to the LLM within the chat modal. Currently, it uses the target comment and its parents. Add options to use the target comment and its descendants, or the target comment and its direct children.
+
+**Sub-tasks:**
+
+1.  **UI Implementation (chat-modal.js, styles.css):**
+    - Add UI elements (e.g., radio buttons, dropdown) in the chat modal header or near the input area to select context type: "Parents" (default), "Descendants", "Direct Children".
+    - Style the new UI elements for clarity and consistency.
+2.  **Context Gathering Logic (dom-utils.js):**
+    - Implement `getDescendantComments(targetCommentElement)`: Traverse DOM *downwards* from the target comment, collecting all comments with greater indentation until indentation returns to the target's level or less. Handle nested structures correctly.
+    - Move/Refactor `_getDirectChildComments` from `hn-enhancer.js` to `dom-utils.js` as `getDirectChildComments(targetCommentElement)` and ensure it works correctly.
+3.  **Chat Modal Logic Update (chat-modal.js):**
+    - Add state variable `currentContextType` (default: 'parents').
+    - Modify `_gatherContextAndInitiateChat` to:
+        - Accept `contextType` parameter.
+        - Call the appropriate `dom-utils` function (`getCommentContext`, `getDescendantComments`, `getDirectChildComments`) based on `contextType`.
+        - Format the gathered comments into the initial `conversationHistory` (system prompt).
+        - Update the initial "Context loaded..." message to reflect the type and count.
+    - Add event listeners to the context switching UI elements.
+    - Implement a `_switchContext(newContextType)` method:
+        - Update `currentContextType`.
+        - Clear conversation area and `conversationHistory`.
+        - Call `_gatherContextAndInitiateChat` with the `newContextType`.
+        - Disable input while context is loading.
+4.  **Prompting Update (chat-modal.js, background.js):**
+    - Modify the system prompt generation in `_gatherContextAndInitiateChat` to clearly state the context type being provided (e.g., "Context below includes the target comment and all its parents:", "Context below includes the target comment and all its descendants:", etc.).
+    - Ensure `background.js` handlers receive and can potentially log the context structure if needed for debugging, but the primary change is in the system prompt sent *from* `chat-modal.js`.
+5.  **Testing:**
+    - Test opening the chat modal (defaults to "Parents" context).
+    - Test switching to "Descendants" context for comments with varying levels of replies.
+    - Test switching to "Direct Children" context.
+    - Test switching back and forth between context types.
+    - Verify the correct comments are included in the initial system prompt for each type.
+    - Verify chat functionality works correctly after switching context.
+
+**Next Steps:**
+
+- Implement UI elements for context switching in `chat-modal.js` and `styles.css`.
+
 - **Debugging Parent Comment Traversal (Commits `a33a691`, `4a26318`, `5df120a`):**
   - **Issue:** The `getCommentContext` function in `src/dom-utils.js` failed to find parent comments, logging "No parent link found..." even when the link was visible.
   - **Investigation:**
