@@ -17,6 +17,8 @@ class ChatModal {
     this.aiSession = null; // To hold the Chrome AI session
     this.currentLlmMessageElement = null; // To hold the element for the currently streaming LLM response
     this.conversationHistory = []; // To store the full chat history { role, content }
+    this.currentContextType = 'parents'; // Default context type: 'parents', 'descendants', 'children'
+    this.contextSelectorContainer = null; // Container for context radio buttons
 
     this._createModalElement();
     this._addEventListeners();

@@ -738,3 +738,40 @@ tr.athing.comtr.noshow .comhead .togg {
 .highlight-stat-target > td {
     animation: highlight-pulse 2s ease-out;
 }
+
+/* --- Chat Context Selector --- */
+.chat-context-selector {
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    background-color: #ffffff; /* Match conversation area background */
+    border: 1px solid #e0e0e0; /* Match conversation area border */
+    border-radius: 4px;
+    font-size: 12px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+}
+
+.chat-context-selector label:first-of-type { /* Style the main "Context:" label */
+    font-weight: bold;
+    margin-right: 10px;
+    color: #555;
+}
+
+.chat-context-selector input[type="radio"] {
+    margin-left: 15px; /* Space before radio button */
+    margin-right: 4px; /* Space between radio and its label */
+    cursor: pointer;
+}
+
+.chat-context-selector label:not(:first-of-type) { /* Style labels for radio buttons */
+    margin-right: 15px; /* Space after radio button label */
+    cursor: pointer;
+    color: #666;
+}
+
+.chat-context-selector input[type="radio"]:checked + label {
+    color: #ff6600; /* Highlight label for selected radio */
+    font-weight: bold;
+}
