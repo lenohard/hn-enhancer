@@ -408,6 +408,7 @@ After each fix or implementation or research, the changes and info are documente
     - Switch context, verify new chat starts (or loads previous history for *that* context).
     - Close and reopen after switching context, verify correct history loads.
     - Test with different comments and posts.
+- **Result:** Chat history is now saved per post, comment, and context type using `chrome.storage.local`. History is loaded when opening the chat modal, and saved after each AI response or when initial context is generated.
 
 # Known Bugs:
 1. 当有的评论被折叠后，就无法通过点击统计面板里的链接定位到该评论.
