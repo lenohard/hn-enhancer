@@ -151,12 +151,14 @@ class DomUtils {
       console.error("getCommentContext: targetCommentElement is null");
       return context;
     }
+    console.log("[DEBUG] getCommentContext: Starting context gathering for target:", targetCommentElement.id); // Added log
 
     let currentElement = targetCommentElement;
     const visitedIds = new Set(); // Prevent infinite loops in case of weird DOM structures
 
     while (currentElement) {
       const commentId = DomUtils.getCommentId(currentElement);
+      console.log("[DEBUG] getCommentContext: Processing element:", commentId); // Added log
 
       // Prevent loops
       if (!commentId || visitedIds.has(commentId)) {
@@ -164,6 +166,7 @@ class DomUtils {
           console.warn(
             `getCommentContext: Loop detected at comment ID: ${commentId}`
           );
+        else console.warn("getCommentContext: Element missing ID:", currentElement); // Added log
         break;
       }
       visitedIds.add(commentId);
@@ -174,6 +177,7 @@ class DomUtils {
       if (author !== null) {
         // Only need author and text for context display
         context.unshift({ id: commentId, author: author, text: text }); // Add to the beginning
+        console.log("[DEBUG] getCommentContext: Added comment to context:", { id: commentId, author: author }); // Added log
       } else {
         console.warn(
           "getCommentContext: Skipping comment due to missing author.",
@@ -185,8 +189,10 @@ class DomUtils {
       // HN uses 'hnl' class for these navigation links
       const parentLink = currentElement.querySelector('a.hnl[href*="parent"]');
       if (!parentLink) {
+        console.log("[DEBUG] getCommentContext: No parent link found for comment:", commentId, ". Stopping traversal."); // Added log
         break; // No parent link found, must be a top-level comment
       }
+      console.log("[DEBUG] getCommentContext: Found parent link:", parentLink.href); // Added log
 
       // Extract the parent comment ID from the link's href
       const parentHref = parentLink.getAttribute("href");
@@ -199,18 +205,25 @@ class DomUtils {
         break; // Cannot proceed without parent ID
       }
       const parentId = parentIdMatch[1];
+      console.log("[DEBUG] getCommentContext: Extracted parent ID:", parentId); // Added log
 
       // Find the parent element by ID
-      currentElement = DomUtils.findCommentElementById(parentId);
-      if (!currentElement) {
+      const parentElement = DomUtils.findCommentElementById(parentId); // Renamed variable for clarity
+      if (!parentElement) {
         console.warn(
-          `getCommentContext: Could not find parent element with ID: ${parentId}`
+          `getCommentContext: Could not find parent element with ID: ${parentId}. Stopping traversal.` // Added log
         );
         // Attempt to find parent by traversing siblings upwards (more robust but complex) - Future enhancement?
         break; // Parent element not found in DOM, stop traversal
       }
-    }
+      console.log("[DEBUG] getCommentContext: Found parent element:", parentElement.id); // Added log
 
+      // Set currentElement for the next iteration
+      currentElement = parentElement;
+
+    } // End of while loop
+
+    console.log("[DEBUG] getCommentContext: Finished gathering context. Total items:", context.length); // Added log
     return context;
   }
 
