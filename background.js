@@ -51,11 +51,11 @@ async function handleGeminiRequest(data) {
       const currentRole = message.role === 'assistant' ? 'model' : 'user';
       let currentContent = message.content;
 
-      // Prepend system prompt to the very first user message
-      if (systemPromptContent && currentRole === 'user' && geminiContents.length === 0) {
-          currentContent = `${systemPromptContent}\n\n---\n\n${currentContent}`;
-          systemPromptContent = null; // Only prepend once
-      }
+      // DO NOT Prepend system prompt anymore. It will be handled by systemInstruction field.
+      // if (systemPromptContent && currentRole === 'user' && geminiContents.length === 0) {
+      //     currentContent = `${systemPromptContent}\n\n---\n\n${currentContent}`;
+      //     systemPromptContent = null; // Only prepend once
+      // }
 
       if (geminiContents.length > 0 && currentRole === lastRole) {
           // Merge consecutive messages of the same role
@@ -74,8 +74,10 @@ async function handleGeminiRequest(data) {
   // Ensure the last message is not from the 'model' if the API requires user turn last (depends on API version/use case)
   // For generateContent, it seems okay to end with 'model'.
 
+  // Construct the final payload, including systemInstruction if available
   const payload = {
     contents: geminiContents,
+    ...(systemPromptContent && { systemInstruction: { parts: [{ text: systemPromptContent }] } }), // Add systemInstruction if system prompt exists
     generationConfig: {
       temperature: 0.7,
       topP: 0.95,
