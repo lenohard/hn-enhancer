@@ -152,6 +152,27 @@ class UIComponents {
     navLinks.appendChild(document.createTextNode(" | "));
     navLinks.appendChild(summarizeLink);
   }
+  
+  /**
+   * Injects a link to chat about the entire post
+   */
+  injectChatPostLink() {
+    const navLinks = document.querySelector(".subtext .subline");
+    if (!navLinks) return;
+
+    const chatLink = document.createElement("a");
+    chatLink.href = "#";
+    chatLink.textContent = "chat about post";
+    chatLink.className = "hn-enhancer-link hn-chat-post-link";
+
+    chatLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.enhancer.openPostChatModal();
+    });
+
+    navLinks.appendChild(document.createTextNode(" | "));
+    navLinks.appendChild(chatLink);
+  }
 
   /**
    * Creates the statistics panel element.

@@ -21,6 +21,7 @@ class ChatModal {
     this.currentContextType = 'parents'; // Default context type: 'parents', 'descendants', 'children'
     this.contextSelectorContainer = null; // Container for context radio buttons
     this.commentPathToIdMap = new Map(); // 存储评论路径到ID的映射，用于点击跳转
+    this.isPostChat = false; // Flag to indicate if this is a post-level chat
 
     this._createModalElement();
     this._addEventListeners();
@@ -151,7 +152,7 @@ class ChatModal {
   }
 
   /**
-   * Opens the chat modal.
+   * Opens the chat modal for a specific comment.
    * @param {HTMLElement} commentElement - The specific comment element (.athing.comtr) to chat about.
    * @param {string} postId - The ID of the parent post.
    */
@@ -165,6 +166,7 @@ class ChatModal {
         // Optionally display an error to the user
         return;
     }
+    this.isPostChat = false; // This is a comment-level chat
     this.targetCommentElement = commentElement;
     this.currentPostId = postId; // Store the post ID
     const commentId = this.enhancer.domUtils.getCommentId(commentElement);
@@ -184,6 +186,44 @@ class ChatModal {
     // Trigger context/history loading and potential chat initiation
     this._gatherContextAndInitiateChat(); // Default context type is used initially
   }
+  
+  /**
+   * Opens the chat modal for the entire post.
+   * @param {string} postId - The ID of the post to chat about.
+   */
+  openForPost(postId) {
+    if (!this.modalElement) {
+      this.enhancer.logDebug("Modal element not found, cannot open.");
+      return;
+    }
+    if (!postId) {
+      console.error("ChatModal.openForPost called without a postId.");
+      return;
+    }
+    
+    this.isPostChat = true; // This is a post-level chat
+    this.targetCommentElement = null; // No specific comment
+    this.currentPostId = postId;
+    this.enhancer.logInfo(`Opening chat for entire post ${postId}`);
+    
+    // Update modal title
+    const titleElement = this.modalElement.querySelector(".modal-header h2");
+    if (titleElement) {
+      titleElement.textContent = "Chat about Post";
+    }
+    
+    // Reset state
+    this.conversationArea.innerHTML = "<p><em>Gathering post context...</em></p>";
+    this.inputElement.value = "";
+    this.inputElement.disabled = true;
+    this.sendButton.disabled = true;
+    
+    // Show the modal
+    this.modalElement.style.display = "flex";
+    
+    // Trigger context gathering for post
+    this._gatherPostContextAndInitiateChat();
+  }
 
   /**
    * Closes the chat modal.
@@ -192,6 +232,14 @@ class ChatModal {
     if (!this.modalElement) return;
     this.modalElement.style.display = "none";
     this.targetCommentElement = null; // Clear target comment
+    this.isPostChat = false; // Reset post chat flag
+    
+    // Reset modal title if it was changed
+    const titleElement = this.modalElement.querySelector(".modal-header h2");
+    if (titleElement) {
+      titleElement.textContent = "Chat about Comment";
+    }
+    
     this.enhancer.logDebug("Chat modal closed.");
   }
 
@@ -884,9 +932,11 @@ ${systemPromptIntro}
       this.sendButton.disabled = true;
 
       // 4. Re-gather context and initiate chat with the new type
-      //    _gatherContextAndInitiateChat will handle displaying loading message and re-enabling input.
-      // _gatherContextAndInitiateChat will handle loading/saving for the new context.
-      await this._gatherContextAndInitiateChat(newContextType);
+      if (this.isPostChat) {
+          await this._gatherPostContextAndInitiateChat(newContextType);
+      } else {
+          await this._gatherContextAndInitiateChat(newContextType);
+      }
   }
 
   /**
@@ -905,8 +955,12 @@ ${systemPromptIntro}
       };
 
       try {
-          // 提取指令部分（从开头到"评论上下文:"之前）
-          const promptEndIndex = systemMessage.indexOf("评论上下文:");
+          // 提取指令部分（从开头到"评论上下文:"或"帖子上下文:"之前）
+          let promptEndIndex = systemMessage.indexOf("评论上下文:");
+          if (promptEndIndex < 0) {
+              promptEndIndex = systemMessage.indexOf("帖子上下文:");
+          }
+          
           if (promptEndIndex > 0) {
               result.promptText = systemMessage.substring(0, promptEndIndex).trim();
           }
@@ -918,6 +972,8 @@ ${systemPromptIntro}
               result.contextType = "descendants";
           } else if (systemMessage.includes("目标评论 -> 直接子评论")) {
               result.contextType = "children";
+          } else if (systemMessage.includes("帖子上下文")) {
+              result.contextType = "post";
           }
 
           // 计算评论数量
@@ -937,6 +993,354 @@ ${systemPromptIntro}
       }
 
       return result;
+  }
+  
+  /**
+   * Gathers context for the entire post and initiates the chat.
+   * @param {string} [contextType='descendants'] - The type of context to gather ('descendants', 'children'). 
+   *                                              For post chat, 'parents' is not applicable.
+   * @private
+   */
+  async _gatherPostContextAndInitiateChat(contextType = 'descendants') {
+    if (!this.currentPostId) {
+      console.error("Missing postId in _gatherPostContextAndInitiateChat");
+      this._displayMessage("Error: Cannot initiate chat due to missing post ID.", "system");
+      return;
+    }
+    
+    // For post chat, only 'descendants' and 'children' make sense
+    if (contextType === 'parents') {
+      contextType = 'descendants'; // Default to descendants if parents is selected
+    }
+    
+    this.aiSession = null; // Reset session on open/switch
+    this.currentLlmMessageElement = null;
+    this.currentContextType = contextType; // Update current context type state
+    this.currentAiProvider = null; // Reset provider for this session/context
+    this.currentModel = null; // Reset model for this session/context
+    this.conversationHistory = []; // Clear history before loading/gathering
+    this.commentPathToIdMap = new Map(); // 重置评论路径到ID的映射
+    
+    // Update context selector UI - hide 'parents' option for post chat
+    const parentsRadio = this.contextSelectorContainer.querySelector('#context-parents');
+    const parentsLabel = this.contextSelectorContainer.querySelector('label[for="context-parents"]');
+    
+    if (parentsRadio && parentsLabel) {
+      parentsRadio.style.display = 'none';
+      parentsLabel.style.display = 'none';
+      
+      // Select descendants by default if parents was selected
+      if (parentsRadio.checked) {
+        const descendantsRadio = this.contextSelectorContainer.querySelector('#context-descendants');
+        if (descendantsRadio) {
+          descendantsRadio.checked = true;
+        }
+      }
+    }
+    
+    this.enhancer.logDebug(`Initiating post chat for post ${this.currentPostId}, context: ${contextType}`);
+    this.conversationArea.innerHTML = ""; // Clear display area
+    
+    try {
+      // --- Try Loading History First ---
+      const loadedHistory = await this.enhancer.hnState.getChatHistory(this.currentPostId, 'post', contextType);
+      
+      if (loadedHistory && loadedHistory.length > 0) {
+        this.enhancer.logInfo(`Loaded existing post chat history for ${this.currentPostId}/${contextType}`);
+        this.conversationHistory = loadedHistory;
+        
+        // 从系统消息中提取评论路径到ID的映射
+        const systemMessage = this.conversationHistory.find(msg => msg.role === 'system');
+        if (systemMessage) {
+          this._extractCommentPathsFromSystemMessage(systemMessage.content);
+        }
+        
+        // Render loaded history with simplified system message
+        this.conversationHistory.forEach(message => {
+          if (message.role === 'system') {
+            // Extract and display simplified system message
+            const contextInfo = this._extractContextInfoFromSystemMessage(message.content);
+            // 显示指令部分和评论统计信息
+            const displayText = contextInfo.promptText
+              ? `${contextInfo.promptText}\n\n[包含 ${contextInfo.commentCount} 条评论，共 ${contextInfo.charCount} 字符]`
+              : `Loaded previous chat with ${contextInfo.contextType} context: ${contextInfo.commentCount} comments (${contextInfo.charCount} chars).`;
+              
+            this._displayMessage(displayText, "system");
+          } else {
+            // Display user and assistant messages normally
+            this._displayMessage(message.content, message.role === 'assistant' ? 'llm' : message.role);
+          }
+        });
+        
+        // Determine AI provider from settings (needed for sending new messages)
+        const { aiProvider, model } = await this.enhancer.summarization.getAIProviderModel();
+        this.currentAiProvider = aiProvider;
+        this.currentModel = model;
+        
+        if (!aiProvider) {
+          this.enhancer.logInfo("Chat: AI provider not configured (history loaded).");
+          this.enhancer.summarization.showConfigureAIMessage(this.conversationArea);
+        } else {
+          this.enhancer.logInfo(`Chat: Using AI Provider: ${aiProvider}, Model: ${model || "default"} (history loaded)`);
+          // If Chrome AI, try to create session (needed for sending new messages)
+          if (aiProvider === 'chrome-ai') {
+            await this._initializeChromeAISessionIfNeeded();
+          }
+          // Enable input
+          this.inputElement.disabled = false;
+          this.sendButton.disabled = false;
+          this.inputElement.focus();
+        }
+        return; // History loaded, skip context gathering
+      }
+      
+      // --- No History Found - Gather Context ---
+      this.enhancer.logDebug(`No history found for post ${this.currentPostId}/${contextType}. Gathering context...`);
+      
+      // Get post title and text
+      const postTitle = this.enhancer.domUtils.getHNPostTitle() || "未知标题";
+      const postText = this._getPostText(); // Get post text content if available
+      
+      // Get comments based on context type
+      let contextArray = [];
+      
+      // Call the appropriate function based on contextType
+      if (contextType === 'descendants') {
+        // Get all comments in the post
+        const allComments = document.querySelectorAll("tr.athing.comtr");
+        let commentIndex = 0;
+        
+        allComments.forEach(commentElement => {
+          const commentId = this.enhancer.domUtils.getCommentId(commentElement);
+          const author = this.enhancer.domUtils.getCommentAuthor(commentElement);
+          const text = this.enhancer.domUtils.getCommentText(commentElement);
+          const indentLevel = this.enhancer.domUtils.getCommentIndentLevel(commentElement) || 0;
+          
+          if (commentId && author !== null) {
+            // Calculate path based on indentation and position
+            const path = indentLevel === 0 ? `${++commentIndex}` : `${Math.ceil(commentIndex/2)}.${indentLevel}`;
+            
+            // Get metadata
+            const downvotes = this.enhancer.domUtils.getDownvoteCount(commentElement.querySelector(".commtext")) || 0;
+            const directChildren = this.enhancer.domUtils.getDirectChildComments(commentElement);
+            const replyCount = directChildren.length;
+            
+            // Calculate score
+            const score = this.enhancer.domUtils.calculateCommentScore(commentIndex, allComments.length, downvotes);
+            
+            // Add to context array
+            contextArray.push({
+              id: commentId,
+              author,
+              text,
+              path,
+              score,
+              replies: replyCount,
+              downvotes,
+              isTarget: false
+            });
+            
+            // Add to path-to-id mapping
+            this.commentPathToIdMap.set(path, commentId);
+          }
+        });
+      } else if (contextType === 'children') {
+        // Get only top-level comments
+        const topLevelComments = Array.from(document.querySelectorAll("tr.athing.comtr"))
+          .filter(comment => this.enhancer.domUtils.getCommentIndentLevel(comment) === 0);
+        
+        topLevelComments.forEach((commentElement, index) => {
+          const commentId = this.enhancer.domUtils.getCommentId(commentElement);
+          const author = this.enhancer.domUtils.getCommentAuthor(commentElement);
+          const text = this.enhancer.domUtils.getCommentText(commentElement);
+          
+          if (commentId && author !== null) {
+            // For top-level comments, path is just the index
+            const path = `${index + 1}`;
+            
+            // Get metadata
+            const downvotes = this.enhancer.domUtils.getDownvoteCount(commentElement.querySelector(".commtext")) || 0;
+            const directChildren = this.enhancer.domUtils.getDirectChildComments(commentElement);
+            const replyCount = directChildren.length;
+            
+            // Calculate score
+            const score = this.enhancer.domUtils.calculateCommentScore(index, topLevelComments.length, downvotes);
+            
+            // Add to context array
+            contextArray.push({
+              id: commentId,
+              author,
+              text,
+              path,
+              score,
+              replies: replyCount,
+              downvotes,
+              isTarget: false
+            });
+            
+            // Add to path-to-id mapping
+            this.commentPathToIdMap.set(path, commentId);
+          }
+        });
+      }
+      
+      if (!contextArray || contextArray.length === 0) {
+        this._displayMessage(
+          `Error: Could not gather ${contextType} context for post.`,
+          "system"
+        );
+        return;
+      }
+      
+      this.enhancer.logDebug(
+        `Context gathered for post ${this.currentPostId}:`,
+        contextArray
+      );
+      
+      // --- Determine AI Provider ---
+      const { aiProvider, model } = await this.enhancer.summarization.getAIProviderModel();
+      this.currentAiProvider = aiProvider;
+      this.currentModel = model;
+      
+      if (!aiProvider) {
+        this.enhancer.logInfo("Chat: AI provider not configured.");
+        this.enhancer.summarization.showConfigureAIMessage(this.conversationArea);
+        return;
+      }
+      
+      this.enhancer.logInfo(
+        `Chat: Using AI Provider: ${aiProvider}, Model: ${model || "default"}`
+      );
+      
+      // --- Prepare Initial System Prompt based on Context Type ---
+      let systemPromptIntro = "";
+      
+      if (contextType === 'descendants') {
+        systemPromptIntro = `你是一个 Hacker News (HN) 帖子助手。下面提供了整个帖子的所有评论。`;
+      } else if (contextType === 'children') {
+        systemPromptIntro = `你是一个 Hacker News (HN) 帖子助手。下面提供了帖子的所有顶级评论（直接回复帖子的评论）。`;
+      }
+      
+      const systemPrompt = `你是一个 Hacker News (HN) 帖子助手。正在讨论的帖子标题是: "${postTitle}"
+${postText ? `\n帖子内容:\n${postText}\n` : ''}
+${systemPromptIntro}
+每个评论都使用以下格式呈现，包含了评论的层级结构和元数据：
+
+[层级路径] (score: 分数) <replies: 回复数> {downvotes: 踩数} 作者名: 评论内容
+
+其中：
+- 层级路径：如 [1], [1.2], [1.2.3] 表示评论在树中的位置
+- 分数：表示评论的重要性分数（1000为最高）
+- 回复数：表示该评论的直接回复数量
+- 踩数：表示评论收到的负面评价数量
+
+当你需要引用特定评论时，请使用其层级路径，格式为 [1.2.3]。这样用户就可以点击这些引用直接跳转到对应的评论。例如：
+- "正如 [1.2] 中提到的..."
+- "我同意 [2.1] 的观点，但是..."
+- "根据 [1] 和 [3.2] 的讨论..."
+
+请确保在你的回复中使用这种格式引用评论，这样用户就可以轻松地查看原始评论内容。
+`;
+
+      // Format context using the enhanced metadata
+      const contextString = contextArray
+        .map(comment => {
+          return this.enhancer.domUtils.formatCommentForLLM(
+            comment,
+            comment.path,
+            comment.replies,
+            comment.score,
+            comment.downvotes,
+            comment.isTarget
+          );
+        })
+        .join("\n\n");
+      
+      // Add the system prompt and context as the first message in the history
+      const initialSystemMessage = { role: "system", content: `${systemPrompt}\n\n帖子上下文:\n${contextString}` };
+      this.conversationHistory.push(initialSystemMessage);
+      this.enhancer.logDebug("Initialized conversation history with system prompt and post context.");
+      
+      // Display context loaded message with prompt text and context statistics
+      const totalChars = contextArray.reduce((sum, c) => sum + (c.text?.length || 0), 0);
+      // 从系统消息中提取指令部分
+      const promptText = initialSystemMessage.content.substring(0, initialSystemMessage.content.indexOf("帖子上下文:")).trim();
+      this._displayMessage(
+        `${promptText}\n\n[已加载 ${contextType} 上下文: ${contextArray.length} 条评论 (${totalChars} 字符)。请输入您的消息。]`,
+        "system"
+      );
+      
+      // --- Prepare Chat based on Provider (but don't send initial message) ---
+      if (aiProvider === "chrome-ai") {
+        if (this.enhancer.isChomeAiAvailable !== HNEnhancer.CHROME_AI_AVAILABLE.YES) {
+          try {
+            const availability = await window.ai.canCreateTextSession();
+            this.enhancer.isChomeAiAvailable = availability;
+            this.enhancer.logDebug(`Chrome AI availability check: ${availability}`);
+          } catch (err) {
+            console.error("Error checking AI availability:", err);
+            this.enhancer.isChomeAiAvailable = HNEnhancer.CHROME_AI_AVAILABLE.NO;
+          }
+        }
+        
+        if (this.enhancer.isChomeAiAvailable === HNEnhancer.CHROME_AI_AVAILABLE.YES) {
+          await this._initializeChromeAISessionIfNeeded();
+        } else {
+          this.enhancer.logDebug("Chrome AI selected but not available/ready.");
+          this._displayMessage(
+            "Chrome Built-in AI is selected but not available or ready. Cannot start chat.",
+            "system"
+          );
+        }
+      } else {
+        this.enhancer.logDebug(`Ready for user input for provider: ${aiProvider}`);
+      }
+      
+      // Enable input now that context is loaded
+      this.inputElement.disabled = false;
+      this.sendButton.disabled = false;
+      this.inputElement.focus();
+      
+    } catch (error) {
+      console.error("Error gathering post context or initializing chat:", error);
+      this.inputElement.disabled = false;
+      this.sendButton.disabled = false;
+      this._displayMessage(
+        "Error preparing chat. Please check console.",
+        "system"
+      );
+    }
+  }
+  
+  /**
+   * Gets the text content of the post if available.
+   * @returns {string|null} The post text content or null if not found.
+   * @private
+   */
+  _getPostText() {
+    // Try to find the post text content in the DOM
+    // HN posts can have text content in various formats
+    
+    // First try to find it in the standard location
+    const postText = document.querySelector(".toptext");
+    if (postText) {
+      return postText.innerText.trim();
+    }
+    
+    // If not found in standard location, try alternative locations
+    // Some posts might have content in an iframe or other format
+    const postIframe = document.querySelector("td.default iframe");
+    if (postIframe) {
+      try {
+        return postIframe.contentDocument.body.innerText.trim();
+      } catch (e) {
+        // Cross-origin restrictions might prevent access
+        return "帖子内容无法访问（可能在iframe中）";
+      }
+    }
+    
+    // If no text content found, return null
+    return null;
   }
   
   /**

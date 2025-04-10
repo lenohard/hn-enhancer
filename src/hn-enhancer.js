@@ -164,8 +164,9 @@ window.HNEnhancer = class HNEnhancer {
     }
 
     // --- Step 3: Inject other UI elements ---
-    // Inject 'Summarize all comments' link at the top of the main post
-    this.uiComponents.injectSummarizePostLink(); // This might need adjustment if its selector depends on the old structure
+    // Inject 'Summarize all comments' and 'Chat about post' links at the top of the main post
+    this.uiComponents.injectSummarizePostLink();
+    this.uiComponents.injectChatPostLink();
 
     // Go through all the comments in this post and inject all our nav elements - author, summarize etc.
     const allComments = document.querySelectorAll(".athing.comtr");
@@ -910,6 +911,22 @@ window.HNEnhancer = class HNEnhancer {
         return;
       }
       this.chatModal.open(commentElement, postId); // Pass postId to open method
+    } else {
+      console.error("ChatModal instance not found.");
+    }
+  }
+  
+  /**
+   * Opens the chat modal for the entire post.
+   */
+  openPostChatModal() {
+    if (this.chatModal) {
+      const postId = this.domUtils.getCurrentHNItemId();
+      if (!postId) {
+        console.error("Could not determine post ID to open chat modal.");
+        return;
+      }
+      this.chatModal.openForPost(postId); // Use new method for post-level chat
     } else {
       console.error("ChatModal instance not found.");
     }
