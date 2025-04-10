@@ -331,8 +331,7 @@ class ChatModal {
 -------
 ...
 
-你的任务是：基于提供的评论上下文，清晰、简洁地回答用户关于这些评论的问题。请专注于评论内容本身，并根据上下文进行推理。
-如果用户的问题超出了评论范围，请说明无法回答。`;
+`;
 
       // Format context into a single string
       const contextString = contextArray
