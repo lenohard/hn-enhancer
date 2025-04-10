@@ -1,3 +1,7 @@
+*This is a markdown file for planning and documenting the development of new features for the HN Enhancer extension. 
+It includes details about the feature goals, tasks, modifications, debugging, and next steps, etc.
+After each fix or implementation or research, the changes and info are documented in the file.*
+
 # Feature Plan: Comment Statistics Display
 
 **Goal:** Enhance the HN Enhancer extension to display useful statistics about the comment tree in Hacker News posts, shown separately from the summary panel.
