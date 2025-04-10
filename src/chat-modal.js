@@ -338,10 +338,12 @@ class ChatModal {
                 if (message.role === 'system') {
                     // Extract and display simplified system message
                     const contextInfo = this._extractContextInfoFromSystemMessage(message.content);
-                    this._displayMessage(
-                        `Loaded previous chat with ${contextInfo.contextType} context: ${contextInfo.commentCount} comments (${contextInfo.charCount} chars).`, 
-                        "system"
-                    );
+                    // 显示指令部分和评论统计信息
+                    const displayText = contextInfo.promptText 
+                        ? `${contextInfo.promptText}\n\n[包含 ${contextInfo.commentCount} 条评论，共 ${contextInfo.charCount} 字符]`
+                        : `Loaded previous chat with ${contextInfo.contextType} context: ${contextInfo.commentCount} comments (${contextInfo.charCount} chars).`;
+                    
+                    this._displayMessage(displayText, "system");
                 } else {
                     // Display user and assistant messages normally
                     this._displayMessage(message.content, message.role === 'assistant' ? 'llm' : message.role);
@@ -546,10 +548,12 @@ ${contextStructureDesc}
       // Do NOT save initial history here - only save after first AI response
       // Just store it in memory until then
       
-      // Display context loaded message reflecting the type and enable input
+      // Display context loaded message with prompt text and context statistics
       const totalChars = contextArray.reduce((sum, c) => sum + (c.text?.length || 0), 0);
+      // 从系统消息中提取指令部分
+      const promptText = initialSystemMessage.content.substring(0, initialSystemMessage.content.indexOf("评论上下文:")).trim();
       this._displayMessage(
-          `Context loaded (${contextType}): ${contextArray.length} comments (${totalChars} chars). Ready for your message.`,
+          `${promptText}\n\n[已加载 ${contextType} 上下文: ${contextArray.length} 条评论 (${totalChars} 字符)。请输入您的消息。]`,
           "system"
       );
 
@@ -806,7 +810,7 @@ ${contextStructureDesc}
   /**
    * Extracts context information from a system message.
    * @param {string} systemMessage - The system message content.
-   * @returns {object} Object containing contextType, commentCount, and charCount.
+   * @returns {object} Object containing contextType, commentCount, charCount, and promptText.
    * @private
    */
   _extractContextInfoFromSystemMessage(systemMessage) {
@@ -814,11 +818,18 @@ ${contextStructureDesc}
       const result = {
           contextType: "unknown",
           commentCount: 0,
-          charCount: 0
+          charCount: 0,
+          promptText: "" // 存储指令部分文本
       };
       
       try {
-          // Try to determine context type from the message
+          // 提取指令部分（从开头到"评论上下文:"之前）
+          const promptEndIndex = systemMessage.indexOf("评论上下文:");
+          if (promptEndIndex > 0) {
+              result.promptText = systemMessage.substring(0, promptEndIndex).trim();
+          }
+          
+          // 确定上下文类型
           if (systemMessage.includes("父评论 -> 目标评论")) {
               result.contextType = "parents";
           } else if (systemMessage.includes("目标评论 -> 后代评论")) {
@@ -827,14 +838,12 @@ ${contextStructureDesc}
               result.contextType = "children";
           }
           
-          // Count comments by looking for comment format pattern
+          // 计算评论数量
           const commentPattern = /\[\d+(?:\.\d+)*\] \(score:/g;
           const matches = systemMessage.match(commentPattern);
           result.commentCount = matches ? matches.length : 0;
           
-          // Estimate character count (this is approximate)
-          // Remove the prompt part and count the rest
-          const promptEndIndex = systemMessage.indexOf("评论上下文:");
+          // 计算评论部分的字符数
           if (promptEndIndex > 0) {
               const contextPart = systemMessage.substring(promptEndIndex);
               result.charCount = contextPart.length;
