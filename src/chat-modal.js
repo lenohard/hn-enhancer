@@ -306,8 +306,39 @@ class ChatModal {
         `Chat: Using AI Provider: ${aiProvider}, Model: ${model || "default"}`
       );
 
-      // Store context for later use when the user sends the first message
-      this.currentChatContext = contextArray; // Store the gathered context
+      // --- Prepare Initial System Prompt ---
+      const systemPrompt = `你是一个 Hacker News (HN) 评论助手。下面提供了一系列 HN
+评论，这些评论来自同一个帖子下的一个讨论分支。评论按时间顺序排列，从最顶层的父评论开始，一直到用户发起聊天的目标评论。
+每个评论都包含了作者和内容。
+
+评论上下文结构如下：
+评论 1 (作者: [作者名]):
+[评论内容]
+-------
+评论 2 (作者: [作者名]):
+[评论内容]
+-------
+...
+
+你的任务是：基于提供的评论上下文，清晰、简洁地回答用户关于这些评论的问题。请专注于评论内容本身，并根据上下文进行推理。
+如果用户的问题超出了评论范围，请说明无法回答。`;
+
+      // Format context into a single string
+      const contextString = contextArray
+            .map(
+              (c, index) =>
+                `评论 ${index + 1} (作者: ${c.author}):\n${c.text}\n-------`
+            )
+            .join("\n\n");
+
+      // Add the system prompt and context as the first message(s) in the history
+      // Option 1: Single system message (preferred if APIs handle it well)
+      // this.conversationHistory.push({ role: "system", content: `${systemPrompt}\n\n评论上下文:\n${contextString}` });
+      // Option 2: System prompt + context as first user message (more compatible?)
+      // Let's stick to sending a 'system' message and let background adapt if needed.
+      this.conversationHistory.push({ role: "system", content: `${systemPrompt}\n\n评论上下文:\n${contextString}` });
+      this.enhancer.logDebug("Initialized conversation history with system prompt and context.");
+
 
       // Display context loaded message and enable input
       const totalChars = contextArray.reduce((sum, c) => sum + c.text.length, 0);
@@ -390,11 +421,11 @@ class ChatModal {
   }
 
   /**
-   * Sends a message to the AI session and handles the streamed response.
-   * @param {string} message - The message text to send.
+   * Sends the conversation history to the AI and handles the response.
+   * @param {Array<object>} conversationHistory - The full conversation history.
    * @private
    */
-  async _sendMessageToAI(message) {
+  async _sendMessageToAI(conversationHistory) {
     // Use the stored provider for the current chat session
     const aiProvider = this.currentAiProvider;
     const model = this.currentModel;
@@ -453,59 +484,23 @@ class ChatModal {
     this.sendButton.disabled = true;
 
     this.enhancer.logDebug(
-      "Sending message to AI:",
-      message.substring(0, 100) + "..."
-    ); // Log truncated message
+      `Sending conversation history to background for ${aiProvider}...`
+    );
     this.currentLlmMessageElement = null; // Reset stream target before sending
 
     try {
-      const systemPrompt = `你是一个 Hacker News (HN) 评论助手。下面提供了一系列 HN
-评论，这些评论来自同一个帖子下的一个讨论分支。评论按时间顺序排列，从最顶层的父评论开始，一直到用户发起聊天的目标评论。
-每个评论都包含了作者和内容。
-
-评论上下文结构如下：
-评论 1 (作者: [作者名]):
-[评论内容]
--------
-评论 2 (作者: [作者名]):
-[评论内容]
--------
-...
-
-你的任务是：基于提供的评论上下文，清晰、简洁地回答用户关于这些评论的问题。请专注于评论内容本身，并根据上下文进行推理。
-如果用户的问题超出了评论范围，请说明无法回答。`;
-
-      // Format context into a single string
-      const contextString = this.currentChatContext
-        ? this.currentChatContext
-            .map(
-              (c, index) =>
-                `评论 ${index + 1} (作者: ${c.author}):\n${c.text}\n-------`
-            )
-            .join("\n\n")
-        : "没有可用的评论上下文。";
-
-      // Construct the messages array with two user messages
-      const messages = [
-        {
-          role: "user",
-          content: `${systemPrompt}\n\n${contextString}`,
-        },
-        { role: "user", content: message },
-      ];
-      // ------------------------------------
-
+      // Send the entire conversation history
       const requestPayload = {
         type: "HN_CHAT_REQUEST",
         data: {
           provider: aiProvider,
           model: model,
-          messages: messages, // Send the new messages array
+          messages: conversationHistory, // Send the full history
         },
       };
 
       // Log the exact messages being sent
-      this.enhancer.logDebug("Constructed messages for background:", JSON.stringify(messages, null, 2));
+      this.enhancer.logDebug("Sending conversation history to background:", JSON.stringify(conversationHistory, null, 2));
       this.enhancer.logDebug("Sending HN_CHAT_REQUEST to background with payload:", requestPayload);
 
       // Assume a single response object like { success: true, data: "..." } or { success: false, error: "..." }
@@ -517,7 +512,9 @@ class ChatModal {
 
       // sendBackgroundMessage throws on error or unsuccessful response, so we assume success here
       this._displayMessage(responseText, "llm", false); // Display full response
-      this.enhancer.logDebug(`${aiProvider} response received.`);
+      // Add LLM response to history
+      this.conversationHistory.push({ role: "assistant", content: responseText });
+      this.enhancer.logDebug(`Added ${aiProvider} response to history:`, this.conversationHistory);
       // Re-enable input
       this.inputElement.disabled = false;
       this.sendButton.disabled = false;

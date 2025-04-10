@@ -32,20 +32,50 @@ async function handleGeminiRequest(data) {
 
   console.log("Gemini API端点:", endpoint);
 
-  // Construct Gemini payload from messages array
-  // Gemini expects alternating user/model roles.
-  // Since we send [{role: user, content: context+prompt}, {role: user, content: question}],
-  // we'll combine them into a single user message for simplicity here.
-  // A more complex implementation could handle history with alternating roles.
-  const combinedContent = messages.map(m => m.content).join("\n\n---\n\n");
+  // --- Adapt history for Gemini API ---
+  // 1. Filter out system messages (handle separately if needed)
+  // 2. Map 'assistant' role to 'model'
+  // 3. Ensure alternating user/model roles, merging consecutive messages of the same role.
+  // 4. Handle system prompt (if provided as 'system' role) by prepending to the first user message.
+
+  let systemPromptContent = null;
+  const geminiContents = [];
+  let lastRole = null;
+
+  for (const message of messages) {
+      if (message.role === 'system') {
+          systemPromptContent = message.content;
+          continue; // Skip adding system message directly to contents
+      }
+
+      const currentRole = message.role === 'assistant' ? 'model' : 'user';
+      let currentContent = message.content;
+
+      // Prepend system prompt to the very first user message
+      if (systemPromptContent && currentRole === 'user' && geminiContents.length === 0) {
+          currentContent = `${systemPromptContent}\n\n---\n\n${currentContent}`;
+          systemPromptContent = null; // Only prepend once
+      }
+
+      if (geminiContents.length > 0 && currentRole === lastRole) {
+          // Merge consecutive messages of the same role
+          const lastMessage = geminiContents[geminiContents.length - 1];
+          lastMessage.parts[0].text += `\n\n---\n\n${currentContent}`; // Combine content
+      } else {
+          // Add new message with the correct role
+          geminiContents.push({
+              role: currentRole,
+              parts: [{ text: currentContent }],
+          });
+          lastRole = currentRole;
+      }
+  }
+
+  // Ensure the last message is not from the 'model' if the API requires user turn last (depends on API version/use case)
+  // For generateContent, it seems okay to end with 'model'.
 
   const payload = {
-    contents: [
-      {
-        role: "user", // Treat the combined input as a single user turn
-        parts: [{ text: combinedContent }],
-      },
-    ],
+    contents: geminiContents,
     generationConfig: {
       temperature: 0.7,
       topP: 0.95,
@@ -587,15 +617,14 @@ async function handleOpenRouterRequest(data) {
 
 // Handle Chat Request (routes to specific provider handlers)
 async function handleChatRequest(data) {
+  // The 'messages' received here is the full conversation history
   const { provider, model, messages } = data;
-  // Log the received messages structure
   console.log(`处理聊天请求，提供者: ${provider}, 模型: ${model}`);
-  console.log("收到的消息结构:", JSON.stringify(messages, null, 2));
+  console.log("收到的完整对话历史:", JSON.stringify(messages, null, 2));
 
-
-  if (!provider || !model || !messages || messages.length === 0) { // Check messages array is not empty
-    console.error("聊天请求缺少必要参数或消息为空");
-    throw new Error("Missing required parameters or empty messages for chat request");
+  if (!provider || !model || !messages || messages.length === 0) {
+    console.error("聊天请求缺少必要参数或消息历史为空");
+    throw new Error("Missing required parameters or empty message history for chat request");
   }
 
   // 1. Get API Key (securely from storage)
@@ -660,25 +689,36 @@ async function handleChatRequest(data) {
         return openrouterResponse.choices[0]?.message?.content || "No response content";
 
       case "gemini":
-        // Combine context and user question for Gemini
-        // Gemini expects alternating user/model roles, sending two 'user' might fail.
-        // Combine into a single user message for simplicity.
-        const geminiCombinedContent = messages.map(m => m.content).join("\n\n---\n\n");
+        // Pass the full message history to the handler, it will adapt it
         const geminiResponse = await handleGeminiRequest({
           apiKey,
           model,
-          // Pass the combined content as a single user message structure
-          messages: [{ role: "user", content: geminiCombinedContent }],
+          messages, // Pass the original history
         });
-        // Directly return the text content on success
-        return geminiResponse.candidates[0]?.content?.parts[0]?.text || "No response content";
+        // Extract text content
+        // Check finishReason if needed: geminiResponse.candidates[0]?.finishReason
+        // Check safetyRatings: geminiResponse.promptFeedback?.safetyRatings
+        const candidate = geminiResponse?.candidates?.[0];
+        const part = candidate?.content?.parts?.[0];
+        if (part?.text) {
+            return part.text;
+        } else {
+            console.warn("Gemini response missing text content:", JSON.stringify(geminiResponse));
+            // Provide more context about why content might be missing
+            if (candidate?.finishReason && candidate.finishReason !== "STOP") {
+                return `Response stopped due to: ${candidate.finishReason}. Check safety ratings or prompt.`;
+            }
+            if (geminiResponse?.promptFeedback?.blockReason) {
+                 return `Request blocked due to: ${geminiResponse.promptFeedback.blockReason}.`;
+            }
+            return "No response content or response blocked.";
+        }
+
 
       case "chrome-ai":
-         // Combine context and user question for Chrome AI
-        const chromeAICombinedContent = messages.map(m => m.content).join("\n\n---\n\n");
+         // Pass the full message history to the handler, it will adapt it
         const chromeAIResponse = await handleChromeAIRequest({
-            // Pass the combined content as a single text structure
-            messages: [{ role: "user", content: chromeAICombinedContent }],
+            messages, // Pass the original history
         });
         // Directly return the text content on success
         return chromeAIResponse.summary || "No response content";
@@ -705,8 +745,14 @@ async function handleChromeAIRequest(data) {
     throw new Error("Missing required parameters for Chrome AI API request");
   }
 
-  // Combine message content into a single string for the API
-  const combinedText = messages.map(m => m.content).join("\n\n---\n\n");
+  // --- Adapt history for Chrome AI summarize API ---
+  // Combine the content of all messages into a single string, labeling roles.
+  const combinedText = messages.map(m => {
+      const roleLabel = m.role === 'user' ? 'User' : m.role === 'assistant' ? 'Assistant' : 'System';
+      return `${roleLabel}:\n${m.content}`;
+  }).join("\n\n---\n\n");
+
+  console.log("组合后的文本发送给 Chrome AI:", combinedText.substring(0, 500) + "..."); // Log combined text (truncated)
 
   try {
     console.log("检查Chrome AI API是否可用...");
