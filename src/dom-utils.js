@@ -671,8 +671,73 @@ class DomUtils {
 
     return descendants;
   }
-
+    
+  /**
+   * Gets all direct child comments of a given parent comment.
+   * @param {HTMLElement} parentComment - The parent comment element (TR.athing.comtr).
+   * @returns {Array<HTMLElement>} An array of direct child comment elements.
+   */
+  static getDirectChildComments(parentComment) {
+    const children = [];
+    if (!parentComment) {
+      console.error("getDirectChildComments: parentComment is null");
+      return children;
+    }
+    
+    const parentRow = parentComment.closest("tr");
+    if (!parentRow) {
+      console.error("getDirectChildComments: Could not find parent row for:", parentComment.id);
+      return children;
+    }
+    
+    const parentIndent = DomUtils.getCommentIndentLevel(parentComment);
+    if (parentIndent === null) {
+      console.error("getDirectChildComments: Could not determine indent level for parent:", parentComment.id);
+      return children;
+    }
+    
+    let currentRow = parentRow.nextElementSibling;
+    
+    while (currentRow) {
+      let currentCommentElement = null;
+      // Check if the row itself is the comment element
+      if (currentRow.classList.contains("athing") && currentRow.classList.contains("comtr")) {
+          currentCommentElement = currentRow;
+      } else {
+          // Fallback: look for the comment element within the row
+          currentCommentElement = currentRow.querySelector(".athing.comtr");
+      }
+    
+      if (!currentCommentElement) {
+        // Not a comment row, could be 'more' link etc.
+        currentRow = currentRow.nextElementSibling;
+        continue;
+      }
+    
+      const currentIndent = DomUtils.getCommentIndentLevel(currentCommentElement);
+    
+      if (currentIndent === null) {
+        // Cannot determine indent, skip
+        currentRow = currentRow.nextElementSibling;
+        continue;
+      }
+    
+      if (currentIndent === parentIndent + 1) {
+        // This is a direct child
+        children.push(currentCommentElement);
+      } else if (currentIndent <= parentIndent) {
+        // We've reached a sibling of the parent or an element higher up the tree
+        break;
+      }
+      // If currentIndent > parentIndent + 1, it's a grandchild or deeper, so skip
+    
+      currentRow = currentRow.nextElementSibling;
+    }
+    
+    return children;
+  }
+    
 }
-
+    
 // Make the class available globally
 window.DomUtils = DomUtils;
