@@ -257,6 +257,23 @@ After each fix or implementation or research, the changes and info are documente
       - Added detailed logging within each API handler (`handleOpenAIRequest`, `handleGeminiRequest`, etc.) to show the exact payload being sent to the external LLM API just before the `fetch` call.
   - **Result:** The structure of the prompt sent to the LLM is now consistent, using a predefined instruction and formatted context. Debugging is easier due to added logging of message structures and API payloads.
 
+- **Conversation History & API Formatting Fix (Commit `b504f4c`, `ec0d608`, `e1fed3d`):**
+  - **Issue:** Multi-turn conversations were losing context, and the payload sent to different LLM APIs (especially Gemini) was incorrect (e.g., merging system prompt with the first user message).
+  - **Investigation:**
+    - Confirmed `chat-modal.js` wasn't maintaining a persistent `conversationHistory` array.
+    - Found `background.js` wasn't correctly adapting the history format for each provider.
+    - Specifically, the Gemini handler was merging the system prompt into the first user message instead of using the `systemInstruction` field.
+  - **Fix:**
+    - **`src/chat-modal.js`:** Implemented `conversationHistory` array to store messages (`{ role, content }`). Modified `_handleSendMessage` and `_sendMessageToAI` to manage and pass this history. Added logic to store assistant responses in the history.
+    - **`background.js`:**
+      - Updated `handleChatRequest` to receive the full `conversationHistory`.
+      - Modified `handleGeminiRequest` to:
+        - Process the full history, mapping roles (`assistant` -> `model`) and merging consecutive messages of the same role.
+        - Extract the `system` message content.
+        - Send the `system` content via the `systemInstruction` field in the final payload, instead of merging it with the first user message. (Commit `e1fed3d`)
+      - Updated `handleChromeAIRequest` to combine history into a single string suitable for its API.
+  - **Result:** Multi-turn conversations now maintain context correctly. Payloads sent to different LLM providers are formatted according to their specific API requirements, with Gemini correctly using `systemInstruction`.
+
 - **Chat UI Refinements (2025-04-10):**
   - **Goal:** Improve the visual flow of messages in the chat modal.
   - **Changes:**
