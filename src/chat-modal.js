@@ -504,7 +504,12 @@ class ChatModal {
               break;
       }
 
-      const systemPrompt = `${systemPromptIntro}
+      // 获取帖子标题
+      const postTitle = this.enhancer.domUtils.getHNPostTitle() || "未知标题";
+
+      const systemPrompt = `你是一个 Hacker News (HN) 评论助手。正在讨论的帖子标题是: "${postTitle}"
+
+${systemPromptIntro}
 每个评论都使用以下格式呈现，包含了评论的层级结构和元数据：
 
 [层级路径] (score: 分数) <replies: 回复数> {downvotes: 踩数} 作者名: 评论内容
