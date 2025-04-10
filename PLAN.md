@@ -371,6 +371,13 @@ After each fix or implementation or research, the changes and info are documente
     - 验证切换上下文后聊天功能正常工作
     - 验证LLM响应表明它理解了评论结构和元数据的含义
 
+- **调试 `getDirectChildComments` TypeError (Commit `95291b7`):**
+  - **Issue:** 在聊天模态框中切换上下文时，出现 `TypeError: DomUtils.getDirectChildComments is not a function` 错误。
+  - **Initial Diagnosis:** 错误地认为 `getDirectChildComments` 函数定义在 `DomUtils` 类外部。
+  - **Investigation:** 检查 `src/dom-utils.js` 文件内容，发现 `getDirectChildComments` *已经* 正确地定义为 `DomUtils` 类内部的 `static` 方法。
+  - **Conclusion:** 之前的移动函数的尝试是基于错误的诊断，因此撤销了相关更改。原始的 TypeError 可能源于 `chat-modal.js` 中 `this.enhancer.domUtils` 实例的初始化或访问时机问题，但在后续测试中该错误已不再出现。
+  - **Result:** 确认函数位置正确，无需代码更改。聊天上下文切换功能经测试已正常工作。
+
 **下一步实施计划:**
 
 1. **创建辅助函数:**
