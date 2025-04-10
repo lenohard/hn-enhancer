@@ -36,6 +36,7 @@ class ChatModal {
       this.inputElement = this.modalElement.querySelector(".chat-input");
       this.sendButton = this.modalElement.querySelector(".chat-send-button");
       this.closeButton = this.modalElement.querySelector(".chat-close-button");
+      this.contextSelectorContainer = this.modalElement.querySelector(".chat-context-selector"); // Get reference if exists
       return; // Avoid creating duplicates
     }
 
@@ -58,6 +59,19 @@ class ChatModal {
     header.appendChild(title);
     header.appendChild(this.closeButton);
 
+    // Context Selector Area
+    this.contextSelectorContainer = document.createElement("div");
+    this.contextSelectorContainer.className = "chat-context-selector";
+    this.contextSelectorContainer.innerHTML = `
+      <label>Context:</label>
+      <input type="radio" id="context-parents" name="chatContext" value="parents" checked>
+      <label for="context-parents">Parents</label>
+      <input type="radio" id="context-descendants" name="chatContext" value="descendants">
+      <label for="context-descendants">Descendants</label>
+      <input type="radio" id="context-children" name="chatContext" value="children">
+      <label for="context-children">Children</label>
+    `;
+
     // Conversation Area
     this.conversationArea = document.createElement("div");
     this.conversationArea.className = "chat-conversation-area";
@@ -77,6 +91,7 @@ class ChatModal {
 
     // Assemble
     modalContent.appendChild(header);
+    modalContent.appendChild(this.contextSelectorContainer); // Add context selector
     modalContent.appendChild(this.conversationArea);
     modalContent.appendChild(inputArea);
     this.modalElement.appendChild(modalContent);
