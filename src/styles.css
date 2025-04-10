@@ -673,7 +673,7 @@ tr.athing.comtr.noshow .comhead .togg {
     color: #666666; /* Gray for system messages */
     font-style: italic;
     font-size: 12px;
-    text-align: center;
+    /* text-align: center; Removed for left alignment */
     margin-top: 5px;
     margin-bottom: 15px;
 }
