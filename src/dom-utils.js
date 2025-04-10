@@ -143,7 +143,8 @@ class DomUtils {
    * Gathers the context for a given comment, including itself and all its parents.
    * Traverses up the comment tree using the 'parent' links.
    * @param {HTMLElement} targetCommentElement - The comment element (TR.athing.comtr) to start from.
-   * @returns {Array<{id: string, author: string, text: string}>} An array of comment objects, ordered from root parent to the target comment. Returns empty array on error.
+   * @returns {Array<{id: string, author: string, text: string, path: string, score: number, replies: number, downvotes: number, isTarget: boolean}>} 
+   *          An array of enhanced comment objects, ordered from root parent to the target comment. Returns empty array on error.
    */
   static getCommentContext(targetCommentElement) {
     const context = [];
@@ -151,49 +152,57 @@ class DomUtils {
       console.error("getCommentContext: targetCommentElement is null");
       return context;
     }
-    console.log("[DEBUG] getCommentContext: Starting context gathering for target:", targetCommentElement.id); // Added log
+    console.log("[DEBUG] getCommentContext: Starting context gathering for target:", targetCommentElement.id);
 
     let currentElement = targetCommentElement;
     const visitedIds = new Set(); // Prevent infinite loops in case of weird DOM structures
+    const targetId = DomUtils.getCommentId(targetCommentElement);
 
+    // First pass: gather all parent comments in reverse order (target to root)
+    const reversedComments = [];
+    
     while (currentElement) {
       const commentId = DomUtils.getCommentId(currentElement);
-      console.log("[DEBUG] getCommentContext: Processing element:", commentId); // Added log
-
+      
       // Prevent loops
       if (!commentId || visitedIds.has(commentId)) {
         if (visitedIds.has(commentId))
-          console.warn(
-            `getCommentContext: Loop detected at comment ID: ${commentId}`
-          );
-        else console.warn("getCommentContext: Element missing ID:", currentElement); // Added log
+          console.warn(`getCommentContext: Loop detected at comment ID: ${commentId}`);
+        else 
+          console.warn("getCommentContext: Element missing ID:", currentElement);
         break;
       }
       visitedIds.add(commentId);
 
       const author = DomUtils.getCommentAuthor(currentElement);
       const text = DomUtils.getCommentText(currentElement);
+      const downvotes = DomUtils.getDownvoteCount(currentElement.querySelector(".commtext")) || 0;
+      
+      // Get direct children to count replies
+      const directChildren = DomUtils.getDirectChildComments(currentElement);
+      const replyCount = directChildren.length;
 
       if (author !== null) {
-        // Only need author and text for context display
-        context.unshift({ id: commentId, author: author, text: text }); // Add to the beginning
-        console.log("[DEBUG] getCommentContext: Added comment to context:", { id: commentId, author: author }); // Added log
+        // Add to the reversed list with basic info
+        reversedComments.push({ 
+          id: commentId, 
+          author, 
+          text, 
+          downvotes,
+          replyCount,
+          element: currentElement, // Keep reference for later processing
+          isTarget: commentId === targetId
+        });
       } else {
-        console.warn(
-          "getCommentContext: Skipping comment due to missing author.",
-          currentElement
-        );
+        console.warn("getCommentContext: Skipping comment due to missing author.", currentElement);
       }
 
-      // Find the 'parent' link within the current comment's metadata (.comhead .navs)
-      console.log("[DEBUG] getCommentContext: Searching for parent link inside element:", currentElement.id, "HTML:", currentElement.innerHTML.substring(0, 250) + "..."); // Added log
-
+      // Find parent link and navigate to parent
       const navsSpan = currentElement.querySelector('.comhead .navs');
       let parentLink = null;
       if (navsSpan) {
           const links = navsSpan.querySelectorAll('a');
           for (const link of links) {
-              // Find the link with the exact text "parent"
               if (link.textContent.trim() === 'parent') {
                   parentLink = link;
                   break;
@@ -202,42 +211,55 @@ class DomUtils {
       }
 
       if (!parentLink) {
-        console.log("[DEBUG] getCommentContext: No 'parent' link found within .comhead .navs for comment:", commentId, ". Stopping traversal."); // Updated log
-        break; // No parent link found, must be a top-level comment or structure changed
+        console.log("[DEBUG] getCommentContext: No 'parent' link found for comment:", commentId);
+        break;
       }
-      console.log("[DEBUG] getCommentContext: Found parent link:", parentLink.href); // Added log
 
-      // Extract the parent comment ID from the link's href (which should be like "#12345")
       const parentHref = parentLink.getAttribute("href");
-      // Updated regex to match the anchor format #ID
       const parentIdMatch = parentHref.match(/#(\d+)/);
       if (!parentIdMatch || !parentIdMatch[1]) {
-        console.warn(
-          "getCommentContext: Could not extract parent ID from parent link href:",
-          parentHref
-        );
-        break; // Cannot proceed without parent ID
+        console.warn("getCommentContext: Could not extract parent ID from href:", parentHref);
+        break;
       }
+      
       const parentId = parentIdMatch[1];
-      console.log("[DEBUG] getCommentContext: Extracted parent ID:", parentId); // Added log
-
-      // Find the parent element by ID
-      const parentElement = DomUtils.findCommentElementById(parentId); // Renamed variable for clarity
+      const parentElement = DomUtils.findCommentElementById(parentId);
       if (!parentElement) {
-        console.warn(
-          `getCommentContext: Could not find parent element with ID: ${parentId}. Stopping traversal.` // Added log
-        );
-        // Attempt to find parent by traversing siblings upwards (more robust but complex) - Future enhancement?
-        break; // Parent element not found in DOM, stop traversal
+        console.warn(`getCommentContext: Could not find parent element with ID: ${parentId}`);
+        break;
       }
-      console.log("[DEBUG] getCommentContext: Found parent element:", parentElement.id); // Added log
 
-      // Set currentElement for the next iteration
       currentElement = parentElement;
+    }
 
-    } // End of while loop
+    // Second pass: reverse the list and calculate paths and scores
+    const totalComments = reversedComments.length;
+    
+    // Process in correct order (root to target)
+    for (let i = reversedComments.length - 1; i >= 0; i--) {
+      const comment = reversedComments[i];
+      
+      // Calculate path: for parents context, use simple numbering from root (1, 2, 3...)
+      const path = String(totalComments - i);
+      
+      // Calculate score based on position (earlier = higher score)
+      const position = totalComments - i - 1; // 0-based position from root
+      const score = DomUtils.calculateCommentScore(position, totalComments, comment.downvotes);
+      
+      // Add the enhanced comment to the context array
+      context.push({
+        id: comment.id,
+        author: comment.author,
+        text: comment.text,
+        path,
+        score,
+        replies: comment.replyCount,
+        downvotes: comment.downvotes,
+        isTarget: comment.isTarget
+      });
+    }
 
-    console.log("[DEBUG] getCommentContext: Finished gathering context. Total items:", context.length); // Added log
+    console.log("[DEBUG] getCommentContext: Finished gathering context. Total items:", context.length);
     return context;
   }
 
@@ -408,85 +430,92 @@ class DomUtils {
    * @param {number} replyCount - Number of direct replies to this comment.
    * @param {number} score - Normalized importance score (0-1000).
    * @param {number} downvotes - Number of downvotes or negative reactions.
+   * @param {boolean} isTarget - Whether this is the target comment the user initiated chat from.
    * @returns {string} Formatted comment string.
    */
-  static formatCommentForLLM(comment, path, replyCount = 0, score = 500, downvotes = 0) {
+  static formatCommentForLLM(comment, path, replyCount = 0, score = 500, downvotes = 0, isTarget = false) {
     if (!comment || !comment.author) {
       return `[${path}] (score: ${score}) <replies: ${replyCount}> {downvotes: ${downvotes}} [unknown]: [missing content]`;
     }
     
-    return `[${path}] (score: ${score}) <replies: ${replyCount}> {downvotes: ${downvotes}} ${comment.author}: ${comment.text}`;
+    // Add a marker for the target comment if specified
+    const targetMarker = isTarget ? " [TARGET]" : "";
+    
+    return `[${path}] (score: ${score}) <replies: ${replyCount}> {downvotes: ${downvotes}} ${comment.author}${targetMarker}: ${comment.text}`;
+  }
+  
+  /**
+   * Calculates a normalized score for a comment based on position and other factors.
+   * @param {number} position - The position of the comment in the thread (0-based).
+   * @param {number} totalComments - Total number of comments in the context.
+   * @param {number} downvotes - Number of downvotes (default 0).
+   * @returns {number} A normalized score between 0-1000.
+   */
+  static calculateCommentScore(position, totalComments, downvotes = 0) {
+    const MAX_SCORE = 1000;
+    const MAX_DOWNVOTES = 10;
+    
+    // Base score decreases with position
+    const baseScore = Math.floor(MAX_SCORE - (position * MAX_SCORE) / Math.max(totalComments, 1));
+    
+    // Apply penalty for downvotes
+    const penaltyPerDownvote = baseScore / MAX_DOWNVOTES;
+    const penalty = penaltyPerDownvote * downvotes;
+    
+    return Math.max(Math.floor(baseScore - penalty), 0);
   }
 
   /**
-   * Gets all direct child comments of a given parent comment.
-   * Relies on DomUtils.getCommentIndentLevel.
+   * Gets all direct child comments of a given parent comment with enhanced metadata.
    * @param {HTMLElement} parentComment - The parent comment element (TR.athing.comtr).
-   * @returns {HTMLElement[]} An array of direct child comment elements.
+   * @returns {Array<{id: string, author: string, text: string, path: string, score: number, replies: number, downvotes: number, isTarget: boolean}>} 
+   *          An array of enhanced direct child comment objects.
    */
-  static getDirectChildComments(parentComment) {
-    // console.log(`[DEBUG] DomUtils.getDirectChildComments called for parent: ${parentComment?.id}`);
-    if (!parentComment) {
-      console.warn("[DEBUG] DomUtils.getDirectChildComments: parentComment is null");
+  static getDirectChildCommentsWithMetadata(parentComment) {
+    // First get the raw child elements
+    const childElements = DomUtils.getDirectChildComments(parentComment);
+    if (!childElements.length) {
       return [];
     }
-
-    const parentRow = parentComment.closest("tr");
-    if (!parentRow) {
-      console.warn(`[DEBUG] Could not find parent row for comment ${parentComment.id}`);
-      return [];
-    }
-    const parentIndent = DomUtils.getCommentIndentLevel(parentComment); // Use static method
-
-    if (parentIndent === null) {
-      console.warn(`[DEBUG] Could not determine indent level for comment ${parentComment.id}`);
-      return []; // Could not determine indent
-    }
-
-    const children = [];
-    let currentRow = parentRow.nextElementSibling;
-
-    while (currentRow) {
-      let currentCommentElement = null;
-      // Check if the row itself is the comment element
-      if (currentRow.classList.contains("athing") && currentRow.classList.contains("comtr")) {
-        currentCommentElement = currentRow;
-      } else {
-        // Fallback: look for the comment element within the row (less common)
-        currentCommentElement = currentRow.querySelector(".athing.comtr");
+    
+    const targetId = DomUtils.getCommentId(parentComment);
+    const enhancedChildren = [];
+    
+    // Process each child to add metadata
+    childElements.forEach((childElement, index) => {
+      const commentId = DomUtils.getCommentId(childElement);
+      const author = DomUtils.getCommentAuthor(childElement);
+      const text = DomUtils.getCommentText(childElement);
+      
+      if (!commentId || author === null) {
+        console.warn("getDirectChildCommentsWithMetadata: Skipping child due to missing ID or author.", childElement);
+        return; // Skip this iteration
       }
-
-
-      if (!currentCommentElement) {
-        // If still no comment element found, it might be a non-comment row (e.g., 'more' link row)
-        currentRow = currentRow.nextElementSibling;
-        continue;
-      }
-
-      const currentIndent = DomUtils.getCommentIndentLevel(currentCommentElement); // Use static method
-
-      if (currentIndent === null) {
-        // Cannot determine indent, skip this row
-        currentRow = currentRow.nextElementSibling;
-        continue;
-      }
-
-      // Check for direct child (indent level exactly one more than parent)
-      if (currentIndent === parentIndent + 1) {
-        // console.log(`[DEBUG] Found direct child: ${currentCommentElement.id} for parent: ${parentComment.id}`);
-        children.push(currentCommentElement);
-      } else if (currentIndent <= parentIndent) {
-        // If we've reached a comment with equal or less indentation, we've moved past all children/descendants
-        // console.log(`[DEBUG] Reached comment with indent <= parent's, stopping search: ${currentCommentElement.id}`);
-        break;
-      }
-      // else: This is a grandchild or deeper descendant, skip it for *direct* children search
-
-      // Move to next row in DOM
-      currentRow = currentRow.nextElementSibling;
-    }
-    // console.log(`[DEBUG] DomUtils.getDirectChildComments found ${children.length} children for ${parentComment.id}`);
-    return children;
+      
+      // Get metadata
+      const downvotes = DomUtils.getDownvoteCount(childElement.querySelector(".commtext")) || 0;
+      const directChildren = DomUtils.getDirectChildComments(childElement);
+      const replyCount = directChildren.length;
+      
+      // Calculate path: for direct children, use 1.1, 1.2, etc.
+      const path = `1.${index + 1}`;
+      
+      // Calculate score based on position
+      const score = DomUtils.calculateCommentScore(index, childElements.length, downvotes);
+      
+      enhancedChildren.push({
+        id: commentId,
+        author,
+        text,
+        path,
+        score,
+        replies: replyCount,
+        downvotes,
+        isTarget: false // None of the children are the target
+      });
+    });
+    
+    return enhancedChildren;
   }
 
 
@@ -494,7 +523,8 @@ class DomUtils {
    * Gathers all descendant comments (children, grandchildren, etc.) for a given comment.
    * Traverses down the comment tree based on indentation levels.
    * @param {HTMLElement} targetCommentElement - The comment element (TR.athing.comtr) to start from.
-   * @returns {Array<{id: string, author: string, text: string}>} An array of descendant comment objects. Returns empty array on error or if no descendants.
+   * @returns {Array<{id: string, author: string, text: string, path: string, score: number, replies: number, downvotes: number, isTarget: boolean}>} 
+   *          An array of enhanced descendant comment objects. Returns empty array on error or if no descendants.
    */
   static getDescendantComments(targetCommentElement) {
     const descendants = [];
@@ -502,7 +532,6 @@ class DomUtils {
       console.error("getDescendantComments: targetCommentElement is null");
       return descendants;
     }
-    // console.log("[DEBUG] getDescendantComments: Starting descendant gathering for target:", targetCommentElement.id);
 
     const targetRow = targetCommentElement.closest("tr");
     if (!targetRow) {
@@ -516,6 +545,10 @@ class DomUtils {
       return descendants;
     }
 
+    const targetId = DomUtils.getCommentId(targetCommentElement);
+    
+    // First pass: gather all descendants with their indentation levels
+    const rawDescendants = [];
     let currentRow = targetRow.nextElementSibling;
 
     while (currentRow) {
@@ -547,23 +580,95 @@ class DomUtils {
             const commentId = DomUtils.getCommentId(currentCommentElement);
             const author = DomUtils.getCommentAuthor(currentCommentElement);
             const text = DomUtils.getCommentText(currentCommentElement);
+            const downvotes = DomUtils.getDownvoteCount(currentCommentElement.querySelector(".commtext")) || 0;
+            
+            // Get direct children to count replies
+            const directChildren = DomUtils.getDirectChildComments(currentCommentElement);
+            const replyCount = directChildren.length;
 
             if (commentId && author !== null) {
-                descendants.push({ id: commentId, author: author, text: text });
-                // console.log("[DEBUG] getDescendantComments: Added descendant:", { id: commentId, author: author });
+                rawDescendants.push({ 
+                  id: commentId, 
+                  author, 
+                  text, 
+                  indentLevel: currentIndent - targetIndent, // Relative indent level
+                  downvotes,
+                  replyCount,
+                  element: currentCommentElement
+                });
             } else {
                 console.warn("getDescendantComments: Skipping descendant due to missing ID or author.", currentCommentElement);
             }
         } else {
             // Indentation is equal or less, so we've exited the descendant tree of the target
-            // console.log("[DEBUG] getDescendantComments: Reached indent <= target indent. Stopping search at:", currentCommentElement.id);
             break;
         }
 
         currentRow = currentRow.nextElementSibling;
     }
 
-    // console.log("[DEBUG] getDescendantComments: Finished gathering descendants for", targetCommentElement.id, ". Total items:", descendants.length);
+    // Second pass: build the tree structure to calculate paths
+    const totalComments = rawDescendants.length;
+    
+    // Build a map of parent-child relationships based on indentation
+    const childrenMap = new Map(); // Maps parent index to array of child indices
+    
+    // Initialize with empty arrays for all comments
+    for (let i = 0; i < totalComments; i++) {
+      childrenMap.set(i, []);
+    }
+    
+    // For each comment, find its parent based on indentation
+    for (let i = 0; i < totalComments; i++) {
+      const currentIndent = rawDescendants[i].indentLevel;
+      
+      // Look backwards for the closest comment with one level less indentation
+      for (let j = i - 1; j >= 0; j--) {
+        if (rawDescendants[j].indentLevel === currentIndent - 1) {
+          childrenMap.get(j).push(i);
+          break;
+        }
+      }
+    }
+    
+    // Function to recursively build paths
+    function buildDescendantPaths(index, basePath, level = 1) {
+      const comment = rawDescendants[index];
+      const childIndices = childrenMap.get(index);
+      
+      // Calculate path: for descendants, use 1.1, 1.2, etc. format
+      const path = basePath ? `${basePath}.${level}` : `1.${level}`;
+      
+      // Calculate score based on position and indentation
+      const score = DomUtils.calculateCommentScore(index, totalComments, comment.downvotes);
+      
+      // Add the enhanced comment to the descendants array
+      descendants.push({
+        id: comment.id,
+        author: comment.author,
+        text: comment.text,
+        path,
+        score,
+        replies: comment.replyCount,
+        downvotes: comment.downvotes,
+        isTarget: false // None of the descendants are the target
+      });
+      
+      // Process children recursively
+      childIndices.forEach((childIndex, i) => {
+        buildDescendantPaths(childIndex, path, i + 1);
+      });
+    }
+    
+    // Process all top-level descendants (direct children of target)
+    const topLevelDescendants = rawDescendants
+      .map((_, index) => index)
+      .filter(index => rawDescendants[index].indentLevel === 1);
+    
+    topLevelDescendants.forEach((index, i) => {
+      buildDescendantPaths(index, "1", i + 1);
+    });
+
     return descendants;
   }
 

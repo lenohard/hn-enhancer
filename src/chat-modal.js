@@ -318,34 +318,72 @@ class ChatModal {
       const targetText = this.enhancer.domUtils.getCommentText(this.targetCommentElement);
       const targetCommentData = { id: targetCommentId, author: targetAuthor, text: targetText };
 
-      // Call the appropriate function based on contextType
+      // Call the appropriate function based on contextType to get enhanced context data
       switch (contextType) {
           case 'parents':
-              // getCommentContext already includes the target, ordered root -> target
+              // getCommentContext now returns enhanced objects with path, score, etc.
               contextArray = this.enhancer.domUtils.getCommentContext(this.targetCommentElement);
               break;
           case 'descendants':
-              // getDescendantComments only gets descendants, so add target manually at the beginning
+              // Get target comment with metadata
+              const targetPath = "1"; // Root of descendants tree
+              const targetScore = 1000; // Highest score for the target
+              const targetReplies = this.enhancer.domUtils.getDirectChildComments(this.targetCommentElement).length;
+              const targetDownvotes = this.enhancer.domUtils.getDownvoteCount(
+                this.targetCommentElement.querySelector(".commtext")
+              ) || 0;
+              
+              // Create enhanced target comment object
+              const enhancedTarget = {
+                id: targetCommentId,
+                author: targetAuthor,
+                text: targetText,
+                path: targetPath,
+                score: targetScore,
+                replies: targetReplies,
+                downvotes: targetDownvotes,
+                isTarget: true
+              };
+              
+              // Get enhanced descendants
               const descendants = this.enhancer.domUtils.getDescendantComments(this.targetCommentElement);
+              
+              // Combine target with descendants
               if (targetCommentId && targetAuthor !== null) {
-                  contextArray = [targetCommentData, ...descendants];
+                  contextArray = [enhancedTarget, ...descendants];
               } else {
-                  contextArray = descendants; // Add target only if valid
+                  contextArray = descendants;
               }
               break;
           case 'children':
-              // getDirectChildComments only gets children, so add target manually at the beginning
-              const childrenElements = this.enhancer.domUtils.getDirectChildComments(this.targetCommentElement);
-              const childrenData = childrenElements.map(el => ({
-                  id: this.enhancer.domUtils.getCommentId(el),
-                  author: this.enhancer.domUtils.getCommentAuthor(el),
-                  text: this.enhancer.domUtils.getCommentText(el)
-              })).filter(c => c.id && c.author !== null); // Filter out invalid children
-
+              // Get target comment with metadata (similar to descendants case)
+              const targetPathForChildren = "1"; // Root of children tree
+              const targetScoreForChildren = 1000; // Highest score for the target
+              const targetRepliesForChildren = this.enhancer.domUtils.getDirectChildComments(this.targetCommentElement).length;
+              const targetDownvotesForChildren = this.enhancer.domUtils.getDownvoteCount(
+                this.targetCommentElement.querySelector(".commtext")
+              ) || 0;
+              
+              // Create enhanced target comment object
+              const enhancedTargetForChildren = {
+                id: targetCommentId,
+                author: targetAuthor,
+                text: targetText,
+                path: targetPathForChildren,
+                score: targetScoreForChildren,
+                replies: targetRepliesForChildren,
+                downvotes: targetDownvotesForChildren,
+                isTarget: true
+              };
+              
+              // Get enhanced direct children
+              const childrenData = this.enhancer.domUtils.getDirectChildCommentsWithMetadata(this.targetCommentElement);
+              
+              // Combine target with children
               if (targetCommentId && targetAuthor !== null) {
-                   contextArray = [targetCommentData, ...childrenData];
+                  contextArray = [enhancedTargetForChildren, ...childrenData];
               } else {
-                  contextArray = childrenData; // Add target only if valid
+                  contextArray = childrenData;
               }
               break;
           default:
@@ -418,18 +456,17 @@ class ChatModal {
 ${contextStructureDesc}
 
 `;
-      // Format context into a structured format similar to the summarization feature
-      // This uses a format like: [path] (score: X) <replies: Y> {downvotes: Z} author: text
+      // Format context using the enhanced metadata from our context gathering functions
       const contextString = contextArray
-            .map((c, index) => {
-              // For simplicity, use index+1 as path for now (will be enhanced later)
-              const path = `[${index + 1}]`;
-              // Use placeholder values for score/replies/downvotes until we implement full metadata
-              const score = 500; // Placeholder score
-              const replies = 0;  // Placeholder replies count
-              const downvotes = 0; // Placeholder downvotes
-              
-              return `${path} (score: ${score}) <replies: ${replies}> {downvotes: ${downvotes}} ${c.author}: ${c.text}`;
+            .map(comment => {
+              return this.enhancer.domUtils.formatCommentForLLM(
+                comment,
+                comment.path,
+                comment.replies,
+                comment.score,
+                comment.downvotes,
+                comment.isTarget
+              );
             })
             .join("\n\n");
 
