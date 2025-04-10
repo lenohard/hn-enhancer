@@ -699,17 +699,13 @@ window.HNEnhancer = class HNEnhancer {
     }
     this.logDebug("Toggling grandchildren for:", commentElement.id);
 
-    // Use the class methods directly
-    const directChildren = this._getDirectChildComments(
-      // Use the correct helper method
-      commentElement,
-      this.domUtils
-    );
+    // Use the static method from DomUtils
+    const directChildren = this.domUtils.getDirectChildComments(commentElement);
     let firstGrandchildState = null; // null: none found, false: expanded, true: collapsed
 
     // Determine the state based on the first grandchild found
     for (const child of directChildren) {
-      const grandchildren = this._getDirectChildComments(child, this.domUtils); // Use the correct helper method
+      const grandchildren = this.domUtils.getDirectChildComments(child); // Use the static method
       if (grandchildren.length > 0) {
         firstGrandchildState = this._isCommentCollapsed(grandchildren[0]); // Use the correct helper method
         this.logDebug(
@@ -784,10 +780,7 @@ window.HNEnhancer = class HNEnhancer {
     try {
       // Apply the action to all grandchildren using the overridden collapse
       directChildren.forEach((child) => {
-        const grandchildren = this._getDirectChildComments(
-          child,
-          this.domUtils
-        );
+        const grandchildren = this.domUtils.getDirectChildComments(child); // Use the static method
         console.log(
           `[HNE] Child ${child.id} has ${grandchildren.length} grandchildren`
         );
@@ -858,101 +851,6 @@ window.HNEnhancer = class HNEnhancer {
   }
 
   // --- Helper Methods for Grandchildren Toggling ---
-
-  /**
-   * Finds direct child comments of a given parent comment.
-   * Relies on DomUtils.getCommentIndentLevel.
-   * @param {HTMLElement} parentComment - The parent comment element.
-   * @param {object} domUtils - Instance of DomUtils.
-   * @returns {HTMLElement[]} An array of direct child comment elements.
-   * @private
-   */
-  _getDirectChildComments(parentComment, domUtils) {
-    console.log(
-      `[HNE] _getDirectChildComments called for parent: ${parentComment?.id}`
-    ); // Added log
-    // Copied from original location
-    if (!parentComment) {
-      console.warn("[HNE] _getDirectChildComments: parentComment is null");
-      return [];
-    }
-    if (!domUtils || typeof domUtils.getCommentIndentLevel !== "function") {
-      console.warn(
-        "Parent comment or domUtils.getCommentIndentLevel missing for getDirectChildComments"
-      );
-      return [];
-    }
-    const parentRow = parentComment.closest("tr");
-    if (!parentRow) {
-      console.warn(
-        `[HNE] Could not find parent row for comment ${parentComment.id}`
-      );
-      return [];
-    }
-    const parentIndent = domUtils.getCommentIndentLevel(parentComment);
-
-    if (parentIndent === null) {
-      console.warn(
-        `[HNE] Could not determine indent level for comment ${parentComment.id}`
-      );
-      return []; // Could not determine indent
-    }
-
-    const children = [];
-    let currentRow = parentRow.nextElementSibling;
-
-    while (currentRow) {
-      // The issue might be with the selector. Some comments might be structured differently
-      // First try the direct class match, then try to find the comment within the row
-      let currentCommentElement = currentRow.querySelector(".athing.comtr");
-      if (!currentCommentElement) {
-        // Try an alternative approach: check if the row itself is the comment
-        if (
-          currentRow.classList.contains("athing") &&
-          currentRow.classList.contains("comtr")
-        ) {
-          currentCommentElement = currentRow;
-        }
-      }
-
-      // If still no comment element found, continue to next row
-      if (!currentCommentElement) {
-        currentRow = currentRow.nextElementSibling;
-        continue;
-      }
-      const currentIndent = domUtils.getCommentIndentLevel(
-        currentCommentElement
-      );
-
-      if (currentIndent === null) {
-        currentRow = currentRow.nextElementSibling;
-        continue;
-      }
-
-      // Check for direct child (indent level exactly one more than parent)
-      if (currentIndent === parentIndent + 1) {
-        console.log(
-          `[HNE] Found direct child: ${currentCommentElement.id} for parent: ${parentComment.id}`
-        );
-        children.push(currentCommentElement);
-      } else if (currentIndent <= parentIndent) {
-        // If we've reached a comment with equal or less indentation, we've moved past all children
-        console.log(
-          `[HNE] Reached comment with indent <= parent's, stopping search: ${currentCommentElement.id}`
-        );
-        break;
-      } else {
-        // This is a grandchild or deeper descendant, skip it
-        console.log(
-          `[HNE] Skipping deeper descendant: ${currentCommentElement.id} (indent level: ${currentIndent})`
-        );
-      }
-
-      // Move to next row in DOM
-      currentRow = currentRow.nextElementSibling;
-    }
-    return children;
-  }
 
   /**
    * Checks if a comment element is currently collapsed.

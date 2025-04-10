@@ -400,6 +400,156 @@ class DomUtils {
     );
     return titleElement ? titleElement.textContent.trim() : null;
   }
+
+  /**
+   * Gets all direct child comments of a given parent comment.
+   * Relies on DomUtils.getCommentIndentLevel.
+   * @param {HTMLElement} parentComment - The parent comment element (TR.athing.comtr).
+   * @returns {HTMLElement[]} An array of direct child comment elements.
+   */
+  static getDirectChildComments(parentComment) {
+    // console.log(`[DEBUG] DomUtils.getDirectChildComments called for parent: ${parentComment?.id}`);
+    if (!parentComment) {
+      console.warn("[DEBUG] DomUtils.getDirectChildComments: parentComment is null");
+      return [];
+    }
+
+    const parentRow = parentComment.closest("tr");
+    if (!parentRow) {
+      console.warn(`[DEBUG] Could not find parent row for comment ${parentComment.id}`);
+      return [];
+    }
+    const parentIndent = DomUtils.getCommentIndentLevel(parentComment); // Use static method
+
+    if (parentIndent === null) {
+      console.warn(`[DEBUG] Could not determine indent level for comment ${parentComment.id}`);
+      return []; // Could not determine indent
+    }
+
+    const children = [];
+    let currentRow = parentRow.nextElementSibling;
+
+    while (currentRow) {
+      let currentCommentElement = null;
+      // Check if the row itself is the comment element
+      if (currentRow.classList.contains("athing") && currentRow.classList.contains("comtr")) {
+        currentCommentElement = currentRow;
+      } else {
+        // Fallback: look for the comment element within the row (less common)
+        currentCommentElement = currentRow.querySelector(".athing.comtr");
+      }
+
+
+      if (!currentCommentElement) {
+        // If still no comment element found, it might be a non-comment row (e.g., 'more' link row)
+        currentRow = currentRow.nextElementSibling;
+        continue;
+      }
+
+      const currentIndent = DomUtils.getCommentIndentLevel(currentCommentElement); // Use static method
+
+      if (currentIndent === null) {
+        // Cannot determine indent, skip this row
+        currentRow = currentRow.nextElementSibling;
+        continue;
+      }
+
+      // Check for direct child (indent level exactly one more than parent)
+      if (currentIndent === parentIndent + 1) {
+        // console.log(`[DEBUG] Found direct child: ${currentCommentElement.id} for parent: ${parentComment.id}`);
+        children.push(currentCommentElement);
+      } else if (currentIndent <= parentIndent) {
+        // If we've reached a comment with equal or less indentation, we've moved past all children/descendants
+        // console.log(`[DEBUG] Reached comment with indent <= parent's, stopping search: ${currentCommentElement.id}`);
+        break;
+      }
+      // else: This is a grandchild or deeper descendant, skip it for *direct* children search
+
+      // Move to next row in DOM
+      currentRow = currentRow.nextElementSibling;
+    }
+    // console.log(`[DEBUG] DomUtils.getDirectChildComments found ${children.length} children for ${parentComment.id}`);
+    return children;
+  }
+
+
+  /**
+   * Gathers all descendant comments (children, grandchildren, etc.) for a given comment.
+   * Traverses down the comment tree based on indentation levels.
+   * @param {HTMLElement} targetCommentElement - The comment element (TR.athing.comtr) to start from.
+   * @returns {Array<{id: string, author: string, text: string}>} An array of descendant comment objects. Returns empty array on error or if no descendants.
+   */
+  static getDescendantComments(targetCommentElement) {
+    const descendants = [];
+    if (!targetCommentElement) {
+      console.error("getDescendantComments: targetCommentElement is null");
+      return descendants;
+    }
+    // console.log("[DEBUG] getDescendantComments: Starting descendant gathering for target:", targetCommentElement.id);
+
+    const targetRow = targetCommentElement.closest("tr");
+    if (!targetRow) {
+      console.error("getDescendantComments: Could not find target row for:", targetCommentElement.id);
+      return descendants;
+    }
+
+    const targetIndent = DomUtils.getCommentIndentLevel(targetCommentElement);
+    if (targetIndent === null) {
+      console.error("getDescendantComments: Could not determine indent level for target:", targetCommentElement.id);
+      return descendants;
+    }
+
+    let currentRow = targetRow.nextElementSibling;
+
+    while (currentRow) {
+        let currentCommentElement = null;
+        // Check if the row itself is the comment element
+        if (currentRow.classList.contains("athing") && currentRow.classList.contains("comtr")) {
+            currentCommentElement = currentRow;
+        } else {
+            // Fallback: look for the comment element within the row
+            currentCommentElement = currentRow.querySelector(".athing.comtr");
+        }
+
+        if (!currentCommentElement) {
+            // Not a comment row, could be 'more' link etc.
+            currentRow = currentRow.nextElementSibling;
+            continue;
+        }
+
+        const currentIndent = DomUtils.getCommentIndentLevel(currentCommentElement);
+
+        if (currentIndent === null) {
+            // Cannot determine indent, skip
+            currentRow = currentRow.nextElementSibling;
+            continue;
+        }
+
+        if (currentIndent > targetIndent) {
+            // This is a descendant
+            const commentId = DomUtils.getCommentId(currentCommentElement);
+            const author = DomUtils.getCommentAuthor(currentCommentElement);
+            const text = DomUtils.getCommentText(currentCommentElement);
+
+            if (commentId && author !== null) {
+                descendants.push({ id: commentId, author: author, text: text });
+                // console.log("[DEBUG] getDescendantComments: Added descendant:", { id: commentId, author: author });
+            } else {
+                console.warn("getDescendantComments: Skipping descendant due to missing ID or author.", currentCommentElement);
+            }
+        } else {
+            // Indentation is equal or less, so we've exited the descendant tree of the target
+            // console.log("[DEBUG] getDescendantComments: Reached indent <= target indent. Stopping search at:", currentCommentElement.id);
+            break;
+        }
+
+        currentRow = currentRow.nextElementSibling;
+    }
+
+    // console.log("[DEBUG] getDescendantComments: Finished gathering descendants for", targetCommentElement.id, ". Total items:", descendants.length);
+    return descendants;
+  }
+
 }
 
 // Make the class available globally
