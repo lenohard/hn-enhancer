@@ -67,6 +67,10 @@ class DomUtils {
   }
 
   static getDownvoteCount(commentTextDiv) {
+    // Add check for null or undefined commentTextDiv
+    if (!commentTextDiv) {
+      return 0;
+    }
     const downvoteSpan = commentTextDiv.querySelector(".downvotes");
     if (!downvoteSpan) {
       return 0; // or null, or handle as appropriate
