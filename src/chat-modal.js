@@ -1096,9 +1096,9 @@ ${systemPromptIntro}
     this.currentModel = null; // Reset model for this session/context
     this.conversationHistory = []; // Clear history before loading/gathering
     this.commentPathToIdMap = new Map(); // 重置评论路径到ID的映射
+    this.conversationArea.innerHTML = ""; // Clear display area FIRST
 
     this.enhancer.logDebug(`Initiating post chat for post ${this.currentPostId}, context: ${contextType}`);
-    this.conversationArea.innerHTML = ""; // Clear display area
 
     try {
       // --- Try Loading History First ---
