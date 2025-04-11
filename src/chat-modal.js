@@ -481,6 +481,7 @@ class ChatModal {
     this.currentModel = null; // Reset model for this session/context
     this.conversationHistory = []; // Clear history before loading/gathering
     this.commentPathToIdMap = new Map(); // 重置评论路径到ID的映射
+    this.conversationArea.innerHTML = ""; // Clear display area FIRST
 
     const commentId = this.enhancer.domUtils.getCommentId(this.targetCommentElement);
     const postId = this.currentPostId; // Use stored postId
@@ -492,7 +493,6 @@ class ChatModal {
     }
 
     this.enhancer.logDebug(`Initiating chat for post ${postId}, comment ${commentId}, context: ${contextType}`);
-    this.conversationArea.innerHTML = ""; // Clear display area
 
     try {
         // --- Try Loading History First ---
