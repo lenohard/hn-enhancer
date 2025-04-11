@@ -236,8 +236,8 @@ class ChatModal {
       titleElement.textContent = "Chat about Post";
     }
 
-    // Reset state
-    this.conversationArea.innerHTML = "<p><em>Gathering post context...</em></p>";
+    // Reset state (Clearing area is handled by _gatherPostContextAndInitiateChat)
+    // this.conversationArea.innerHTML = "<p><em>Gathering post context...</em></p>"; // Removed this line
     this.inputElement.value = "";
     this.inputElement.disabled = true;
     this.sendButton.disabled = true;
