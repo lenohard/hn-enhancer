@@ -36,66 +36,17 @@ async function handleGeminiRequest(data) {
     ];
   }
 
-  const endpoint =
-    "https://generativelanguage.googleapis.com/v1beta/models/" +
-    model +
-    ":generateContent";
-  const url = `${endpoint}?key=${apiKey}`;
+  // Use OpenAI-compatible endpoint
+  const endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
   console.log("Gemini API端点:", endpoint);
 
-  // --- Adapt history for Gemini API ---
-  // 1. Filter out system messages (handle separately if needed)
-  // 2. Map 'assistant' role to 'model'
-  // 3. Ensure alternating user/model roles, merging consecutive messages of the same role.
-  // 4. Handle system prompt (if provided as 'system' role) by prepending to the first user message.
-
-  let systemPromptContent = null;
-  const geminiContents = [];
-  let lastRole = null;
-
-  for (const message of processedMessages) {
-      if (message.role === 'system') {
-          systemPromptContent = message.content;
-          continue; // Skip adding system message directly to contents
-      }
-
-      const currentRole = message.role === 'assistant' ? 'model' : 'user';
-      let currentContent = message.content;
-
-      // DO NOT Prepend system prompt anymore. It will be handled by systemInstruction field.
-      // if (systemPromptContent && currentRole === 'user' && geminiContents.length === 0) {
-      //     currentContent = `${systemPromptContent}\n\n---\n\n${currentContent}`;
-      //     systemPromptContent = null; // Only prepend once
-      // }
-
-      if (geminiContents.length > 0 && currentRole === lastRole) {
-          // Merge consecutive messages of the same role
-          const lastMessage = geminiContents[geminiContents.length - 1];
-          lastMessage.parts[0].text += `\n\n---\n\n${currentContent}`; // Combine content
-      } else {
-          // Add new message with the correct role
-          geminiContents.push({
-              role: currentRole,
-              parts: [{ text: currentContent }],
-          });
-          lastRole = currentRole;
-      }
-  }
-
-  // Ensure the last message is not from the 'model' if the API requires user turn last (depends on API version/use case)
-  // For generateContent, it seems okay to end with 'model'.
-
-  // Construct the final payload, including systemInstruction if available
+  // Use OpenAI-compatible format - much simpler!
   const payload = {
-    contents: geminiContents,
-    ...(systemPromptContent && { systemInstruction: { parts: [{ text: systemPromptContent }] } }), // Add systemInstruction if system prompt exists
-    generationConfig: {
-      temperature: 0.7,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 8192, // Consider making this configurable later
-    },
+    model: model.replace('models/', ''), // Remove 'models/' prefix if present
+    messages: processedMessages,
+    temperature: 0.7,
+    max_tokens: 8192,
   };
 
   // Log the final payload being sent
@@ -103,17 +54,21 @@ async function handleGeminiRequest(data) {
 
   try {
     console.log("发送Gemini API请求...");
-    console.log("请求URL (隐藏密钥):", url.split("?")[0] + "?key=***");
+    console.log("请求URL:", endpoint);
     console.log("请求配置:", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": "Bearer ***"
+      },
       bodySize: JSON.stringify(payload).length
     });
     
-    const response = await fetch(url, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify(payload),
     });
@@ -129,9 +84,7 @@ async function handleGeminiRequest(data) {
         errorBody: errorText,
       });
       throw new Error(
-        `Gemini API Error: HTTP error code: ${response.status}, URL: ${
-          url.split("?")[0]
-        } \nBody: ${errorText}`
+        `Gemini API Error: HTTP error code: ${response.status}, URL: ${endpoint} \nBody: ${errorText}`
       );
     }
 
@@ -141,10 +94,10 @@ async function handleGeminiRequest(data) {
       JSON.stringify(
         {
           hasData: !!responseData,
-          hasCandidates: !!(responseData && responseData.candidates),
-          candidatesCount:
-            responseData && responseData.candidates
-              ? responseData.candidates.length
+          hasChoices: !!(responseData && responseData.choices),
+          choicesCount:
+            responseData && responseData.choices
+              ? responseData.choices.length
               : 0,
         },
         null,
@@ -742,24 +695,8 @@ async function handleChatRequest(data) {
           model,
           messages, // Pass the original history
         });
-        // Extract text content
-        // Check finishReason if needed: geminiResponse.candidates[0]?.finishReason
-        // Check safetyRatings: geminiResponse.promptFeedback?.safetyRatings
-        const candidate = geminiResponse?.candidates?.[0];
-        const part = candidate?.content?.parts?.[0];
-        if (part?.text) {
-            return part.text;
-        } else {
-            console.warn("Gemini response missing text content:", JSON.stringify(geminiResponse));
-            // Provide more context about why content might be missing
-            if (candidate?.finishReason && candidate.finishReason !== "STOP") {
-                return `Response stopped due to: ${candidate.finishReason}. Check safety ratings or prompt.`;
-            }
-            if (geminiResponse?.promptFeedback?.blockReason) {
-                 return `Request blocked due to: ${geminiResponse.promptFeedback.blockReason}.`;
-            }
-            return "No response content or response blocked.";
-        }
+        // Extract text content from OpenAI-compatible response format
+        return geminiResponse.choices[0]?.message?.content || "No response content";
 
 
       case "chrome-ai":
