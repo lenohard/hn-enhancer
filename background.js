@@ -1,4 +1,5 @@
 async function onInstalled() {
+  console.log("[BACKGROUND] 扩展已安装/启动");
   const data = await chrome.storage.sync.get("settings");
   const providerSelection = data.settings?.providerSelection;
 
@@ -175,8 +176,13 @@ async function handleGeminiRequest(data) {
 // 启用安装处理程序
 chrome.runtime.onInstalled.addListener(onInstalled);
 
+// 添加启动日志
+console.log("[BACKGROUND] Background script 已加载");
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("Background script received message of type:", message.type);
+  console.log("[BACKGROUND] 收到消息, 类型:", message.type);
+  console.log("[BACKGROUND] 消息数据:", message.data);
+  console.log("[BACKGROUND] 发送者:", sender);
 
   // Handle the message
   switch (message.type) {
