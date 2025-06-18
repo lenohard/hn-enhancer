@@ -219,6 +219,9 @@ window.HNEnhancer = class HNEnhancer {
   }
 
   setupKeyBoardShortcuts() {
+    // 防止重复绑定 keydown 事件
+    if (window.__HNEnhancerKeydownBound) return;
+    window.__HNEnhancerKeydownBound = true;
     // Shortcut keys specific to the Comments page
     const doubleKeyShortcuts = {
       comments: {
@@ -908,7 +911,7 @@ window.HNEnhancer = class HNEnhancer {
       console.error("ChatModal instance not found.");
     }
   }
-  
+
   /**
    * Opens the chat modal for the entire post.
    */
@@ -924,32 +927,53 @@ window.HNEnhancer = class HNEnhancer {
       console.error("ChatModal instance not found.");
     }
   }
-  
+
   /**
    * 切换聊天窗口的显示/隐藏状态
    * 如果窗口未打开，则打开帖子级聊天
    * 如果窗口已打开，则隐藏它
+   * 避免重复初始化以防止系统消息重复显示
    */
   toggleChatModal() {
     if (!this.chatModal) {
       console.error("ChatModal instance not found.");
       return;
     }
-    
+
     // 检查聊天窗口是否已经可见
     if (this.chatModal.isVisible) {
       // 如果可见，则隐藏
       this.chatModal.hide();
       this.logDebug("Chat modal hidden via keyboard shortcut.");
     } else {
-      // 如果不可见，则打开帖子级聊天
+      // 如果不可见，优先恢复 comment 聊天（如果有）
       const postId = this.domUtils.getCurrentHNItemId();
       if (!postId) {
         console.error("Could not determine post ID to open chat modal.");
         return;
       }
-      this.chatModal.openForPost(postId);
-      this.logDebug("Post chat modal opened via keyboard shortcut.");
+      // 优先恢复 comment 聊天
+      if (
+        this.chatModal.targetCommentElement &&
+        this.chatModal.currentPostId === postId
+      ) {
+        this.chatModal.show();
+        this.logDebug(
+          "Comment chat modal shown (already initialized) via keyboard shortcut."
+        );
+      } else if (
+        this.chatModal.isPostChat &&
+        this.chatModal.currentPostId === postId
+      ) {
+        this.chatModal.show();
+        this.logDebug(
+          "Post chat modal shown (already initialized) via keyboard shortcut."
+        );
+      } else {
+        // 否则，打开新的帖子级聊天
+        this.chatModal.openForPost(postId);
+        this.logDebug("Post chat modal opened via keyboard shortcut.");
+      }
     }
   }
 }; // <-- Moved openChatModal inside the class and kept the final brace

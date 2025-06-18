@@ -5,14 +5,19 @@ _这是一个用于规划和记录 HN Enhancer 扩展新功能开发的 Markdown
 # 已知问题：
 
 1. 当有的评论被折叠后，就无法通过点击统计面板里的链接定位到该评论.
-   ~~2. 点击 "Chat" 链接后，模态框会打开，会有多余的一条消息：Gathering parents context.... 但是再点击其他上下文之后就没有了。只有正常的: Context loaded (xxx) xxxxx ~~
+~2. 点击 "Chat" 链接后，模态框会打开，会有多余的一条消息：Gathering parents context.... 但是再点击其他上下文之后就没有了。只有正常的: Context loaded (xxx) xxxxx ~~
 2. 快捷键 i 唤起聊天窗口以后，system message 有 bug
+3. Deepest Comments 有问题
+4. 全局对话之后，点开其他的对话，然后重新点开全局对话，看不到之前的记录
 
 # 待办事项：
 
 1. ~~通过点击聊天中的评论来在页面里定位到那里。~~ (已完成)
 2. 删除不必要的 logging
 3. 已经有过聊天记录的评论，有一个 indicator.
+4. 保存总结内容。
+5. 规定和处理一下同时应用多个评论时候的格式
+
 
 # 笔记：
 
