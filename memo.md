@@ -47,4 +47,20 @@ This approach allows for incremental progress across multiple sessions, even wit
 - 测试功能是否正常工作
 - 考虑为其他提供商（OpenAI、Anthropic等）添加类似功能
 
+**当前调试问题 (2025-06-18):**
+- 用户报告 Gemini 聊天功能失败，错误信息: "TypeError: Failed to fetch"
+- 已添加详细的调试日志来诊断网络请求问题
+- 可能原因包括:
+  1. API密钥无效或格式错误
+  2. 网络连接问题
+  3. 防火墙或代理阻止请求
+  4. Gemini API服务问题
+  5. 请求负载格式错误
+
+**调试步骤:**
+1. 检查浏览器控制台中的详细日志
+2. 验证 API 密钥是否正确
+3. 测试网络连接到 Google API
+4. 检查请求负载格式
+
 ## previous task summary

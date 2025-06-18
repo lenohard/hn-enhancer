@@ -17,6 +17,8 @@ async function handleGeminiRequest(data) {
   const { apiKey, model, messages, systemPrompt, userPrompt } = data;
 
   console.log("处理Gemini API请求，模型:", model);
+  console.log("API密钥长度:", apiKey ? apiKey.length : 0);
+  console.log("消息数量:", messages ? messages.length : 0);
 
   // Validate required parameters - support both formats
   if (!apiKey || !model || (!messages && (!systemPrompt || !userPrompt))) {
@@ -100,6 +102,13 @@ async function handleGeminiRequest(data) {
 
   try {
     console.log("发送Gemini API请求...");
+    console.log("请求URL (隐藏密钥):", url.split("?")[0] + "?key=***");
+    console.log("请求配置:", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      bodySize: JSON.stringify(payload).length
+    });
+    
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -109,6 +118,7 @@ async function handleGeminiRequest(data) {
     });
 
     console.log("收到Gemini API响应, 状态码:", response.status);
+    console.log("响应头:", Object.fromEntries(response.headers.entries()));
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -144,7 +154,20 @@ async function handleGeminiRequest(data) {
     return responseData;
   } catch (error) {
     console.error("Gemini API请求失败:", error);
+    console.error("错误类型:", error.name);
+    console.error("错误消息:", error.message);
     console.error("错误详情:", error.stack);
+    
+    // 提供更具体的错误信息
+    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      console.error("网络错误可能原因:");
+      console.error("1. 网络连接问题");
+      console.error("2. API密钥无效或格式错误");
+      console.error("3. 请求被阻止 (防火墙/代理)");
+      console.error("4. Gemini API服务不可用");
+      console.error("5. 请求负载过大或格式错误");
+    }
+    
     throw error;
   }
 }
@@ -810,6 +833,7 @@ async function handleFetchGeminiModels(data) {
   const { apiKey } = data;
 
   console.log("处理获取Gemini模型列表请求");
+  console.log("API密钥长度:", apiKey ? apiKey.length : 0);
 
   if (!apiKey) {
     console.error("获取Gemini模型列表请求缺少API密钥");
@@ -820,9 +844,15 @@ async function handleFetchGeminiModels(data) {
   const url = `${endpoint}?key=${apiKey}`;
 
   console.log("Gemini模型列表API端点:", endpoint);
+  console.log("完整请求URL (隐藏密钥):", `${endpoint}?key=***`);
 
   try {
     console.log("发送Gemini模型列表API请求...");
+    console.log("请求配置:", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+    
     const response = await fetch(url, {
       method: "GET",
       headers: {
@@ -831,6 +861,7 @@ async function handleFetchGeminiModels(data) {
     });
 
     console.log("收到Gemini模型列表API响应, 状态码:", response.status);
+    console.log("响应头:", Object.fromEntries(response.headers.entries()));
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -865,7 +896,19 @@ async function handleFetchGeminiModels(data) {
     };
   } catch (error) {
     console.error("Gemini模型列表API请求失败:", error);
+    console.error("错误类型:", error.name);
+    console.error("错误消息:", error.message);
     console.error("错误详情:", error.stack);
+    
+    // 提供更具体的错误信息
+    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      console.error("网络错误可能原因:");
+      console.error("1. 网络连接问题");
+      console.error("2. API密钥无效");
+      console.error("3. CORS问题");
+      console.error("4. 防火墙或代理阻止请求");
+    }
+    
     throw error;
   }
 }
