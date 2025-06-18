@@ -24,5 +24,27 @@ This approach allows for incremental progress across multiple sessions, even wit
 
 ## current task plan and progress
 
+### 动态模型列表获取功能 (2025-06-18)
+
+**目标:** 实现动态获取 AI 提供商模型列表的功能，首先支持 Google Gemini
+
+**已完成:**
+- [x] 在 Gemini 模型选择器旁添加"刷新"按钮
+- [x] 在 background.js 中实现 `handleFetchGeminiModels` 函数
+- [x] 在 options.js 中实现 `fetchGeminiModels` 函数
+- [x] 添加模型缓存机制（24小时有效期）
+- [x] 实现加载缓存模型的逻辑
+- [x] 添加刷新按钮的状态管理和错误处理
+
+**功能特点:**
+- 使用 Gemini API 获取最新模型列表
+- 只显示支持 `generateContent` 的模型
+- 模型信息包含名称、显示名称、描述等
+- 24小时缓存机制减少 API 调用
+- 友好的用户界面和错误提示
+
+**下一步:**
+- 测试功能是否正常工作
+- 考虑为其他提供商（OpenAI、Anthropic等）添加类似功能
 
 ## previous task summary

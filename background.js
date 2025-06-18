@@ -223,6 +223,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse
       );
 
+    case "FETCH_GEMINI_MODELS":
+      return handleAsyncMessage(
+        message,
+        async () => await handleFetchGeminiModels(message.data),
+        sendResponse
+      );
+
     default:
       console.log("Unknown message type:", message.type);
   }
@@ -794,6 +801,71 @@ async function handleChromeAIRequest(data) {
     return { summary };
   } catch (error) {
     console.error("Chrome AI API请求失败:", error);
+    throw error;
+  }
+}
+
+// Handle fetching Gemini models
+async function handleFetchGeminiModels(data) {
+  const { apiKey } = data;
+
+  console.log("处理获取Gemini模型列表请求");
+
+  if (!apiKey) {
+    console.error("获取Gemini模型列表请求缺少API密钥");
+    throw new Error("Missing API key for fetching Gemini models");
+  }
+
+  const endpoint = "https://generativelanguage.googleapis.com/v1beta/models";
+  const url = `${endpoint}?key=${apiKey}`;
+
+  console.log("Gemini模型列表API端点:", endpoint);
+
+  try {
+    console.log("发送Gemini模型列表API请求...");
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    console.log("收到Gemini模型列表API响应, 状态码:", response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Gemini模型列表API错误:", {
+        status: response.status,
+        statusText: response.statusText,
+        errorBody: errorText,
+      });
+      throw new Error(
+        `Gemini Models API Error: HTTP error code: ${response.status} \nBody: ${errorText}`
+      );
+    }
+
+    const responseData = await response.json();
+    console.log("Gemini模型列表API响应数据:", responseData);
+
+    // Filter models that support generateContent
+    const chatModels = responseData.models?.filter(model => 
+      model.supportedGenerationMethods?.includes('generateContent')
+    ) || [];
+
+    console.log(`找到 ${chatModels.length} 个支持聊天的Gemini模型`);
+
+    return {
+      models: chatModels.map(model => ({
+        name: model.name,
+        displayName: model.displayName || model.name,
+        description: model.description || '',
+        inputTokenLimit: model.inputTokenLimit || 0,
+        outputTokenLimit: model.outputTokenLimit || 0
+      }))
+    };
+  } catch (error) {
+    console.error("Gemini模型列表API请求失败:", error);
+    console.error("错误详情:", error.stack);
     throw error;
   }
 }

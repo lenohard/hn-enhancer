@@ -75,6 +75,71 @@ async function sendBackgroundMessage(type, data) {
     return response.data;
 }
 
+// Fetch Gemini models from API
+async function fetchGeminiModels() {
+    try {
+        // Get the API key from the input field
+        const apiKey = document.getElementById('gemini-key').value;
+        
+        if (!apiKey) {
+            throw new Error('请先输入Gemini API密钥');
+        }
+
+        const data = await sendBackgroundMessage('FETCH_GEMINI_MODELS', {
+            apiKey: apiKey
+        });
+
+        const selectElement = document.getElementById('gemini-model');
+        // Clear existing options
+        selectElement.innerHTML = '';
+
+        // Add models to select element
+        data.models.forEach(model => {
+            const option = document.createElement('option');
+            // Use the model name (like "models/gemini-2.0-flash-lite") as value
+            option.value = model.name;
+            // Use display name for the text, fallback to name if no display name
+            option.textContent = model.displayName || model.name;
+            // Add description as title for tooltip
+            if (model.description) {
+                option.title = model.description;
+            }
+            selectElement.appendChild(option);
+        });
+
+        // If no models found, add a placeholder option
+        if (data.models.length === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = '未找到可用模型';
+            selectElement.appendChild(option);
+        }
+
+        // Store the fetched models in chrome storage for future use
+        await chrome.storage.local.set({
+            geminiModels: {
+                models: data.models,
+                timestamp: Date.now()
+            }
+        });
+
+        console.log(`成功获取 ${data.models.length} 个Gemini模型`);
+        
+    } catch (error) {
+        console.log('获取Gemini模型列表时出错:', error);
+        // Handle error by adding an error option
+        const selectElement = document.getElementById('gemini-model');
+        selectElement.innerHTML = '';
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = `错误: ${error.message}`;
+        selectElement.appendChild(option);
+        
+        // Show error to user
+        alert(`获取Gemini模型列表失败: ${error.message}`);
+    }
+}
+
 // Fetch Ollama models from API
 async function fetchOllamaModels() {
     try {
@@ -114,6 +179,43 @@ async function fetchOllamaModels() {
     }
 }
 
+// Load Gemini models from storage or use defaults
+async function loadGeminiModels() {
+    try {
+        // Try to load cached models from storage
+        const cachedData = await chrome.storage.local.get('geminiModels');
+        const geminiModels = cachedData.geminiModels;
+        
+        const selectElement = document.getElementById('gemini-model');
+        
+        // Check if we have cached models and they're not too old (24 hours)
+        const isDataFresh = geminiModels && 
+            geminiModels.timestamp && 
+            (Date.now() - geminiModels.timestamp) < 24 * 60 * 60 * 1000;
+            
+        if (isDataFresh && geminiModels.models && geminiModels.models.length > 0) {
+            // Use cached models
+            selectElement.innerHTML = '';
+            geminiModels.models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.name;
+                option.textContent = model.displayName || model.name;
+                if (model.description) {
+                    option.title = model.description;
+                }
+                selectElement.appendChild(option);
+            });
+            console.log(`加载了 ${geminiModels.models.length} 个缓存的Gemini模型`);
+        } else {
+            // Use default models if no cached data or data is stale
+            console.log('使用默认Gemini模型列表');
+        }
+    } catch (error) {
+        console.error('加载Gemini模型时出错:', error);
+        // Keep default models in case of error
+    }
+}
+
 // Load settings from Chrome storage
 async function loadSettings() {
     try {
@@ -145,6 +247,8 @@ async function loadSettings() {
             // Set Gemini settings
             if (settings.gemini) {
                 document.getElementById('gemini-key').value = settings.gemini.apiKey || '';
+                // Load Gemini models first, then set the selected model
+                await loadGeminiModels();
                 document.getElementById('gemini-model').value = settings.gemini.model || 'gemini-2.0-flash-lite';
             }
 
@@ -320,7 +424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Fetch Ollama models before loading other settings
     await fetchOllamaModels();
 
-    // Load saved settings
+    // Load saved settings (this will also load Gemini models if needed)
     await loadSettings();
 
     // Add save button event listener
@@ -334,8 +438,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     const testButton = document.getElementById('test-connection');
     testButton.addEventListener('click', testProviderConnection);
 
+    // Add refresh Gemini models button event listener
+    const refreshGeminiButton = document.getElementById('refresh-gemini-models');
+    refreshGeminiButton.addEventListener('click', async () => {
+        const originalText = refreshGeminiButton.textContent;
+        refreshGeminiButton.textContent = '刷新中...';
+        refreshGeminiButton.disabled = true;
+        
+        try {
+            await fetchGeminiModels();
+            refreshGeminiButton.textContent = '已刷新';
+            setTimeout(() => {
+                refreshGeminiButton.textContent = originalText;
+            }, 2000);
+        } catch (error) {
+            refreshGeminiButton.textContent = '刷新失败';
+            setTimeout(() => {
+                refreshGeminiButton.textContent = originalText;
+            }, 3000);
+        } finally {
+            refreshGeminiButton.disabled = false;
+        }
+    });
+
     // Add cancel button event listener
-    const cancelButton = document.querySelector('button[type="button"]:not(#test-connection)');
+    const cancelButton = document.querySelector('button[type="button"]:not(#test-connection):not(#refresh-gemini-models)');
     cancelButton.addEventListener('click', () => {
         window.close();
     });
