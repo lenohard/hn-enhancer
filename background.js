@@ -108,20 +108,6 @@ async function handleGeminiRequest(data) {
     return responseData;
   } catch (error) {
     console.error("Gemini API请求失败:", error);
-    console.error("错误类型:", error.name);
-    console.error("错误消息:", error.message);
-    console.error("错误详情:", error.stack);
-    
-    // 提供更具体的错误信息
-    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-      console.error("网络错误可能原因:");
-      console.error("1. 网络连接问题");
-      console.error("2. API密钥无效或格式错误");
-      console.error("3. 请求被阻止 (防火墙/代理)");
-      console.error("4. Gemini API服务不可用");
-      console.error("5. 请求负载过大或格式错误");
-    }
-    
     throw error;
   }
 }
@@ -839,19 +825,6 @@ async function handleFetchGeminiModels(data) {
     };
   } catch (error) {
     console.error("Gemini模型列表API请求失败:", error);
-    console.error("错误类型:", error.name);
-    console.error("错误消息:", error.message);
-    console.error("错误详情:", error.stack);
-    
-    // 提供更具体的错误信息
-    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-      console.error("网络错误可能原因:");
-      console.error("1. 网络连接问题");
-      console.error("2. API密钥无效");
-      console.error("3. CORS问题");
-      console.error("4. 防火墙或代理阻止请求");
-    }
-    
     throw error;
   }
 }
