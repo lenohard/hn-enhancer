@@ -63,4 +63,10 @@ This approach allows for incremental progress across multiple sessions, even wit
 3. 测试网络连接到 Google API
 4. 检查请求负载格式
 
+**问题确认 (2025-06-18):**
+- 确认了具体错误：CORS 策略阻止了对 Gemini API 的访问
+- 错误信息：`Access to fetch at 'https://generativelanguage.googleapis.com/...' has been blocked by CORS policy`
+- 原因：manifest.json 中缺少访问 Google API 的权限
+- 解决方案：需要在 manifest.json 中添加 `"https://generativelanguage.googleapis.com/*"` 到 host_permissions
+
 ## previous task summary
