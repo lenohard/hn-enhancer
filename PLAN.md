@@ -85,6 +85,40 @@ _这是一个用于规划和记录 HN Enhancer 扩展新功能开发的 Markdown
 
 **总结**: 这个 `score` 是一个动态计算的、归一化的（0-1000）**重要性指标**，主要依据评论在当前可见列表中的**相对位置**和**收到的踩数**。
 
+## google gemini 模型列表请求方式：
+curl https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY
+返回例子：
+{
+  "models": [
+    {
+      "name": "models/embedding-gecko-001",
+      "version": "001",
+      "displayName": "Embedding Gecko",
+      "description": "Obtain a distributed representation of a text.",
+      "inputTokenLimit": 1024,
+      "outputTokenLimit": 1,
+      "supportedGenerationMethods": [
+        "embedText",
+        "countTextTokens"
+      ]
+    },
+    {
+      "name": "models/gemini-1.0-pro-vision-latest",
+      "version": "001",
+      "displayName": "Gemini 1.0 Pro Vision",
+      "description": "The original Gemini 1.0 Pro Vision model version which was optimized for image understanding. Gemini 1.0 Pro Vision was deprecated on July 12, 2024. Move to a newer Gemini version.",
+      "inputTokenLimit": 12288,
+      "outputTokenLimit": 4096,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens"
+      ],
+      "temperature": 0.4,
+      "topP": 1,
+      "topK": 32
+    },
+    ...] 
+
 # 功能计划：评论统计显示
 
 **目标:** 增强 HN Enhancer 扩展，显示 Hacker News 帖子评论树的有用统计数据，与摘要面板分开显示。

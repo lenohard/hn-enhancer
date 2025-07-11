@@ -140,6 +140,82 @@ async function fetchGeminiModels() {
     }
 }
 
+// Function to fetch available LiteLLM models
+async function fetchLiteLLMModels() {
+    try {
+        // Get the API key from the input field (optional for LiteLLM)
+        const apiKey = document.getElementById('litellm-key').value;
+        
+        const data = await sendBackgroundMessage('FETCH_LITELLM_MODELS', {
+            apiKey: apiKey || undefined
+        });
+
+        const inputElement = document.getElementById('litellm-model');
+        
+        // If models are returned, show them in a select dropdown instead of text input
+        if (data.models && data.models.length > 0) {
+            // Check if we need to replace the input with a select
+            if (inputElement.tagName.toLowerCase() === 'input') {
+                const selectElement = document.createElement('select');
+                selectElement.id = 'litellm-model';
+                selectElement.name = 'litellm-model';
+                selectElement.className = inputElement.className;
+                
+                // Add models to select element
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.name;
+                    option.textContent = model.displayName || model.name;
+                    if (model.description) {
+                        option.title = model.description;
+                    }
+                    selectElement.appendChild(option);
+                });
+                
+                // Replace input with select
+                inputElement.parentNode.replaceChild(selectElement, inputElement);
+                
+                // Add the dropdown arrow
+                const container = selectElement.parentNode;
+                if (!container.querySelector('svg')) {
+                    const svg = document.createElement('div');
+                    svg.innerHTML = `<svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
+                        <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                    </svg>`;
+                    container.appendChild(svg.firstElementChild);
+                }
+            } else {
+                // Already a select, just update options
+                inputElement.innerHTML = '';
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.name;
+                    option.textContent = model.displayName || model.name;
+                    if (model.description) {
+                        option.title = model.description;
+                    }
+                    inputElement.appendChild(option);
+                });
+            }
+            
+            console.log(`加载了 ${data.models.length} 个LiteLLM模型`);
+        } else {
+            console.log('未找到LiteLLM模型');
+        }
+
+        // Cache the models data
+        const modelsToCache = {
+            models: data.models,
+            timestamp: Date.now()
+        };
+        chrome.storage.local.set({ 'litellm-models-cache': modelsToCache });
+
+    } catch (error) {
+        console.error('获取LiteLLM模型时出错:', error);
+        alert(`获取LiteLLM模型失败: ${error.message}`);
+    }
+}
+
 // Fetch Ollama models from API
 async function fetchOllamaModels() {
     try {
@@ -461,8 +537,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // Add refresh LiteLLM models button event listener
+    const refreshLiteLLMButton = document.getElementById('refresh-litellm-models');
+    refreshLiteLLMButton.addEventListener('click', async () => {
+        const originalText = refreshLiteLLMButton.textContent;
+        refreshLiteLLMButton.textContent = '刷新中...';
+        refreshLiteLLMButton.disabled = true;
+        
+        try {
+            await fetchLiteLLMModels();
+            refreshLiteLLMButton.textContent = '已刷新';
+            setTimeout(() => {
+                refreshLiteLLMButton.textContent = originalText;
+            }, 2000);
+        } catch (error) {
+            refreshLiteLLMButton.textContent = '刷新失败';
+            setTimeout(() => {
+                refreshLiteLLMButton.textContent = originalText;
+            }, 3000);
+        } finally {
+            refreshLiteLLMButton.disabled = false;
+        }
+    });
+
     // Add cancel button event listener
-    const cancelButton = document.querySelector('button[type="button"]:not(#test-connection):not(#refresh-gemini-models)');
+    const cancelButton = document.querySelector('button[type="button"]:not(#test-connection):not(#refresh-gemini-models):not(#refresh-litellm-models)');
     cancelButton.addEventListener('click', () => {
         window.close();
     });
@@ -478,6 +577,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const deepseekInputs = document.querySelectorAll('#deepseek-key, #deepseek-model');
             const ollamaInputs = document.querySelectorAll('#ollama-model');
             const openrouterInputs = document.querySelectorAll('#openrouter-key, #openrouter-model');
+            const litellmInputs = document.querySelectorAll('#litellm-key, #litellm-model');
 
             openaiInputs.forEach(input => input.disabled = radio.id !== 'openai');
             anthropicInputs.forEach(input => input.disabled = radio.id !== 'anthropic');
@@ -485,6 +585,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             deepseekInputs.forEach(input => input.disabled = radio.id !== 'deepseek');
             ollamaInputs.forEach(input => input.disabled = radio.id !== 'ollama');
             openrouterInputs.forEach(input => input.disabled = radio.id !== 'openrouter');
+            litellmInputs.forEach(input => input.disabled = radio.id !== 'litellm');
         });
     });
 

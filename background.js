@@ -184,6 +184,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         async () => await handleChromeAIRequest(message.data),
         sendResponse
       );
+
+    case "LITELLM_API_REQUEST":
+      return handleAsyncMessage(
+        message,
+        async () => await handleLiteLLMRequest(message.data),
+        sendResponse
+      );
     case "HN_CHAT_REQUEST":
       return handleAsyncMessage(
         message,
@@ -195,6 +202,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return handleAsyncMessage(
         message,
         async () => await handleFetchGeminiModels(message.data),
+        sendResponse
+      );
+
+    case "FETCH_LITELLM_MODELS":
+      return handleAsyncMessage(
+        message,
+        async () => await handleFetchLiteLLMModels(message.data),
         sendResponse
       );
 
@@ -617,8 +631,8 @@ async function handleChatRequest(data) {
   const settingsData = await chrome.storage.sync.get("settings");
   const apiKey = settingsData.settings?.[provider]?.apiKey;
 
-  // Handle cases where API key might not be needed (Ollama) or is missing
-  if (!apiKey && provider !== "ollama" && provider !== "chrome-ai") {
+  // Handle cases where API key might not be needed (Ollama, LiteLLM local models) or is missing
+  if (!apiKey && provider !== "ollama" && provider !== "chrome-ai" && provider !== "litellm") {
     console.error(`缺少 ${provider} 的 API 密钥`);
     throw new Error(`Missing API key for ${provider}`);
   }
@@ -693,6 +707,16 @@ async function handleChatRequest(data) {
         // Directly return the text content on success
         return chromeAIResponse.summary || "No response content";
 
+      case "litellm":
+        // Pass messages array directly (same format as OpenAI)
+        const litellmResponse = await handleLiteLLMRequest({
+          apiKey,
+          model,
+          messages,
+        });
+        // Directly return the text content on success
+        return litellmResponse.choices[0]?.message?.content || "No response content";
+
       default:
         throw new Error(`Unsupported chat provider: ${provider}`);
     }
@@ -753,6 +777,86 @@ async function handleChromeAIRequest(data) {
     return { summary };
   } catch (error) {
     console.error("Chrome AI API请求失败:", error);
+    throw error;
+  }
+}
+
+// Handle LiteLLM API requests
+async function handleLiteLLMRequest(data) {
+  const { apiKey, model, messages } = data;
+
+  console.log("处理LiteLLM API请求，模型:", model);
+
+  if (!model || !messages) {
+    console.error("LiteLLM API请求缺少必要参数");
+    throw new Error("Missing required parameters for LiteLLM API request");
+  }
+
+  const endpoint = "http://127.0.0.1:4000/chat/completions";
+
+  console.log("LiteLLM API端点:", endpoint);
+
+  const payload = {
+    model: model,
+    messages: messages,
+    temperature: 0.7,
+    max_tokens: 2048,
+  };
+
+  // Add API key to payload if provided
+  if (apiKey) {
+    payload.api_key = apiKey;
+  }
+
+  // Log the payload being sent
+  console.log("LiteLLM 请求负载:", JSON.stringify(payload, null, 2));
+
+  try {
+    console.log("发送LiteLLM API请求...");
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey && { "Authorization": `Bearer ${apiKey}` }),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log("收到LiteLLM API响应, 状态码:", response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("LiteLLM API错误:", {
+        status: response.status,
+        statusText: response.statusText,
+        errorBody: errorText,
+      });
+      throw new Error(
+        `LiteLLM API Error: HTTP error code: ${response.status} \nBody: ${errorText}`
+      );
+    }
+
+    const responseData = await response.json();
+    console.log(
+      "LiteLLM API响应数据结构:",
+      JSON.stringify(
+        {
+          hasData: !!responseData,
+          hasChoices: !!(responseData && responseData.choices),
+          choicesCount:
+            responseData && responseData.choices
+              ? responseData.choices.length
+              : 0,
+        },
+        null,
+        2
+      )
+    );
+
+    return responseData;
+  } catch (error) {
+    console.error("LiteLLM API请求失败:", error);
+    console.error("错误详情:", error.stack);
     throw error;
   }
 }
@@ -825,6 +929,70 @@ async function handleFetchGeminiModels(data) {
     };
   } catch (error) {
     console.error("Gemini模型列表API请求失败:", error);
+    throw error;
+  }
+}
+
+// Handle fetching LiteLLM models
+async function handleFetchLiteLLMModels(data) {
+  const { apiKey } = data;
+
+  console.log("处理获取LiteLLM模型列表请求");
+
+  const endpoint = "http://127.0.0.1:4000/models";
+
+  console.log("LiteLLM模型列表API端点:", endpoint);
+
+  try {
+    console.log("发送LiteLLM模型列表API请求...");
+    console.log("请求配置:", {
+      method: "GET",
+      headers: { 
+        "Content-Type": "application/json",
+        ...(apiKey && { "Authorization": `Bearer ${apiKey}` })
+      }
+    });
+    
+    const response = await fetch(endpoint, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey && { "Authorization": `Bearer ${apiKey}` }),
+      },
+    });
+
+    console.log("收到LiteLLM模型列表API响应, 状态码:", response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("LiteLLM模型列表API错误:", {
+        status: response.status,
+        statusText: response.statusText,
+        errorBody: errorText,
+      });
+      throw new Error(
+        `LiteLLM Models API Error: HTTP error code: ${response.status} \nBody: ${errorText}`
+      );
+    }
+
+    const responseData = await response.json();
+    console.log("LiteLLM模型列表响应数据:", responseData);
+
+    // Transform the response to match expected format
+    // LiteLLM returns OpenAI-compatible format: { data: [{ id: "model-name", object: "model", ... }] }
+    const models = responseData.data || [];
+    
+    return {
+      models: models.map(model => ({
+        name: model.id || model.name,
+        displayName: model.id || model.name,
+        description: `LiteLLM model: ${model.id || model.name}`,
+        inputTokenLimit: 0,
+        outputTokenLimit: 0
+      }))
+    };
+  } catch (error) {
+    console.error("LiteLLM模型列表API请求失败:", error);
     throw error;
   }
 }

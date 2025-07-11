@@ -683,6 +683,16 @@ class Summarization {
           );
           break;
 
+        case "litellm":
+          const litellmKey = data.settings?.[providerSelection]?.apiKey;
+          await this.summarizeUsingLiteLLM(
+            formattedComment,
+            model,
+            litellmKey,
+            commentPathToIdMap
+          );
+          break;
+
         case "none":
           await this.showSummaryInPanel(
             formattedComment,
@@ -857,6 +867,90 @@ class Summarization {
         errorMessage += "Rate limit exceeded. Please try again later.";
       } else if (error.message.includes("current quota")) {
         errorMessage += "API quota exceeded. Please try again later."; // OpenAI has a daily quota
+      } else {
+        errorMessage += error.message + " Please try again later.";
+      }
+
+      this.enhancer.summaryPanel.updateContent({
+        title: "Error",
+        text: errorMessage,
+      });
+    }
+  }
+
+  /**
+   * Summarizes text using LiteLLM
+   * @param {string} text - The text to summarize
+   * @param {string} model - The model to use
+   * @param {string} apiKey - The API key (optional for local models)
+   * @param {Map} commentPathToIdMap - Map of comment paths to IDs
+   */
+  async summarizeUsingLiteLLM(text, model, apiKey, commentPathToIdMap) {
+    // Validate required parameters - API key is optional for LiteLLM
+    if (!text || !model) {
+      console.error("Missing required parameters for LiteLLM summarization");
+      this.enhancer.summaryPanel.updateContent({
+        title: "Error",
+        text: "Missing model configuration",
+      });
+      return;
+    }
+
+    try {
+      // Conservative token limit for LiteLLM as it depends on the underlying model
+      const tokenLimit = 15_000;
+      const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
+
+      // Create the system and user prompts for better summarization
+      const systemPrompt = this.getSystemMessage();
+      const postTitle = this.enhancer.domUtils.getHNPostTitle();
+      const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
+
+      // LiteLLM uses OpenAI-compatible format
+      const messages = [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: userPrompt,
+        },
+      ];
+
+      // Make the API request using background message
+      const response = await this.enhancer.apiClient.sendBackgroundMessage(
+        "LITELLM_API_REQUEST",
+        {
+          apiKey: apiKey,
+          model: model,
+          messages: messages,
+        }
+      );
+
+      // Extract summary from response
+      const summary = response?.choices[0]?.message?.content;
+      if (!summary) {
+        throw new Error("No summary generated from API response");
+      }
+
+      // Update the summary panel with the generated summary
+      await this.showSummaryInPanel(
+        summary,
+        commentPathToIdMap,
+        response.duration
+      );
+    } catch (error) {
+      console.error("Error in LiteLLM summarization:", error);
+
+      // Update the summary panel with an error message
+      let errorMessage = `Error generating summary using LiteLLM model ${model}. `;
+      if (error.message.includes("Connection refused") || error.message.includes("ECONNREFUSED")) {
+        errorMessage += "LiteLLM server is not running. Please start the LiteLLM server at http://127.0.0.1:4000.";
+      } else if (error.message.includes("429")) {
+        errorMessage += "Rate limit exceeded. Please try again later.";
+      } else if (error.message.includes("404")) {
+        errorMessage += "Model not found. Please check if the model is available in LiteLLM.";
       } else {
         errorMessage += error.message + " Please try again later.";
       }
@@ -1320,23 +1414,33 @@ ${languageInstruction}`;
         throw new Error("未收到Gemini API响应");
       }
 
-      if (!response.candidates || response.candidates.length === 0) {
-        console.error("Gemini API响应中没有candidates:", response);
-        throw new Error("Gemini API响应中没有candidates");
+      // Handle OpenAI-compatible format (choices) or native Gemini format (candidates)
+      if (response.choices && response.choices.length > 0) {
+        // OpenAI-compatible format
+        const choice = response.choices[0];
+        if (!choice.message || !choice.message.content) {
+          console.error("OpenAI格式响应结构不正确:", choice);
+          throw new Error("OpenAI格式响应结构不正确");
+        }
+        var summary = choice.message.content;
+      } else if (response.candidates && response.candidates.length > 0) {
+        // Native Gemini format
+        const candidate = response.candidates[0];
+        if (
+          !candidate.content ||
+          !candidate.content.parts ||
+          !candidate.content.parts[0]
+        ) {
+          console.error("Gemini原生格式响应结构不正确:", candidate);
+          throw new Error("Gemini原生格式响应结构不正确");
+        }
+        var summary = candidate.content.parts[0].text;
+      } else {
+        console.error("API响应中没有choices或candidates:", response);
+        throw new Error("API响应中没有choices或candidates");
       }
 
       console.log("Gemini API响应结构:", JSON.stringify(response, null, 2));
-
-      if (
-        !response.candidates[0].content ||
-        !response.candidates[0].content.parts ||
-        !response.candidates[0].content.parts[0]
-      ) {
-        console.error("Gemini API响应结构不正确:", response.candidates[0]);
-        throw new Error("Gemini API响应结构不正确");
-      }
-
-      const summary = response.candidates[0].content.parts[0].text;
       console.log("成功获取摘要，长度:", summary ? summary.length : 0);
 
       // Update the summary panel with the generated summary

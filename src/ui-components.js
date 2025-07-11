@@ -65,7 +65,7 @@ class UIComponents {
           { key: "gg", description: "First comment" },
           { key: "z", description: "Scroll to current" },
           { key: "c", description: "Collapse/expand comment" },
-          { key: "i", description: "Toggle collapse grandchildren" },
+          { key: "i", description: "Toggle Current Chat Window" },
         ],
       },
     };
@@ -152,7 +152,7 @@ class UIComponents {
     navLinks.appendChild(document.createTextNode(" | "));
     navLinks.appendChild(summarizeLink);
   }
-  
+
   /**
    * Injects a link to chat about the entire post
    */
