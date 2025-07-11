@@ -137,6 +137,57 @@ async function fetchGeminiModels() {
     }
 }
 
+// Function to filter LiteLLM models based on search term
+function filterLiteLLMModels(searchTerm, allModels) {
+    if (!searchTerm) {
+        return allModels;
+    }
+    
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    return allModels.filter(model => {
+        const name = (model.displayName || model.name).toLowerCase();
+        const description = (model.description || '').toLowerCase();
+        return name.includes(lowerSearchTerm) || description.includes(lowerSearchTerm);
+    });
+}
+
+// Function to update LiteLLM model dropdown options
+function updateLiteLLMModelOptions(models, selectElement, currentValue) {
+    selectElement.innerHTML = '';
+    
+    // Sort models alphabetically by display name
+    const sortedModels = models.sort((a, b) => {
+        const nameA = (a.displayName || a.name).toLowerCase();
+        const nameB = (b.displayName || b.name).toLowerCase();
+        return nameA.localeCompare(nameB);
+    });
+    
+    // Add models to select element
+    sortedModels.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model.name;
+        option.textContent = model.displayName || model.name;
+        if (model.description) {
+            option.title = model.description;
+        }
+        selectElement.appendChild(option);
+    });
+    
+    // Restore the previous value if it exists in the options
+    if (currentValue) {
+        selectElement.value = currentValue;
+    }
+    
+    // If no models found, add a "no results" option
+    if (sortedModels.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No models found';
+        option.disabled = true;
+        selectElement.appendChild(option);
+    }
+}
+
 // Function to fetch available LiteLLM models
 async function fetchLiteLLMModels() {
     try {
@@ -161,24 +212,20 @@ async function fetchLiteLLMModels() {
                 selectElement.name = 'litellm-model';
                 selectElement.className = inputElement.className;
                 
-                // Add models to select element
-                data.models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model.name;
-                    option.textContent = model.displayName || model.name;
-                    if (model.description) {
-                        option.title = model.description;
-                    }
-                    selectElement.appendChild(option);
-                });
-                
                 // Replace input with select
                 inputElement.parentNode.replaceChild(selectElement, inputElement);
                 
-                // Restore the previous value if it exists in the options
-                if (currentValue) {
-                    selectElement.value = currentValue;
+                // Show search container
+                const searchContainer = document.getElementById('litellm-search-container');
+                if (searchContainer) {
+                    searchContainer.classList.remove('hidden');
                 }
+                
+                // Store all models for filtering
+                selectElement.allModels = data.models;
+                
+                // Update options with all models
+                updateLiteLLMModelOptions(data.models, selectElement, currentValue);
                 
                 // Add the dropdown arrow
                 const container = selectElement.parentNode;
@@ -189,23 +236,41 @@ async function fetchLiteLLMModels() {
                     </svg>`;
                     container.appendChild(svg.firstElementChild);
                 }
+                
+                // Setup search functionality
+                const searchInput = document.getElementById('litellm-model-search');
+                if (searchInput) {
+                    searchInput.addEventListener('input', (e) => {
+                        const searchTerm = e.target.value;
+                        const filteredModels = filterLiteLLMModels(searchTerm, data.models);
+                        updateLiteLLMModelOptions(filteredModels, selectElement, selectElement.value);
+                    });
+                }
             } else {
                 // Already a select, just update options but preserve current value
                 const currentValue = inputElement.value;
-                inputElement.innerHTML = '';
-                data.models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model.name;
-                    option.textContent = model.displayName || model.name;
-                    if (model.description) {
-                        option.title = model.description;
-                    }
-                    inputElement.appendChild(option);
-                });
                 
-                // Restore the previous value if it exists in the options
-                if (currentValue) {
-                    inputElement.value = currentValue;
+                // Show search container
+                const searchContainer = document.getElementById('litellm-search-container');
+                if (searchContainer) {
+                    searchContainer.classList.remove('hidden');
+                }
+                
+                // Store all models for filtering
+                inputElement.allModels = data.models;
+                
+                // Update options with all models
+                updateLiteLLMModelOptions(data.models, inputElement, currentValue);
+                
+                // Setup search functionality if not already setup
+                const searchInput = document.getElementById('litellm-model-search');
+                if (searchInput && !searchInput.hasAttribute('data-setup')) {
+                    searchInput.setAttribute('data-setup', 'true');
+                    searchInput.addEventListener('input', (e) => {
+                        const searchTerm = e.target.value;
+                        const filteredModels = filterLiteLLMModels(searchTerm, data.models);
+                        updateLiteLLMModelOptions(filteredModels, inputElement, inputElement.value);
+                    });
                 }
             }
             
@@ -289,24 +354,20 @@ async function loadLiteLLMModels() {
                 selectElement.name = 'litellm-model';
                 selectElement.className = inputElement.className;
                 
-                // Add models to select element
-                litellmModels.models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model.name;
-                    option.textContent = model.displayName || model.name;
-                    if (model.description) {
-                        option.title = model.description;
-                    }
-                    selectElement.appendChild(option);
-                });
-                
                 // Replace input with select
                 inputElement.parentNode.replaceChild(selectElement, inputElement);
                 
-                // Restore the previous value if it exists in the options
-                if (currentValue) {
-                    selectElement.value = currentValue;
+                // Show search container
+                const searchContainer = document.getElementById('litellm-search-container');
+                if (searchContainer) {
+                    searchContainer.classList.remove('hidden');
                 }
+                
+                // Store all models for filtering
+                selectElement.allModels = litellmModels.models;
+                
+                // Update options with all models
+                updateLiteLLMModelOptions(litellmModels.models, selectElement, currentValue);
                 
                 // Add the dropdown arrow
                 const container = selectElement.parentNode;
@@ -316,6 +377,16 @@ async function loadLiteLLMModels() {
                         <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
                     </svg>`;
                     container.appendChild(svg.firstElementChild);
+                }
+                
+                // Setup search functionality
+                const searchInput = document.getElementById('litellm-model-search');
+                if (searchInput) {
+                    searchInput.addEventListener('input', (e) => {
+                        const searchTerm = e.target.value;
+                        const filteredModels = filterLiteLLMModels(searchTerm, litellmModels.models);
+                        updateLiteLLMModelOptions(filteredModels, selectElement, selectElement.value);
+                    });
                 }
             }
             console.log(`加载了 ${litellmModels.models.length} 个缓存的LiteLLM模型`);

@@ -288,6 +288,13 @@
                         </div>
                         <div>
                             <label for="litellm-model" class="block text-sm font-medium text-gray-900">Enter LiteLLM Model</label>
+                            <!-- Search input (initially hidden, shown when dropdown is available) -->
+                            <div id="litellm-search-container" class="mt-2 hidden">
+                                <input type="text"
+                                       id="litellm-model-search"
+                                       placeholder="Search models..."
+                                       class="block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm mb-2">
+                            </div>
                             <div class="mt-2 flex gap-2">
                                 <div class="flex-1 grid grid-cols-1">
                                     <input type="text"

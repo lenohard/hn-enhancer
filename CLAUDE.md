@@ -1,9 +1,3 @@
-# META
-Remember to commit the changes in proper time.
-Remember to written down the lession you leanrn, and the valuable information  you find from each task into a markdonw file, 
-and add them into ./CLAUDE.md which is the memory file for you accross different sessions, beacuse your context is cleared in a new session
-So remember to written down whaterver you think is important.
-
 ## Build Commands
 - Development build: `pnpm run dev-build`
 - Watch mode: `pnpm run dev`
@@ -14,6 +8,9 @@ So remember to written down whaterver you think is important.
 ## Test Commands
 - Run all tests: `pnpm run test`
 - Run specific test: `NODE_OPTIONS=--experimental-vm-modules jest scripts/example.test.js`
+
+## Important Notes
+- For this project, no need to build and test during development - user will handle testing
 
 ## Scripts
 - Download post IDs: `pnpm run download-post-ids`
@@ -85,3 +82,30 @@ Each AI provider integration follows a consistent pattern:
 4. Settings management in options.js
 5. Manifest permissions for API endpoints
 6. Test configuration support
+
+## LiteLLM Integration Fix (2025-01-11)
+
+### Issue: DeepSeek Authentication Error via LiteLLM Proxy
+**Problem**: Extension was incorrectly adding API key to request body when calling LiteLLM proxy, causing authentication failures.
+
+**Root Cause**: 
+- `background.js:564` was adding `payload.api_key = apiKey` to request body
+- LiteLLM proxy tried to use extension's proxy key to authenticate with DeepSeek
+- Should only use Authorization header for proxy auth
+
+**Fix Applied**:
+- Removed API key from request payload in `handleLiteLLMRequest` function
+- API key now only used in Authorization header: `Bearer sk-IstlPsekdjLRVkad5ZmhjA`
+- LiteLLM proxy properly uses configured environment variables (DEEPSEEK_API_KEY, etc.)
+
+**Key Learning**: 
+- LiteLLM proxy authentication is different from direct provider calls
+- Proxy handles provider authentication internally using environment variables
+- Client should only authenticate with proxy, not pass through provider credentials
+
+**System Knowledge**: Created `/Users/senaca/knowledge_base/litellm_proxy_setup.md` with detailed setup info
+
+## Important Reminders
+- Always commit changes after fixes
+- Document lessons learned in both project and system knowledge base
+- Use "write down notes" reminder to ensure documentation
