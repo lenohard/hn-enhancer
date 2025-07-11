@@ -164,26 +164,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse
       );
 
-    case "OLLAMA_API_REQUEST":
-      return handleAsyncMessage(
-        message,
-        async () => await handleOllamaRequest(message.data),
-        sendResponse
-      );
 
-    case "OPENROUTER_API_REQUEST":
-      return handleAsyncMessage(
-        message,
-        async () => await handleOpenRouterRequest(message.data),
-        sendResponse
-      );
 
-    case "CHROME_AI_API_REQUEST":
-      return handleAsyncMessage(
-        message,
-        async () => await handleChromeAIRequest(message.data),
-        sendResponse
-      );
 
     case "LITELLM_API_REQUEST":
       return handleAsyncMessage(
@@ -464,156 +446,7 @@ async function handleDeepSeekRequest(data) {
   }
 }
 
-// Handle Ollama API requests
-async function handleOllamaRequest(data) {
-  const { model, messages } = data;
 
-  console.log("处理Ollama API请求，模型:", model);
-
-  if (!model || !messages) {
-    console.error("Ollama API请求缺少必要参数");
-    throw new Error("Missing required parameters for Ollama API request");
-  }
-
-  const endpoint = "http://localhost:11434/api/chat";
-
-  console.log("Ollama API端点:", endpoint);
-
-  const payload = {
-    model: model,
-    messages: messages,
-    stream: false, // Keep stream false for simple request/response
-  };
-
-  // Log the payload being sent
-  console.log("Ollama 请求负载:", JSON.stringify(payload, null, 2));
-
-  try {
-    console.log("发送Ollama API请求...");
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    console.log("收到Ollama API响应, 状态码:", response.status);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Ollama API错误:", {
-        status: response.status,
-        statusText: response.statusText,
-        errorBody: errorText,
-      });
-      throw new Error(
-        `Ollama API Error: HTTP error code: ${response.status} \nBody: ${errorText}`
-      );
-    }
-
-    const responseData = await response.json();
-    console.log(
-      "Ollama API响应数据结构:",
-      JSON.stringify(
-        {
-          hasData: !!responseData,
-          hasMessage: !!(responseData && responseData.message),
-          hasContent: !!(
-            responseData &&
-            responseData.message &&
-            responseData.message.content
-          ),
-        },
-        null,
-        2
-      )
-    );
-
-    return responseData;
-  } catch (error) {
-    console.error("Ollama API请求失败:", error);
-    console.error("错误详情:", error.stack);
-    throw error;
-  }
-}
-
-// Handle OpenRouter API requests
-async function handleOpenRouterRequest(data) {
-  const { apiKey, model, messages } = data;
-
-  console.log("处理OpenRouter API请求，模型:", model);
-
-  if (!apiKey || !model || !messages) {
-    console.error("OpenRouter API请求缺少必要参数");
-    throw new Error("Missing required parameters for OpenRouter API request");
-  }
-
-  const endpoint = "https://openrouter.ai/api/v1/chat/completions";
-
-  console.log("OpenRouter API端点:", endpoint);
-
-  const payload = {
-    model: model,
-    messages: messages,
-    temperature: 0.7,
-    max_tokens: 2048, // Consider making this configurable later
-  };
-
-   // Log the payload being sent
-  console.log("OpenRouter 请求负载:", JSON.stringify(payload, null, 2));
-
-  try {
-    console.log("发送OpenRouter API请求...");
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://github.com/levelup-apps/hn-enhancer",
-        "X-Title": "Hacker News Companion",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    console.log("收到OpenRouter API响应, 状态码:", response.status);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("OpenRouter API错误:", {
-        status: response.status,
-        statusText: response.statusText,
-        errorBody: errorText,
-      });
-      throw new Error(
-        `OpenRouter API Error: HTTP error code: ${response.status} \nBody: ${errorText}`
-      );
-    }
-
-    const responseData = await response.json();
-    console.log(
-      "OpenRouter API响应数据结构:",
-      JSON.stringify(
-        {
-          hasData: !!responseData,
-          hasChoices: !!(responseData && responseData.choices),
-          choicesCount:
-            responseData && responseData.choices
-              ? responseData.choices.length
-              : 0,
-        },
-        null,
-        2
-      )
-    );
-
-    return responseData;
-  } catch (error) {
-    console.error("OpenRouter API请求失败:", error);
-    console.error("错误详情:", error.stack);
-    throw error;
-  }
-}
 
 // Handle Chat Request (routes to specific provider handlers)
 async function handleChatRequest(data) {
@@ -631,8 +464,8 @@ async function handleChatRequest(data) {
   const settingsData = await chrome.storage.sync.get("settings");
   const apiKey = settingsData.settings?.[provider]?.apiKey;
 
-  // Handle cases where API key might not be needed (Ollama, LiteLLM local models) or is missing
-  if (!apiKey && provider !== "ollama" && provider !== "chrome-ai" && provider !== "litellm") {
+  // Handle cases where API key might not be needed (LiteLLM local models) or is missing
+  if (!apiKey && provider !== "litellm") {
     console.error(`缺少 ${provider} 的 API 密钥`);
     throw new Error(`Missing API key for ${provider}`);
   }
@@ -669,24 +502,7 @@ async function handleChatRequest(data) {
         // Directly return the text content on success
         return deepseekResponse.choices[0]?.message?.content || "No response content";
 
-      case "ollama":
-         // Pass messages array directly
-        const ollamaResponse = await handleOllamaRequest({
-          model,
-          messages, // Pass the original messages array
-        });
-        // Directly return the text content on success
-        return ollamaResponse.message?.content || "No response content";
 
-      case "openrouter":
-         // Pass messages array directly
-        const openrouterResponse = await handleOpenRouterRequest({
-          apiKey,
-          model,
-          messages,
-        });
-        // Directly return the text content on success
-        return openrouterResponse.choices[0]?.message?.content || "No response content";
 
       case "gemini":
         // Pass the full message history to the handler, it will adapt it
@@ -699,13 +515,6 @@ async function handleChatRequest(data) {
         return geminiResponse.choices[0]?.message?.content || "No response content";
 
 
-      case "chrome-ai":
-         // Pass the full message history to the handler, it will adapt it
-        const chromeAIResponse = await handleChromeAIRequest({
-            messages, // Pass the original history
-        });
-        // Directly return the text content on success
-        return chromeAIResponse.summary || "No response content";
 
       case "litellm":
         // Pass messages array directly (same format as OpenAI)
@@ -727,59 +536,6 @@ async function handleChatRequest(data) {
   }
 }
 
-// Handle Chrome AI API requests
-async function handleChromeAIRequest(data) {
-  // Now expects messages array instead of text
-  const { messages } = data;
-
-  console.log("处理Chrome AI API请求");
-
-  if (!messages || messages.length === 0) {
-    console.error("Chrome AI API请求缺少必要参数 (messages)");
-    throw new Error("Missing required parameters for Chrome AI API request");
-  }
-
-  // --- Adapt history for Chrome AI summarize API ---
-  // Combine the content of all messages into a single string, labeling roles.
-  const combinedText = messages.map(m => {
-      const roleLabel = m.role === 'user' ? 'User' : m.role === 'assistant' ? 'Assistant' : 'System';
-      return `${roleLabel}:\n${m.content}`;
-  }).join("\n\n---\n\n");
-
-  console.log("组合后的文本发送给 Chrome AI:", combinedText.substring(0, 500) + "..."); // Log combined text (truncated)
-
-  try {
-    console.log("检查Chrome AI API是否可用...");
-
-    // 检查Chrome AI API是否可用
-    if (!chrome.summarization) {
-      throw new Error(
-        "Chrome AI API不可用。请确保您使用的是Chrome 131+版本，并且已下载模型。"
-      );
-    }
-
-    console.log("发送Chrome AI API请求...");
-    console.log("Chrome AI 请求文本 (组合后):", combinedText.substring(0, 500) + "..."); // Log combined text (truncated)
-
-    // 使用Chrome的内置摘要API
-    const summary = await chrome.summarization.summarize({
-      text: combinedText, // Use the combined text
-      type: "default", // Or consider other types if needed
-    });
-
-    console.log("收到Chrome AI API响应:", summary ? "成功" : "失败");
-    console.log("Chrome AI 响应摘要:", summary);
-
-    if (!summary) {
-      throw new Error("Chrome AI未能生成摘要");
-    }
-
-    return { summary };
-  } catch (error) {
-    console.error("Chrome AI API请求失败:", error);
-    throw error;
-  }
-}
 
 // Handle LiteLLM API requests
 async function handleLiteLLMRequest(data) {

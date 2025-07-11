@@ -74,10 +74,10 @@ class Summarization {
         },
         text: (status, highlightedAuthor) => {
           return status === this.SummarizeCheckStatus.THREAD_TOO_DEEP
-            ? `This ${highlightedAuthor} thread is too long or deeply nested to be handled by Chrome Built-in AI. The underlying model Gemini Nano may struggle and hallucinate with large content and deep nested threads due to model size limitations. This model works best with individual comments or brief discussion threads.
-                        <br/><br/>However, if you still want to summarize this thread, you can <a href="#" id="options-page-link">configure another AI provider</a> like local <a href="https://ollama.com/" target="_blank">Ollama</a> or cloud AI services like OpenAI or Claude.`
+            ? `This ${highlightedAuthor} thread is too long or deeply nested to be handled by certain AI providers. Some models may struggle with large content and deep nested threads due to size limitations. These models work best with individual comments or brief discussion threads.
+                        <br/><br/>However, if you still want to summarize this thread, you can <a href="#" id="options-page-link">configure another AI provider</a> like OpenAI or Claude.`
             : `This ${highlightedAuthor} thread is concise enough to read directly. Summarizing short threads with a cloud AI service would be inefficient.
-                        <br/><br/> However, if you still want to summarize this thread, you can <a href="#" id="options-page-link">configure a local AI provider</a> like <a href="https://developer.chrome.com/docs/ai/built-in" target="_blank">Chrome Built-in AI</a> or <a href="https://ollama.com/" target="_blank">Ollama</a> for more efficient processing of shorter threads.`;
+                        <br/><br/> However, if you still want to summarize this thread, you can <a href="#" id="options-page-link">configure another AI provider</a> for more efficient processing of shorter threads.`;
         },
       };
 
@@ -125,19 +125,7 @@ class Summarization {
    * @returns {Object} Result with status indicating if summarization should proceed
    */
   shouldSummarizeText(formattedText, commentDepth, aiProvider) {
-    // Ollama can handle all kinds of data - large, small, deep threads. So return true
-    if (aiProvider === "ollama") {
-      return { status: this.SummarizeCheckStatus.OK };
-    }
-
-    // Chrome Built-in AI cannot handle deep threads, so limit the summarization to a certain depth
-    if (aiProvider === "chrome-ai") {
-      return commentDepth <= 5
-        ? { status: this.SummarizeCheckStatus.OK }
-        : { status: this.SummarizeCheckStatus.THREAD_TOO_DEEP };
-    }
-
-    // OpenAI and Claude can handle larger data, but they are expensive, so there should be a minimum length and depth
+    // Most AI providers can handle larger data, but they are expensive, so there should be a minimum length and depth
     const minSentenceLength = 8;
     const minCommentDepth = 3;
     const sentences = formattedText
@@ -182,26 +170,6 @@ class Summarization {
         return;
       }
 
-      // If the AI provider is Chrome Built-in AI, do not summarize because it does not handle long text.
-      if (aiProvider === "chrome-ai") {
-        this.enhancer.summaryPanel.updateContent({
-          title: `Summarization not recommended`,
-          metadata: `Content too long for the selected AI <strong>${aiProvider}</strong>`,
-          text: `This post is too long to be handled by Chrome Built-in AI. The underlying model Gemini Nano may struggle and hallucinate with large content and deep nested threads due to model size limitations. This model works best with individual comments or brief discussion threads.
-                    <br/><br/>However, if you still want to summarize this thread, you can <a href="#" id="options-page-link">configure another AI provider</a> like local <a href="https://ollama.com/" target="_blank">Ollama</a> or cloud AI services like OpenAI or Claude.`,
-        });
-
-        // Once the error message is rendered in the summary panel, add the click handler for the Options page link
-        const optionsLink =
-          this.enhancer.summaryPanel.panel.querySelector("#options-page-link");
-        if (optionsLink) {
-          optionsLink.addEventListener("click", (e) => {
-            e.preventDefault();
-            this.openOptionsPage();
-          });
-        }
-        return;
-      }
       // Show a meaningful in-progress message before starting the summarization
       const modelInfo = aiProvider
         ? ` using <strong>${aiProvider} ${model || ""}</strong>`
@@ -246,8 +214,8 @@ class Summarization {
     const message =
       "To use the summarization feature, you need to configure an AI provider. <br/><br/>" +
       'Please <a href="#" id="options-page-link">open the settings page</a> to select and configure your preferred AI provider ' +
-      '(OpenAI, Anthropic, <a href="https://ollama.com/" target="_blank">Ollama</a>, <a href="https://openrouter.ai/" target="_blank">OpenRouter</a> ' +
-      'or <a href="https://developer.chrome.com/docs/ai/built-in" target="_blank">Chrome Built-in AI</a>).';
+      '(OpenAI, Anthropic, ' +
+      'and others).';
 
     const container = targetElement || this.enhancer.summaryPanel.panel;
 
@@ -620,29 +588,12 @@ class Summarization {
         this.enhancer.markdownUtils.stripAnchors(formattedComment);
 
       switch (providerSelection) {
-        case "chrome-ai":
-          this.summarizeUsingChromeBuiltInAI(
-            formattedComment,
-            commentPathToIdMap
-          );
-          break;
-
         case "openai":
           const apiKey = data.settings?.[providerSelection]?.apiKey;
           await this.summarizeUsingOpenAI(
             formattedComment,
             model,
             apiKey,
-            commentPathToIdMap
-          );
-          break;
-
-        case "openrouter":
-          const openrouterKey = data.settings?.[providerSelection]?.apiKey;
-          await this.summarizeUsingOpenRouter(
-            formattedComment,
-            model,
-            openrouterKey,
             commentPathToIdMap
           );
           break;
@@ -667,18 +618,11 @@ class Summarization {
           );
           break;
 
-        case "ollama":
-          await this.summarizeUsingOllama(
-            formattedComment,
-            model,
-            commentPathToIdMap
-          );
-          break;
-
         case "gemini":
           await this.summarizeUsingGemini(
             formattedComment,
             model,
+            data.settings?.[providerSelection]?.apiKey,
             commentPathToIdMap
           );
           break;
@@ -706,91 +650,6 @@ class Summarization {
     }
   }
 
-  /**
-   * Summarizes text using OpenRouter
-   * @param {string} text - The text to summarize
-   * @param {string} model - The model to use
-   * @param {string} apiKey - The API key
-   * @param {Map} commentPathToIdMap - Map of comment paths to IDs
-   */
-  async summarizeUsingOpenRouter(text, model, apiKey, commentPathToIdMap) {
-    // Validate required parameters
-    if (!text || !model || !apiKey) {
-      console.error("Missing required parameters for OpenRouter summarization");
-      this.enhancer.summaryPanel.updateContent({
-        title: "Error",
-        text: "Missing API configuration",
-      });
-      return;
-    }
-
-    try {
-      // Rate Limit for OpenRouter
-      const tokenLimit = 60000;
-      const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
-
-      // Create the system and user prompts for better summarization
-      const systemPrompt = this.getSystemMessage();
-      const postTitle = this.enhancer.domUtils.getHNPostTitle();
-      const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
-
-      // OpenRouter, just like OpenAI, takes system and user messages as an array with role (system / user) and content
-      const messages = [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: userPrompt,
-        },
-      ];
-
-      // Make the API request using background message
-      const response = await this.enhancer.apiClient.sendBackgroundMessage(
-        "OPENROUTER_API_REQUEST",
-        {
-          apiKey: apiKey,
-          model: model,
-          messages: messages,
-        }
-      );
-
-      // Extract summary from response
-      const summary = response?.choices[0]?.message?.content;
-      if (!summary) {
-        throw new Error("No summary generated from API response");
-      }
-
-      // Update the summary panel with the generated summary
-      await this.showSummaryInPanel(
-        summary,
-        commentPathToIdMap,
-        response.duration
-      );
-    } catch (error) {
-      console.error("Error in OpenRouter summarization:", error);
-
-      // Update the summary panel with an error message
-      // OpenRouter follows the same error message structure as OpenAI
-      // https://openrouter.ai/docs/errors
-      let errorMessage = `Error generating summary using OpenRouter model ${model}. `;
-      if (error.message.includes("API key")) {
-        errorMessage += "Please check your API key configuration.";
-      } else if (error.message.includes("429")) {
-        errorMessage += "Rate limit exceeded. Please try again later.";
-      } else if (error.message.includes("current quota")) {
-        errorMessage += "API quota exceeded. Please try again later.";
-      } else {
-        errorMessage += error.message + " Please try again later.";
-      }
-
-      this.enhancer.summaryPanel.updateContent({
-        title: "Error",
-        text: errorMessage,
-      });
-    }
-  }
 
   /**
    * Summarizes text using OpenAI
@@ -1295,66 +1154,6 @@ ${languageInstruction}`;
     return prompt;
   }
 
-  /**
-   * Summarizes text using Ollama
-   * @param {string} text - The text to summarize
-   * @param {string} model - The model to use
-   * @param {Map} commentPathToIdMap - Map of comment paths to IDs
-   */
-  async summarizeUsingOllama(text, model, commentPathToIdMap) {
-    // Validate required parameters
-    if (!text || !model) {
-      console.error("Missing required parameters for Ollama summarization");
-      this.enhancer.summaryPanel.updateContent({
-        title: "Error",
-        text: "Missing API configuration",
-      });
-      return;
-    }
-
-    try {
-      // Create the system message for better summarization
-      const systemMessage = this.getSystemMessage();
-
-      // Create the user message with the text to summarize
-      const title = this.enhancer.domUtils.getHNPostTitle();
-      const userMessage = await this.getUserMessage(title, text);
-
-      // Make the API request using background message
-      const response = await this.enhancer.apiClient.sendBackgroundMessage(
-        "OLLAMA_API_REQUEST",
-        {
-          model: model,
-          messages: [
-            { role: "system", content: systemMessage },
-            { role: "user", content: userMessage },
-          ],
-        }
-      );
-
-      // Extract summary from response
-      const summary = response.message?.content;
-      if (!summary) {
-        throw new Error("No summary generated from API response");
-      }
-
-      // Update the summary panel with the generated summary
-      await this.showSummaryInPanel(
-        summary,
-        commentPathToIdMap,
-        response.duration
-      );
-    } catch (error) {
-      console.error("Error in Ollama summarization:", error);
-
-      // Update the summary panel with an error message
-      let errorMessage = "Error generating summary. " + error.message;
-      this.enhancer.summaryPanel.updateContent({
-        title: "Error",
-        text: errorMessage,
-      });
-    }
-  }
 
   /**
    * Summarizes text using Gemini
@@ -1471,55 +1270,6 @@ ${languageInstruction}`;
     }
   }
 
-  /**
-   * Summarizes text using Chrome Built-in AI
-   * @param {string} formattedComment - The formatted comment text
-   * @param {Map} commentPathToIdMap - Map of comment paths to IDs
-   */
-  async summarizeUsingChromeBuiltInAI(formattedComment, commentPathToIdMap) {
-    if (
-      this.enhancer.isChomeAiAvailable ===
-      this.enhancer.constructor.CHROME_AI_AVAILABLE.NO
-    ) {
-      this.enhancer.summaryPanel.updateContent({
-        title: "AI Not Available",
-        metadata: "Chrome Built-in AI is disabled or unavailable",
-        text: `Unable to generate summary: Chrome's AI features are not enabled on your device.
-                       <br><br>
-                       To enable and test Chrome AI:
-                       <br>
-                       1. Visit the <a class="underline" href="https://chrome.dev/web-ai-demos/summarization-api-playground/" target="_blank">Chrome AI Playground</a>
-                       <br>
-                       2. Try running a test summarization
-                       <br>
-                       3. If issues persist, check your Chrome settings and ensure you're using a compatible version`,
-      });
-      return;
-    }
-
-    if (
-      this.enhancer.isChomeAiAvailable ===
-      this.enhancer.constructor.CHROME_AI_AVAILABLE.AFTER_DOWNLOAD
-    ) {
-      this.enhancer.summaryPanel.updateContent({
-        metadata: "Downloading model for Chrome Built-in AI",
-        text: `Chrome built-in AI model will be available after download. This may take a few moments.`,
-      });
-    }
-
-    // Get the language setting
-    const { language } = await this.getAIProviderModel();
-
-    // Summarize the text by passing in the text to page script which in turn will call the Chrome AI API
-    window.postMessage({
-      type: "HN_AI_SUMMARIZE",
-      data: {
-        text: formattedComment,
-        commentPathToIdMap: commentPathToIdMap,
-        language: language,
-      },
-    });
-  }
 
   /**
    * Shows the summary in the summary panel

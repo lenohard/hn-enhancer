@@ -10,7 +10,7 @@ async function saveSettings() {
         }
     }
     
-    const providerSelection = document.querySelector('input[name="provider-selection"]:checked')?.id || 'ollama';
+    const providerSelection = document.querySelector('input[name="provider-selection"]:checked')?.id || 'openai';
     const language = document.getElementById('language-select').value;
     const settings = {
         providerSelection,
@@ -31,12 +31,9 @@ async function saveSettings() {
             apiKey: document.getElementById('deepseek-key').value,
             model: document.getElementById('deepseek-model').value
         },
-        ollama: {
-            model: document.getElementById('ollama-model').value
-        },
-        openrouter: {
-            apiKey: document.getElementById('openrouter-key').value,
-            model: document.getElementById('openrouter-model').value
+        litellm: {
+            apiKey: document.getElementById('litellm-key').value,
+            model: document.getElementById('litellm-model').value
         }
     };
 
@@ -156,6 +153,9 @@ async function fetchLiteLLMModels() {
         if (data.models && data.models.length > 0) {
             // Check if we need to replace the input with a select
             if (inputElement.tagName.toLowerCase() === 'input') {
+                // Store the current value before replacing the element
+                const currentValue = inputElement.value;
+                
                 const selectElement = document.createElement('select');
                 selectElement.id = 'litellm-model';
                 selectElement.name = 'litellm-model';
@@ -175,6 +175,11 @@ async function fetchLiteLLMModels() {
                 // Replace input with select
                 inputElement.parentNode.replaceChild(selectElement, inputElement);
                 
+                // Restore the previous value if it exists in the options
+                if (currentValue) {
+                    selectElement.value = currentValue;
+                }
+                
                 // Add the dropdown arrow
                 const container = selectElement.parentNode;
                 if (!container.querySelector('svg')) {
@@ -185,7 +190,8 @@ async function fetchLiteLLMModels() {
                     container.appendChild(svg.firstElementChild);
                 }
             } else {
-                // Already a select, just update options
+                // Already a select, just update options but preserve current value
+                const currentValue = inputElement.value;
                 inputElement.innerHTML = '';
                 data.models.forEach(model => {
                     const option = document.createElement('option');
@@ -196,6 +202,11 @@ async function fetchLiteLLMModels() {
                     }
                     inputElement.appendChild(option);
                 });
+                
+                // Restore the previous value if it exists in the options
+                if (currentValue) {
+                    inputElement.value = currentValue;
+                }
             }
             
             console.log(`加载了 ${data.models.length} 个LiteLLM模型`);
@@ -216,44 +227,6 @@ async function fetchLiteLLMModels() {
     }
 }
 
-// Fetch Ollama models from API
-async function fetchOllamaModels() {
-    try {
-        const data = await sendBackgroundMessage('FETCH_API_REQUEST', {
-            url: 'http://localhost:11434/api/tags',
-            method: 'GET'
-        });
-
-        const selectElement = document.getElementById('ollama-model');
-        // Clear existing options
-        selectElement.innerHTML = '';
-
-        // Add models to select element
-        data.models.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model.name;
-            option.textContent = model.name;
-            selectElement.appendChild(option);
-        });
-
-        // If no models found, add a placeholder option
-        if (data.models.length === 0) {
-            const option = document.createElement('option');
-            option.value = '';
-            option.textContent = 'No models available';
-            selectElement.appendChild(option);
-        }
-    } catch (error) {
-        console.log('Error fetching Ollama models:', error);
-        // Handle error by adding an error option
-        const selectElement = document.getElementById('ollama-model');
-        selectElement.innerHTML = '';
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'Error loading models';
-        selectElement.appendChild(option);
-    }
-}
 
 // Load Gemini models from storage or use defaults
 async function loadGeminiModels() {
@@ -292,7 +265,69 @@ async function loadGeminiModels() {
     }
 }
 
-// Load settings from Chrome storage
+// Load LiteLLM models from storage or keep as input
+async function loadLiteLLMModels() {
+    try {
+        // Try to load cached models from storage
+        const cachedData = await chrome.storage.local.get('litellm-models-cache');
+        const litellmModels = cachedData['litellm-models-cache'];
+        
+        const inputElement = document.getElementById('litellm-model');
+        
+        // Check if we have cached models and they're not too old (24 hours)
+        const isDataFresh = litellmModels && 
+            litellmModels.timestamp && 
+            (Date.now() - litellmModels.timestamp) < 24 * 60 * 60 * 1000;
+            
+        if (isDataFresh && litellmModels.models && litellmModels.models.length > 0) {
+            // Replace input with select if we have cached models
+            if (inputElement.tagName.toLowerCase() === 'input') {
+                const currentValue = inputElement.value;
+                
+                const selectElement = document.createElement('select');
+                selectElement.id = 'litellm-model';
+                selectElement.name = 'litellm-model';
+                selectElement.className = inputElement.className;
+                
+                // Add models to select element
+                litellmModels.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.name;
+                    option.textContent = model.displayName || model.name;
+                    if (model.description) {
+                        option.title = model.description;
+                    }
+                    selectElement.appendChild(option);
+                });
+                
+                // Replace input with select
+                inputElement.parentNode.replaceChild(selectElement, inputElement);
+                
+                // Restore the previous value if it exists in the options
+                if (currentValue) {
+                    selectElement.value = currentValue;
+                }
+                
+                // Add the dropdown arrow
+                const container = selectElement.parentNode;
+                if (!container.querySelector('svg')) {
+                    const svg = document.createElement('div');
+                    svg.innerHTML = `<svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
+                        <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                    </svg>`;
+                    container.appendChild(svg.firstElementChild);
+                }
+            }
+            console.log(`加载了 ${litellmModels.models.length} 个缓存的LiteLLM模型`);
+        } else {
+            // Keep as input field if no cached data or data is stale
+            console.log('使用LiteLLM输入框');
+        }
+    } catch (error) {
+        console.error('加载LiteLLM模型时出错:', error);
+        // Keep as input field in case of error
+    }
+}
 async function loadSettings() {
     try {
         const data = await chrome.storage.sync.get('settings');
@@ -334,15 +369,18 @@ async function loadSettings() {
                 document.getElementById('deepseek-model').value = settings.deepseek.model || 'deepseek-chat';
             }
 
-            // Set Ollama settings
-            if (settings.ollama) {
-                document.getElementById('ollama-model').value = settings.ollama.model || 'llama2';
-            }
-
-            // Set OpenRouter settings
-            if (settings.openrouter) {
-                document.getElementById('openrouter-key').value = settings.openrouter.apiKey || '';
-                document.getElementById('openrouter-model').value = settings.openrouter.model || 'anthropic/claude-3.5-sonnet';
+            // Set LiteLLM settings
+            if (settings.litellm) {
+                document.getElementById('litellm-key').value = settings.litellm.apiKey || '';
+                // Load LiteLLM models first, then set the selected model
+                await loadLiteLLMModels();
+                const litellmModelElement = document.getElementById('litellm-model');
+                if (litellmModelElement) {
+                    litellmModelElement.value = settings.litellm.model || 'gpt-3.5-turbo';
+                }
+            } else {
+                // Even if no settings exist, try to load cached models
+                await loadLiteLLMModels();
             }
         }
     } catch (error) {
@@ -417,19 +455,14 @@ async function testProviderConnection() {
                     ]
                 };
                 break;
-            case 'openrouter':
+            case 'litellm':
                 testData = {
-                    apiKey: document.getElementById('openrouter-key').value,
-                    model: document.getElementById('openrouter-model').value,
+                    apiKey: document.getElementById('litellm-key').value,
+                    model: document.getElementById('litellm-model').value,
                     messages: [
                         { role: "system", content: "You are a helpful assistant." },
                         { role: "user", content: testMessage }
                     ]
-                };
-                break;
-            case 'chrome-ai':
-                testData = {
-                    text: testMessage
                 };
                 break;
             default:
@@ -459,19 +492,9 @@ async function testProviderConnection() {
                     break;
                 case 'openai':
                 case 'deepseek':
-                case 'openrouter':
+                case 'litellm':
                     if (response.choices && response.choices[0]?.message?.content) {
                         responseText = response.choices[0].message.content;
-                    }
-                    break;
-                case 'ollama':
-                    if (response.message && response.message.content) {
-                        responseText = response.message.content;
-                    }
-                    break;
-                case 'chrome-ai':
-                    if (response.summary) {
-                        responseText = response.summary;
                     }
                     break;
             }
@@ -497,9 +520,6 @@ async function testProviderConnection() {
 
 // Initialize event listeners and load settings
 document.addEventListener('DOMContentLoaded', async () => {
-    // Fetch Ollama models before loading other settings
-    await fetchOllamaModels();
-
     // Load saved settings (this will also load Gemini models if needed)
     await loadSettings();
 
@@ -575,16 +595,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const anthropicInputs = document.querySelectorAll('#anthropic-key, #anthropic-model');
             const geminiInputs = document.querySelectorAll('#gemini-key, #gemini-model');
             const deepseekInputs = document.querySelectorAll('#deepseek-key, #deepseek-model');
-            const ollamaInputs = document.querySelectorAll('#ollama-model');
-            const openrouterInputs = document.querySelectorAll('#openrouter-key, #openrouter-model');
             const litellmInputs = document.querySelectorAll('#litellm-key, #litellm-model');
 
             openaiInputs.forEach(input => input.disabled = radio.id !== 'openai');
             anthropicInputs.forEach(input => input.disabled = radio.id !== 'anthropic');
             geminiInputs.forEach(input => input.disabled = radio.id !== 'gemini');
             deepseekInputs.forEach(input => input.disabled = radio.id !== 'deepseek');
-            ollamaInputs.forEach(input => input.disabled = radio.id !== 'ollama');
-            openrouterInputs.forEach(input => input.disabled = radio.id !== 'openrouter');
             litellmInputs.forEach(input => input.disabled = radio.id !== 'litellm');
         });
     });

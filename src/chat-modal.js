@@ -15,7 +15,6 @@ class ChatModal {
     this.closeButton = null;
     this.targetCommentElement = null; // The comment the chat was initiated from
     this.currentPostId = null; // The ID of the post the comment belongs to
-    this.aiSession = null; // To hold the Chrome AI session
     this.currentLlmMessageElement = null; // To hold the element for the currently streaming LLM response
     this.conversationHistory = []; // To store the full chat history { role, content }
     this.currentContextType = "parents"; // Default context type: 'parents', 'descendants', 'children'
@@ -354,18 +353,6 @@ class ChatModal {
       return;
     }
 
-    // Check for Chrome AI session specifically if that's the provider
-    if (this.currentAiProvider === "chrome-ai" && !this.aiSession) {
-      this.enhancer.logDebug(
-        "Chrome AI selected but no active session, not sending."
-      );
-      this._displayMessage(
-        "Error: Chrome AI session is not active. Please try reopening the chat.",
-        "system"
-      );
-      return;
-    }
-
     this.enhancer.logDebug(`User message to send: ${message}`);
     this._displayMessage(message, "user"); // Display user message immediately
     this.inputElement.value = ""; // Clear input
@@ -382,17 +369,6 @@ class ChatModal {
 
     // Send the entire history to the AI
     await this._sendMessageToAI(this.conversationHistory);
-
-    // Re-enable input only if AI session is still valid (for Chrome AI) or if not Chrome AI
-    // Note: Input re-enabling is now handled within _sendMessageToAI for non-streaming providers
-    // and after the stream for Chrome AI. This block might need further adjustment
-    // depending on the final flow in _sendMessageToAI.
-    // Let's keep the original re-enable logic for Chrome AI for now.
-    if (this.currentAiProvider === "chrome-ai" && this.aiSession) {
-      this.inputElement.disabled = false;
-      this.sendButton.disabled = false;
-      this.inputElement.focus();
-    }
   }
 
   /**

@@ -5,7 +5,7 @@ This document serves as a comprehensive guide for adding new AI providers to the
 
 ## Architecture Overview
 
-The HN Enhancer extension follows a modular architecture for AI provider integration:
+the hn enhancer extension follows a modular architecture for ai provider integration:
 
 ### Core Components
 
