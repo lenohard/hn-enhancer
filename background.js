@@ -559,10 +559,7 @@ async function handleLiteLLMRequest(data) {
     max_tokens: 2048,
   };
 
-  // Add API key to payload if provided
-  if (apiKey) {
-    payload.api_key = apiKey;
-  }
+  // API key should only be in Authorization header, not in request body for LiteLLM proxy
 
   // Log the payload being sent
   console.log("LiteLLM 请求负载:", JSON.stringify(payload, null, 2));
