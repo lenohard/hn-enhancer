@@ -464,7 +464,7 @@ async function testProviderConnection() {
     // Get the currently selected provider
     const selectedProvider = document.querySelector('input[name="provider-selection"]:checked')?.id;
     if (!selectedProvider) {
-        alert('请先选择一个AI提供商');
+        showTestResult('请先选择一个AI提供商', 'error');
         return;
     }
 
@@ -571,21 +571,66 @@ async function testProviderConnection() {
             }
             
             if (responseText) {
-                alert(`连接测试成功!\n\n响应: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
+                showTestResult(`连接测试成功!\n\n响应: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`, 'success');
             } else {
-                alert(`连接成功，但响应格式不符合预期。请查看控制台获取详细信息。`);
+                showTestResult(`连接成功，但响应格式不符合预期。请查看控制台获取详细信息。`, 'warning');
                 console.error('响应格式不符合预期:', response);
             }
         } else {
-            alert('测试失败: 未收到响应');
+            showTestResult('测试失败: 未收到响应', 'error');
         }
     } catch (error) {
         console.error('测试连接时出错:', error);
-        alert(`测试失败: ${error.message}`);
+        showTestResult(`测试失败: ${error.message}`, 'error');
     } finally {
         // Reset button state
         testButton.textContent = originalText;
         testButton.disabled = false;
+    }
+}
+
+// Function to show test result with visual feedback
+function showTestResult(message, type) {
+    // Create or update the test result element
+    let resultElement = document.getElementById('test-result');
+    if (!resultElement) {
+        resultElement = document.createElement('div');
+        resultElement.id = 'test-result';
+        resultElement.className = 'mt-3 p-3 rounded-md text-sm';
+        
+        // Insert after the test button
+        const testButton = document.getElementById('test-connection');
+        testButton.parentNode.insertBefore(resultElement, testButton.nextSibling);
+    }
+    
+    // Remove existing classes
+    resultElement.className = 'mt-3 p-3 rounded-md text-sm';
+    
+    // Apply type-specific styling
+    switch (type) {
+        case 'success':
+            resultElement.className += ' bg-green-50 text-green-800 border border-green-200';
+            break;
+        case 'error':
+            resultElement.className += ' bg-red-50 text-red-800 border border-red-200';
+            break;
+        case 'warning':
+            resultElement.className += ' bg-yellow-50 text-yellow-800 border border-yellow-200';
+            break;
+        default:
+            resultElement.className += ' bg-gray-50 text-gray-800 border border-gray-200';
+    }
+    
+    // Set the message
+    resultElement.innerHTML = message.replace(/\n/g, '<br>');
+    
+    // Auto-hide after 10 seconds for success messages
+    if (type === 'success') {
+        setTimeout(() => {
+            if (resultElement && resultElement.parentNode) {
+                resultElement.remove();
+            }
+        }, 10000);
     }
 }
 
