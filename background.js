@@ -180,9 +180,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse
       );
 
-
-
-
     case "LITELLM_API_REQUEST":
       if (message.data.streaming) {
         return handleStreamingMessage(
