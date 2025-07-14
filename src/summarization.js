@@ -568,6 +568,7 @@ class Summarization {
 
       const providerSelection = data.settings?.providerSelection;
       const model = data.settings?.[providerSelection]?.model;
+      const streamingEnabled = data.settings?.streamingEnabled || false;
 
       if (!providerSelection) {
         console.log(
@@ -580,7 +581,7 @@ class Summarization {
       this.enhancer.logInfo(
         `Summarization - AI Provider: ${providerSelection}, Model: ${
           model || "none"
-        }`
+        }, Streaming: ${streamingEnabled}`
       );
 
       // Remove unnecessary anchor tags from the text
@@ -594,7 +595,8 @@ class Summarization {
             formattedComment,
             model,
             apiKey,
-            commentPathToIdMap
+            commentPathToIdMap,
+            streamingEnabled
           );
           break;
 
@@ -604,7 +606,8 @@ class Summarization {
             formattedComment,
             model,
             claudeApiKey,
-            commentPathToIdMap
+            commentPathToIdMap,
+            streamingEnabled
           );
           break;
 
@@ -633,7 +636,8 @@ class Summarization {
             formattedComment,
             model,
             litellmKey,
-            commentPathToIdMap
+            commentPathToIdMap,
+            streamingEnabled
           );
           break;
 
@@ -658,7 +662,7 @@ class Summarization {
    * @param {string} apiKey - The API key
    * @param {Map} commentPathToIdMap - Map of comment paths to IDs
    */
-  async summarizeUsingOpenAI(text, model, apiKey, commentPathToIdMap) {
+  async summarizeUsingOpenAI(text, model, apiKey, commentPathToIdMap, streamingEnabled = false) {
     // Validate required parameters
     if (!text || !model || !apiKey) {
       console.error("Missing required parameters for OpenAI summarization");
@@ -694,27 +698,41 @@ class Summarization {
       ];
 
       // Make the API request using background message
-      const response = await this.enhancer.apiClient.sendBackgroundMessage(
-        "OPENAI_API_REQUEST",
-        {
-          apiKey: apiKey,
-          model: model,
-          messages: messages,
+      if (streamingEnabled) {
+        await this.handleStreamingResponse(
+          "OPENAI_API_REQUEST",
+          {
+            apiKey: apiKey,
+            model: model,
+            messages: messages,
+            streaming: true
+          },
+          commentPathToIdMap
+        );
+      } else {
+        const response = await this.enhancer.apiClient.sendBackgroundMessage(
+          "OPENAI_API_REQUEST",
+          {
+            apiKey: apiKey,
+            model: model,
+            messages: messages,
+            streaming: false
+          }
+        );
+
+        // Extract summary from response
+        const summary = response?.choices[0]?.message?.content;
+        if (!summary) {
+          throw new Error("No summary generated from API response");
         }
-      );
 
-      // Extract summary from response
-      const summary = response?.choices[0]?.message?.content;
-      if (!summary) {
-        throw new Error("No summary generated from API response");
+        // Update the summary panel with the generated summary
+        await this.showSummaryInPanel(
+          summary,
+          commentPathToIdMap,
+          response.duration
+        );
       }
-
-      // Update the summary panel with the generated summary
-      await this.showSummaryInPanel(
-        summary,
-        commentPathToIdMap,
-        response.duration
-      );
     } catch (error) {
       console.error("Error in OpenAI summarization:", error);
 
@@ -744,7 +762,7 @@ class Summarization {
    * @param {string} apiKey - The API key (optional for local models)
    * @param {Map} commentPathToIdMap - Map of comment paths to IDs
    */
-  async summarizeUsingLiteLLM(text, model, apiKey, commentPathToIdMap) {
+  async summarizeUsingLiteLLM(text, model, apiKey, commentPathToIdMap, streamingEnabled = false) {
     // Validate required parameters - API key is optional for LiteLLM
     if (!text || !model) {
       console.error("Missing required parameters for LiteLLM summarization");
@@ -778,27 +796,41 @@ class Summarization {
       ];
 
       // Make the API request using background message
-      const response = await this.enhancer.apiClient.sendBackgroundMessage(
-        "LITELLM_API_REQUEST",
-        {
-          apiKey: apiKey,
-          model: model,
-          messages: messages,
+      if (streamingEnabled) {
+        await this.handleStreamingResponse(
+          "LITELLM_API_REQUEST",
+          {
+            apiKey: apiKey,
+            model: model,
+            messages: messages,
+            streaming: true
+          },
+          commentPathToIdMap
+        );
+      } else {
+        const response = await this.enhancer.apiClient.sendBackgroundMessage(
+          "LITELLM_API_REQUEST",
+          {
+            apiKey: apiKey,
+            model: model,
+            messages: messages,
+            streaming: false
+          }
+        );
+
+        // Extract summary from response
+        const summary = response?.choices[0]?.message?.content;
+        if (!summary) {
+          throw new Error("No summary generated from API response");
         }
-      );
 
-      // Extract summary from response
-      const summary = response?.choices[0]?.message?.content;
-      if (!summary) {
-        throw new Error("No summary generated from API response");
+        // Update the summary panel with the generated summary
+        await this.showSummaryInPanel(
+          summary,
+          commentPathToIdMap,
+          response.duration
+        );
       }
-
-      // Update the summary panel with the generated summary
-      await this.showSummaryInPanel(
-        summary,
-        commentPathToIdMap,
-        response.duration
-      );
     } catch (error) {
       console.error("Error in LiteLLM summarization:", error);
 
@@ -828,7 +860,7 @@ class Summarization {
    * @param {string} apiKey - The API key
    * @param {Map} commentPathToIdMap - Map of comment paths to IDs
    */
-  async summarizeUsingAnthropic(text, model, apiKey, commentPathToIdMap) {
+  async summarizeUsingAnthropic(text, model, apiKey, commentPathToIdMap, streamingEnabled = false) {
     // Validate required parameters
     if (!text || !model || !apiKey) {
       console.error("Missing required parameters for Anthropic summarization");
@@ -857,32 +889,47 @@ class Summarization {
       ];
 
       // Make the API request using background message
-      const response = await this.enhancer.apiClient.sendBackgroundMessage(
-        "ANTHROPIC_API_REQUEST",
-        {
-          apiKey: apiKey,
-          model: model,
-          messages: messages,
-          system: systemPrompt,
+      if (streamingEnabled) {
+        await this.handleStreamingResponse(
+          "ANTHROPIC_API_REQUEST",
+          {
+            apiKey: apiKey,
+            model: model,
+            messages: messages,
+            system: systemPrompt,
+            streaming: true
+          },
+          commentPathToIdMap
+        );
+      } else {
+        const response = await this.enhancer.apiClient.sendBackgroundMessage(
+          "ANTHROPIC_API_REQUEST",
+          {
+            apiKey: apiKey,
+            model: model,
+            messages: messages,
+            system: systemPrompt,
+            streaming: false
+          }
+        );
+
+        // Extract summary from response
+        if (!response || !response.content || response.content.length === 0) {
+          throw new Error(`Summary response data is empty.`);
         }
-      );
+        const summary = response.content[0].text;
 
-      // Extract summary from response
-      if (!response || !response.content || response.content.length === 0) {
-        throw new Error(`Summary response data is empty.`);
+        if (!summary) {
+          throw new Error("No summary generated from API response");
+        }
+
+        // Update the summary panel with the generated summary
+        await this.showSummaryInPanel(
+          summary,
+          commentPathToIdMap,
+          response.duration
+        );
       }
-      const summary = response.content[0].text;
-
-      if (!summary) {
-        throw new Error("No summary generated from API response");
-      }
-
-      // Update the summary panel with the generated summary
-      await this.showSummaryInPanel(
-        summary,
-        commentPathToIdMap,
-        response.duration
-      );
     } catch (error) {
       console.error("Error in Anthropic summarization:", error);
 
@@ -1266,6 +1313,101 @@ ${languageInstruction}`;
       this.enhancer.summaryPanel.updateContent({
         title: "Error",
         text: errorMessage,
+      });
+    }
+  }
+
+  /**
+   * Handles streaming responses from AI providers
+   * @param {string} messageType - The message type for the API request
+   * @param {Object} requestData - The request data
+   * @param {Map} commentPathToIdMap - Map of comment paths to IDs
+   */
+  async handleStreamingResponse(messageType, requestData, commentPathToIdMap) {
+    let accumulatedText = '';
+    
+    try {
+      // Show initial streaming message
+      this.enhancer.summaryPanel.updateContent({
+        title: this.enhancer.domUtils.getHNPostTitle(),
+        text: `<div>Generating summary... <span class="loading-spinner"></span></div>`,
+        metadata: ""
+      });
+
+      // Create a message listener for streaming responses
+      const messageListener = (message) => {
+        if (message.type === `${messageType}_STREAM_CHUNK`) {
+          const chunk = message.data;
+          let content = '';
+          
+          if (messageType === 'OPENAI_API_REQUEST' || messageType === 'LITELLM_API_REQUEST') {
+            content = chunk.choices?.[0]?.delta?.content || '';
+          } else if (messageType === 'ANTHROPIC_API_REQUEST') {
+            if (chunk.type === 'content_block_delta') {
+              content = chunk.delta?.text || '';
+            }
+          }
+          
+          if (content) {
+            accumulatedText += content;
+            
+            // Update UI with streaming content
+            const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(accumulatedText);
+            const formattedSummary = this.enhancer.markdownUtils.replacePathsWithCommentLinks(
+              summaryHtml,
+              commentPathToIdMap
+            );
+            
+            this.enhancer.summaryPanel.updateContent({
+              title: this.enhancer.domUtils.getHNPostTitle(),
+              text: formattedSummary,
+              metadata: this.getMetadata()
+            });
+          }
+        }
+      };
+
+      // Add message listener
+      chrome.runtime.onMessage.addListener(messageListener);
+
+      try {
+        // Send streaming request and wait for completion
+        const response = await this.enhancer.apiClient.sendBackgroundMessage(
+          messageType,
+          requestData
+        );
+
+        // Handle the response appropriately
+        if (requestData.streaming) {
+          // For streaming, the final response contains the complete text
+          if (response.choices?.[0]?.message?.content) {
+            accumulatedText = response.choices[0].message.content;
+          } else if (response.content?.[0]?.text) {
+            accumulatedText = response.content[0].text;
+          }
+        } else {
+          // For non-streaming, extract content normally
+          if (response.choices?.[0]?.message?.content) {
+            accumulatedText = response.choices[0].message.content;
+          } else if (response.content?.[0]?.text) {
+            accumulatedText = response.content[0].text;
+          }
+        }
+
+        // Final update when complete
+        if (accumulatedText) {
+          await this.showSummaryInPanel(accumulatedText, commentPathToIdMap, 0);
+        }
+      } finally {
+        // Remove message listener
+        chrome.runtime.onMessage.removeListener(messageListener);
+      }
+      
+    } catch (error) {
+      console.error("Error in streaming response:", error);
+      this.enhancer.summaryPanel.updateContent({
+        title: "Error",
+        text: `Error generating streaming summary: ${error.message}`,
       });
     }
   }

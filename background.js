@@ -144,18 +144,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       );
 
     case "OPENAI_API_REQUEST":
-      return handleAsyncMessage(
-        message,
-        async () => await handleOpenAIRequest(message.data),
-        sendResponse
-      );
+      if (message.data.streaming) {
+        return handleStreamingMessage(
+          message,
+          async () => await handleOpenAIRequest(message.data),
+          sendResponse
+        );
+      } else {
+        return handleAsyncMessage(
+          message,
+          async () => await handleOpenAIRequest(message.data),
+          sendResponse
+        );
+      }
 
     case "ANTHROPIC_API_REQUEST":
-      return handleAsyncMessage(
-        message,
-        async () => await handleAnthropicRequest(message.data),
-        sendResponse
-      );
+      if (message.data.streaming) {
+        return handleStreamingMessage(
+          message,
+          async () => await handleAnthropicRequest(message.data),
+          sendResponse
+        );
+      } else {
+        return handleAsyncMessage(
+          message,
+          async () => await handleAnthropicRequest(message.data),
+          sendResponse
+        );
+      }
 
     case "DEEPSEEK_API_REQUEST":
       return handleAsyncMessage(
@@ -168,11 +184,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 
     case "LITELLM_API_REQUEST":
-      return handleAsyncMessage(
-        message,
-        async () => await handleLiteLLMRequest(message.data),
-        sendResponse
-      );
+      if (message.data.streaming) {
+        return handleStreamingMessage(
+          message,
+          async () => await handleLiteLLMRequest(message.data),
+          sendResponse
+        );
+      } else {
+        return handleAsyncMessage(
+          message,
+          async () => await handleLiteLLMRequest(message.data),
+          sendResponse
+        );
+      }
     case "HN_CHAT_REQUEST":
       return handleAsyncMessage(
         message,
@@ -199,6 +223,64 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// Handle streaming message and send response
+function handleStreamingMessage(message, streamingOperation, sendResponse) {
+  (async () => {
+    try {
+      console.log(`开始处理流式消息: ${message.type}`);
+      const response = await streamingOperation();
+      
+      if (response instanceof Response) {
+        // Handle streaming response
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') {
+                  sendResponse({ success: true, streaming: true, done: true });
+                  return;
+                }
+                
+                try {
+                  const parsed = JSON.parse(data);
+                  sendResponse({ success: true, streaming: true, data: parsed });
+                } catch (e) {
+                  console.error('Error parsing streaming data:', e);
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      } else {
+        // Handle non-streaming response
+        console.log(`流式消息处理成功: ${message.type}`);
+        sendResponse({ success: true, streaming: false, data: response });
+      }
+    } catch (error) {
+      console.error(`流式消息处理失败: ${message.type}. 错误:`, error);
+      console.error(`错误详情:`, error.stack);
+      sendResponse({ success: false, error: error.toString() });
+    }
+  })();
+
+  // indicate that sendResponse will be called later and hence keep the message channel open
+  return true;
+}
+
 // Handle async message and send response
 function handleAsyncMessage(message, asyncOperation, sendResponse) {
   (async () => {
@@ -220,9 +302,9 @@ function handleAsyncMessage(message, asyncOperation, sendResponse) {
 
 // Handle OpenAI API requests
 async function handleOpenAIRequest(data) {
-  const { apiKey, model, messages } = data;
+  const { apiKey, model, messages, streaming = false } = data;
 
-  console.log("处理OpenAI API请求，模型:", model);
+  console.log("处理OpenAI API请求，模型:", model, "流式:", streaming);
 
   if (!apiKey || !model || !messages) {
     console.error("OpenAI API请求缺少必要参数");
@@ -237,7 +319,8 @@ async function handleOpenAIRequest(data) {
     model: model,
     messages: messages,
     temperature: 0.7,
-    max_tokens: 2048, // Consider making this configurable later
+    max_tokens: 2048,
+    stream: streaming,
   };
 
   // Log the payload being sent
@@ -268,24 +351,28 @@ async function handleOpenAIRequest(data) {
       );
     }
 
-    const responseData = await response.json();
-    console.log(
-      "OpenAI API响应数据结构:",
-      JSON.stringify(
-        {
-          hasData: !!responseData,
-          hasChoices: !!(responseData && responseData.choices),
-          choicesCount:
-            responseData && responseData.choices
-              ? responseData.choices.length
-              : 0,
-        },
-        null,
-        2
-      )
-    );
-
-    return responseData;
+    if (streaming) {
+      // Return the response stream for streaming
+      return response;
+    } else {
+      const responseData = await response.json();
+      console.log(
+        "OpenAI API响应数据结构:",
+        JSON.stringify(
+          {
+            hasData: !!responseData,
+            hasChoices: !!(responseData && responseData.choices),
+            choicesCount:
+              responseData && responseData.choices
+                ? responseData.choices.length
+                : 0,
+          },
+          null,
+          2
+        )
+      );
+      return responseData;
+    }
   } catch (error) {
     console.error("OpenAI API请求失败:", error);
     console.error("错误详情:", error.stack);
@@ -295,9 +382,9 @@ async function handleOpenAIRequest(data) {
 
 // Handle Anthropic API requests
 async function handleAnthropicRequest(data) {
-  const { apiKey, model, messages } = data;
+  const { apiKey, model, messages, streaming = false } = data;
 
-  console.log("处理Anthropic API请求，模型:", model);
+  console.log("处理Anthropic API请求，模型:", model, "流式:", streaming);
 
   if (!apiKey || !model || !messages) {
     console.error("Anthropic API请求缺少必要参数");
@@ -313,6 +400,7 @@ async function handleAnthropicRequest(data) {
     model: model,
     messages: messages, // Pass the full messages array
     max_tokens: 2048,
+    stream: streaming,
     // No separate system prompt extraction needed anymore
   };
 
@@ -346,12 +434,16 @@ async function handleAnthropicRequest(data) {
       );
     }
 
-    const responseData = await response.json();
-    console.log(
-      "Anthropic API响应数据结构:",
-      JSON.stringify(
-        {
-          hasData: !!responseData,
+    if (streaming) {
+      // Return the response stream for streaming
+      return response;
+    } else {
+      const responseData = await response.json();
+      console.log(
+        "Anthropic API响应数据结构:",
+        JSON.stringify(
+          {
+            hasData: !!responseData,
           hasContent: !!(responseData && responseData.content),
           contentLength:
             responseData && responseData.content
@@ -539,9 +631,9 @@ async function handleChatRequest(data) {
 
 // Handle LiteLLM API requests
 async function handleLiteLLMRequest(data) {
-  const { apiKey, model, messages } = data;
+  const { apiKey, model, messages, streaming = false } = data;
 
-  console.log("处理LiteLLM API请求，模型:", model);
+  console.log("处理LiteLLM API请求，模型:", model, "流式:", streaming);
 
   if (!model || !messages) {
     console.error("LiteLLM API请求缺少必要参数");
@@ -557,6 +649,7 @@ async function handleLiteLLMRequest(data) {
     messages: messages,
     temperature: 0.7,
     max_tokens: 2048,
+    stream: streaming,
   };
 
   // API key should only be in Authorization header, not in request body for LiteLLM proxy
@@ -589,24 +682,29 @@ async function handleLiteLLMRequest(data) {
       );
     }
 
-    const responseData = await response.json();
-    console.log(
-      "LiteLLM API响应数据结构:",
-      JSON.stringify(
-        {
-          hasData: !!responseData,
-          hasChoices: !!(responseData && responseData.choices),
-          choicesCount:
-            responseData && responseData.choices
-              ? responseData.choices.length
-              : 0,
-        },
-        null,
-        2
-      )
-    );
+    if (streaming) {
+      // Return the response stream for streaming
+      return response;
+    } else {
+      const responseData = await response.json();
+      console.log(
+        "LiteLLM API响应数据结构:",
+        JSON.stringify(
+          {
+            hasData: !!responseData,
+            hasChoices: !!(responseData && responseData.choices),
+            choicesCount:
+              responseData && responseData.choices
+                ? responseData.choices.length
+                : 0,
+          },
+          null,
+          2
+        )
+      );
 
-    return responseData;
+      return responseData;
+    }
   } catch (error) {
     console.error("LiteLLM API请求失败:", error);
     console.error("错误详情:", error.stack);

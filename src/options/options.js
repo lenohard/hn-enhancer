@@ -12,9 +12,11 @@ async function saveSettings() {
     
     const providerSelection = document.querySelector('input[name="provider-selection"]:checked')?.id || 'openai';
     const language = document.getElementById('language-select').value;
+    const streamingEnabled = document.getElementById('streaming-enabled').checked;
     const settings = {
         providerSelection,
         language,
+        streamingEnabled,
         openai: {
             apiKey: document.getElementById('openai-key').value,
             model: document.getElementById('openai-model').value
@@ -408,6 +410,11 @@ async function loadSettings() {
             // Set language selection
             if (settings.language) {
                 document.getElementById('language-select').value = settings.language;
+            }
+            
+            // Set streaming setting
+            if (settings.streamingEnabled !== undefined) {
+                document.getElementById('streaming-enabled').checked = settings.streamingEnabled;
             }
             
             // Set provider selection
