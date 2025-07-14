@@ -57,13 +57,13 @@ async function handleGeminiRequest(data) {
     console.log("请求URL:", endpoint);
     console.log("请求配置:", {
       method: "POST",
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer ***"
       },
       bodySize: JSON.stringify(payload).length
     });
-    
+
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -229,22 +229,22 @@ function handleStreamingMessage(message, streamingOperation, sendResponse) {
     try {
       console.log(`开始处理流式消息: ${message.type}`);
       const response = await streamingOperation();
-      
+
       if (response instanceof Response) {
         // Handle streaming response
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        
+
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
-            
+
             for (const line of lines) {
               if (line.startsWith('data: ')) {
                 const data = line.slice(6);
@@ -252,7 +252,7 @@ function handleStreamingMessage(message, streamingOperation, sendResponse) {
                   sendResponse({ success: true, streaming: true, done: true });
                   return;
                 }
-                
+
                 try {
                   const parsed = JSON.parse(data);
                   sendResponse({ success: true, streaming: true, data: parsed });
@@ -736,7 +736,7 @@ async function handleFetchGeminiModels(data) {
       method: "GET",
       headers: { "Content-Type": "application/json" }
     });
-    
+
     const response = await fetch(url, {
       method: "GET",
       headers: {
@@ -763,7 +763,7 @@ async function handleFetchGeminiModels(data) {
     console.log("Gemini模型列表API响应数据:", responseData);
 
     // Filter models that support generateContent
-    const chatModels = responseData.models?.filter(model => 
+    const chatModels = responseData.models?.filter(model =>
       model.supportedGenerationMethods?.includes('generateContent')
     ) || [];
 
@@ -798,12 +798,12 @@ async function handleFetchLiteLLMModels(data) {
     console.log("发送LiteLLM模型列表API请求...");
     console.log("请求配置:", {
       method: "GET",
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
         ...(apiKey && { "Authorization": `Bearer ${apiKey}` })
       }
     });
-    
+
     const response = await fetch(endpoint, {
       method: "GET",
       headers: {
@@ -832,7 +832,7 @@ async function handleFetchLiteLLMModels(data) {
     // Transform the response to match expected format
     // LiteLLM returns OpenAI-compatible format: { data: [{ id: "model-name", object: "model", ... }] }
     const models = responseData.data || [];
-    
+
     return {
       models: models.map(model => ({
         name: model.id || model.name,
