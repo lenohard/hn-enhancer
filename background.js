@@ -444,18 +444,19 @@ async function handleAnthropicRequest(data) {
         JSON.stringify(
           {
             hasData: !!responseData,
-          hasContent: !!(responseData && responseData.content),
-          contentLength:
-            responseData && responseData.content
-              ? responseData.content.length
-              : 0,
-        },
-        null,
-        2
-      )
-    );
+            hasContent: !!(responseData && responseData.content),
+            contentLength:
+              responseData && responseData.content
+                ? responseData.content.length
+                : 0,
+          },
+          null,
+          2
+        )
+      );
 
-    return responseData;
+      return responseData;
+    }
   } catch (error) {
     console.error("Anthropic API请求失败:", error);
     console.error("错误详情:", error.stack);
