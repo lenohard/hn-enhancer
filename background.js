@@ -463,7 +463,6 @@ async function handleAnthropicRequest(data) {
     throw error;
   }
 }
-}
 
 // Handle DeepSeek API requests
 async function handleDeepSeekRequest(data) {
