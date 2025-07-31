@@ -15,7 +15,15 @@ async function onInstalled() {
 // Handle Gemini API requests
 async function handleGeminiRequest(data) {
   // Handle both formats: messages array or systemPrompt/userPrompt
-  const { apiKey, model, messages, systemPrompt, userPrompt } = data;
+  const {
+    apiKey,
+    model,
+    messages,
+    systemPrompt,
+    userPrompt,
+    max_tokens = 8192,
+    temperature = 0.7,
+  } = data;
 
   console.log("处理Gemini API请求，模型:", model);
   console.log("API密钥长度:", apiKey ? apiKey.length : 0);
@@ -23,7 +31,9 @@ async function handleGeminiRequest(data) {
 
   // Validate required parameters - support both formats
   if (!apiKey || !model || (!messages && (!systemPrompt || !userPrompt))) {
-    console.error("Gemini API请求缺少必要参数 (apiKey, model, or messages/prompts)");
+    console.error(
+      "Gemini API请求缺少必要参数 (apiKey, model, or messages/prompts)"
+    );
     throw new Error("Missing required parameters for Gemini API request");
   }
 
@@ -32,21 +42,22 @@ async function handleGeminiRequest(data) {
   if (!messages && systemPrompt && userPrompt) {
     processedMessages = [
       { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
+      { role: "user", content: userPrompt },
     ];
   }
 
   // Use OpenAI-compatible endpoint
-  const endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  const endpoint =
+    "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
   console.log("Gemini API端点:", endpoint);
 
   // Use OpenAI-compatible format - much simpler!
   const payload = {
-    model: model.replace('models/', ''), // Remove 'models/' prefix if present
+    model: model.replace("models/", ""), // Remove 'models/' prefix if present
     messages: processedMessages,
-    temperature: 0.7,
-    max_tokens: 8192,
+    temperature: temperature,
+    max_tokens: max_tokens,
   };
 
   // Log the final payload being sent
@@ -59,16 +70,16 @@ async function handleGeminiRequest(data) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer ***"
+        Authorization: "Bearer ***",
       },
-      bodySize: JSON.stringify(payload).length
+      bodySize: JSON.stringify(payload).length,
     });
 
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(payload),
     });
@@ -147,6 +158,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.data.streaming) {
         return handleStreamingMessage(
           message,
+          sender,
           async () => await handleOpenAIRequest(message.data),
           sendResponse
         );
@@ -162,6 +174,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.data.streaming) {
         return handleStreamingMessage(
           message,
+          sender,
           async () => await handleAnthropicRequest(message.data),
           sendResponse
         );
@@ -184,6 +197,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.data.streaming) {
         return handleStreamingMessage(
           message,
+          sender,
           async () => await handleLiteLLMRequest(message.data),
           sendResponse
         );
@@ -221,50 +235,105 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // Handle streaming message and send response
-function handleStreamingMessage(message, streamingOperation, sendResponse) {
+function handleStreamingMessage(
+  message,
+  sender,
+  streamingOperation,
+  sendResponse
+) {
   (async () => {
     try {
       console.log(`开始处理流式消息: ${message.type}`);
       const response = await streamingOperation();
 
       if (response instanceof Response) {
-        // Handle streaming response
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let buffer = '';
+        let buffer = "";
+        let lastChunkTime = Date.now();
 
-        try {
+        const streamTimeout = setTimeout(() => {
+          console.error("流式传输超时");
+          sendResponse({ success: false, error: "Streaming timed out." });
+          reader.releaseLock();
+        }, 30000); // 30秒超时
+
+        const processStream = async () => {
           while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+            try {
+              const { done, value } = await reader.read();
+              if (done) {
+                console.log("流处理完成");
+                sendResponse({ success: true, streaming: true, done: true });
+                break;
+              }
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
+              lastChunkTime = Date.now();
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() || "";
 
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6);
-                if (data === '[DONE]') {
-                  sendResponse({ success: true, streaming: true, done: true });
-                  return;
-                }
-
-                try {
-                  const parsed = JSON.parse(data);
-                  sendResponse({ success: true, streaming: true, data: parsed });
-                } catch (e) {
-                  console.error('Error parsing streaming data:', e);
+              for (const line of lines) {
+                if (line.startsWith("data:")) {
+                  const data = line.substring(5).trim();
+                  if (data === "[DONE]") {
+                    console.log("收到 [DONE] 信号");
+                    sendResponse({
+                      success: true,
+                      streaming: true,
+                      done: true,
+                    });
+                    return;
+                  }
+                  try {
+                    const parsed = JSON.parse(data);
+                    // Log the parsed chunk to see its structure
+                    console.log(
+                      "Parsed stream chunk:",
+                      JSON.stringify(parsed, null, 2)
+                    );
+                    if (sender.tab?.id) {
+                      chrome.tabs.sendMessage(sender.tab.id, {
+                        type: `${message.type}_STREAM_CHUNK`,
+                        data: parsed,
+                      });
+                    }
+                  } catch (e) {
+                    console.error(
+                      "Error parsing streaming data chunk:",
+                      data,
+                      e
+                    );
+                  }
+                } else if (line) {
+                  // For Anthropic which doesn't use 'data:' prefix
+                  try {
+                    const parsed = JSON.parse(line);
+                    if (parsed.type === "content_block_delta") {
+                      if (sender.tab?.id) {
+                        chrome.tabs.sendMessage(sender.tab.id, {
+                          type: `${message.type}_STREAM_CHUNK`,
+                          data: parsed,
+                        });
+                      }
+                    }
+                  } catch (e) {
+                    // ignore parsing errors
+                  }
                 }
               }
+            } catch (error) {
+              console.error("读取流时出错:", error);
+              sendResponse({ success: false, error: error.toString() });
+              break;
             }
           }
-        } finally {
-          reader.releaseLock();
-        }
+          clearTimeout(streamTimeout);
+        };
+
+        processStream();
       } else {
-        // Handle non-streaming response
-        console.log(`流式消息处理成功: ${message.type}`);
+        console.log(`流式消息处理成功 (非流式响应): ${message.type}`);
         sendResponse({ success: true, streaming: false, data: response });
       }
     } catch (error) {
@@ -274,8 +343,7 @@ function handleStreamingMessage(message, streamingOperation, sendResponse) {
     }
   })();
 
-  // indicate that sendResponse will be called later and hence keep the message channel open
-  return true;
+  return true; // Indicate that sendResponse will be called asynchronously
 }
 
 // Handle async message and send response
@@ -299,7 +367,14 @@ function handleAsyncMessage(message, asyncOperation, sendResponse) {
 
 // Handle OpenAI API requests
 async function handleOpenAIRequest(data) {
-  const { apiKey, model, messages, streaming = false } = data;
+  const {
+    apiKey,
+    model,
+    messages,
+    streaming = false,
+    max_tokens = 2048,
+    temperature = 0.7,
+  } = data;
 
   console.log("处理OpenAI API请求，模型:", model, "流式:", streaming);
 
@@ -315,8 +390,8 @@ async function handleOpenAIRequest(data) {
   const payload = {
     model: model,
     messages: messages,
-    temperature: 0.7,
-    max_tokens: 2048,
+    temperature: temperature,
+    max_tokens: max_tokens,
     stream: streaming,
   };
 
@@ -379,7 +454,15 @@ async function handleOpenAIRequest(data) {
 
 // Handle Anthropic API requests
 async function handleAnthropicRequest(data) {
-  const { apiKey, model, messages, streaming = false } = data;
+  const {
+    apiKey,
+    model,
+    messages,
+    streaming = false,
+    max_tokens = 2048,
+    temperature = 0.7,
+    system,
+  } = data;
 
   console.log("处理Anthropic API请求，模型:", model, "流式:", streaming);
 
@@ -396,9 +479,10 @@ async function handleAnthropicRequest(data) {
   const payload = {
     model: model,
     messages: messages, // Pass the full messages array
-    max_tokens: 2048,
+    max_tokens: max_tokens,
+    temperature: temperature,
     stream: streaming,
-    // No separate system prompt extraction needed anymore
+    ...(system && { system: system }), // Add system prompt if provided
   };
 
   // Log the payload being sent
@@ -463,7 +547,13 @@ async function handleAnthropicRequest(data) {
 
 // Handle DeepSeek API requests
 async function handleDeepSeekRequest(data) {
-  const { apiKey, model, messages } = data;
+  const {
+    apiKey,
+    model,
+    messages,
+    max_tokens = 2048,
+    temperature = 0.7,
+  } = data;
 
   console.log("处理DeepSeek API请求，模型:", model);
 
@@ -479,8 +569,8 @@ async function handleDeepSeekRequest(data) {
   const payload = {
     model: model,
     messages: messages,
-    temperature: 0.7,
-    max_tokens: 2048, // Consider making this configurable later
+    temperature: temperature,
+    max_tokens: max_tokens,
   };
 
   // Log the payload being sent
@@ -536,8 +626,6 @@ async function handleDeepSeekRequest(data) {
   }
 }
 
-
-
 // Handle Chat Request (routes to specific provider handlers)
 async function handleChatRequest(data) {
   // The 'messages' received here is the full conversation history
@@ -547,7 +635,9 @@ async function handleChatRequest(data) {
 
   if (!provider || !model || !messages || messages.length === 0) {
     console.error("聊天请求缺少必要参数或消息历史为空");
-    throw new Error("Missing required parameters or empty message history for chat request");
+    throw new Error(
+      "Missing required parameters or empty message history for chat request"
+    );
   }
 
   // 1. Get API Key (securely from storage)
@@ -570,7 +660,9 @@ async function handleChatRequest(data) {
           messages,
         });
         // Directly return the text content on success
-        return openaiResponse.choices[0]?.message?.content || "No response content";
+        return (
+          openaiResponse.choices[0]?.message?.content || "No response content"
+        );
 
       case "anthropic":
         // Pass messages array directly
@@ -590,9 +682,9 @@ async function handleChatRequest(data) {
           messages,
         });
         // Directly return the text content on success
-        return deepseekResponse.choices[0]?.message?.content || "No response content";
-
-
+        return (
+          deepseekResponse.choices[0]?.message?.content || "No response content"
+        );
 
       case "gemini":
         // Pass the full message history to the handler, it will adapt it
@@ -602,9 +694,9 @@ async function handleChatRequest(data) {
           messages, // Pass the original history
         });
         // Extract text content from OpenAI-compatible response format
-        return geminiResponse.choices[0]?.message?.content || "No response content";
-
-
+        return (
+          geminiResponse.choices[0]?.message?.content || "No response content"
+        );
 
       case "litellm":
         // Pass messages array directly (same format as OpenAI)
@@ -614,7 +706,9 @@ async function handleChatRequest(data) {
           messages,
         });
         // Directly return the text content on success
-        return litellmResponse.choices[0]?.message?.content || "No response content";
+        return (
+          litellmResponse.choices[0]?.message?.content || "No response content"
+        );
 
       default:
         throw new Error(`Unsupported chat provider: ${provider}`);
@@ -626,10 +720,16 @@ async function handleChatRequest(data) {
   }
 }
 
-
 // Handle LiteLLM API requests
 async function handleLiteLLMRequest(data) {
-  const { apiKey, model, messages, streaming = false } = data;
+  const {
+    apiKey,
+    model,
+    messages,
+    streaming = false,
+    max_tokens = 2048,
+    temperature = 0.7,
+  } = data;
 
   console.log("处理LiteLLM API请求，模型:", model, "流式:", streaming);
 
@@ -645,8 +745,8 @@ async function handleLiteLLMRequest(data) {
   const payload = {
     model: model,
     messages: messages,
-    temperature: 0.7,
-    max_tokens: 2048,
+    temperature: temperature,
+    max_tokens: max_tokens,
     stream: streaming,
   };
 
@@ -661,7 +761,7 @@ async function handleLiteLLMRequest(data) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(apiKey && { "Authorization": `Bearer ${apiKey}` }),
+        ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
       },
       body: JSON.stringify(payload),
     });
@@ -732,7 +832,7 @@ async function handleFetchGeminiModels(data) {
     console.log("发送Gemini模型列表API请求...");
     console.log("请求配置:", {
       method: "GET",
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
     });
 
     const response = await fetch(url, {
@@ -761,20 +861,21 @@ async function handleFetchGeminiModels(data) {
     console.log("Gemini模型列表API响应数据:", responseData);
 
     // Filter models that support generateContent
-    const chatModels = responseData.models?.filter(model =>
-      model.supportedGenerationMethods?.includes('generateContent')
-    ) || [];
+    const chatModels =
+      responseData.models?.filter((model) =>
+        model.supportedGenerationMethods?.includes("generateContent")
+      ) || [];
 
     console.log(`找到 ${chatModels.length} 个支持聊天的Gemini模型`);
 
     return {
-      models: chatModels.map(model => ({
+      models: chatModels.map((model) => ({
         name: model.name,
         displayName: model.displayName || model.name,
-        description: model.description || '',
+        description: model.description || "",
         inputTokenLimit: model.inputTokenLimit || 0,
-        outputTokenLimit: model.outputTokenLimit || 0
-      }))
+        outputTokenLimit: model.outputTokenLimit || 0,
+      })),
     };
   } catch (error) {
     console.error("Gemini模型列表API请求失败:", error);
@@ -798,15 +899,15 @@ async function handleFetchLiteLLMModels(data) {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        ...(apiKey && { "Authorization": `Bearer ${apiKey}` })
-      }
+        ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
+      },
     });
 
     const response = await fetch(endpoint, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        ...(apiKey && { "Authorization": `Bearer ${apiKey}` }),
+        ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
       },
     });
 
@@ -832,13 +933,13 @@ async function handleFetchLiteLLMModels(data) {
     const models = responseData.data || [];
 
     return {
-      models: models.map(model => ({
+      models: models.map((model) => ({
         name: model.id || model.name,
         displayName: model.id || model.name,
         description: `LiteLLM model: ${model.id || model.name}`,
         inputTokenLimit: 0,
-        outputTokenLimit: 0
-      }))
+        outputTokenLimit: 0,
+      })),
     };
   } catch (error) {
     console.error("LiteLLM模型列表API请求失败:", error);

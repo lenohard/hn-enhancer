@@ -203,7 +203,9 @@ class Summarization {
     const aiProvider = settingsData.settings?.providerSelection;
     const model = settingsData.settings?.[aiProvider]?.model;
     const language = settingsData.settings?.language || "en";
-    return { aiProvider, model, language };
+    const maxTokens = settingsData.settings?.maxTokens || 100000;
+    const temperature = settingsData.settings?.temperature || 0.7;
+    return { aiProvider, model, language, maxTokens, temperature };
   }
 
   /**
@@ -214,8 +216,8 @@ class Summarization {
     const message =
       "To use the summarization feature, you need to configure an AI provider. <br/><br/>" +
       'Please <a href="#" id="options-page-link">open the settings page</a> to select and configure your preferred AI provider ' +
-      '(OpenAI, Anthropic, ' +
-      'and others).';
+      "(OpenAI, Anthropic, " +
+      "and others).";
 
     const container = targetElement || this.enhancer.summaryPanel.panel;
 
@@ -654,7 +656,6 @@ class Summarization {
     }
   }
 
-
   /**
    * Summarizes text using OpenAI
    * @param {string} text - The text to summarize
@@ -662,7 +663,13 @@ class Summarization {
    * @param {string} apiKey - The API key
    * @param {Map} commentPathToIdMap - Map of comment paths to IDs
    */
-  async summarizeUsingOpenAI(text, model, apiKey, commentPathToIdMap, streamingEnabled = false) {
+  async summarizeUsingOpenAI(
+    text,
+    model,
+    apiKey,
+    commentPathToIdMap,
+    streamingEnabled = false
+  ) {
     // Validate required parameters
     if (!text || !model || !apiKey) {
       console.error("Missing required parameters for OpenAI summarization");
@@ -674,11 +681,9 @@ class Summarization {
     }
 
     try {
-      // Rate Limit for OpenAI
-      // gpt-4-turbo      - 30,000 TPM
-      // gpt-3.5-turbo    - 16,000 TPM
-      const tokenLimit = model === "gpt-4-turbo" ? 25_000 : 15_000;
-      const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
+      // Get configured max tokens
+      const { maxTokens, temperature } = await this.getAIProviderModel();
+      const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
 
       // Create the system and user prompts for better summarization
       const systemPrompt = this.getSystemMessage();
@@ -705,7 +710,9 @@ class Summarization {
             apiKey: apiKey,
             model: model,
             messages: messages,
-            streaming: true
+            streaming: true,
+            max_tokens: maxTokens,
+            temperature: temperature,
           },
           commentPathToIdMap
         );
@@ -716,7 +723,9 @@ class Summarization {
             apiKey: apiKey,
             model: model,
             messages: messages,
-            streaming: false
+            streaming: false,
+            max_tokens: maxTokens,
+            temperature: temperature,
           }
         );
 
@@ -762,7 +771,13 @@ class Summarization {
    * @param {string} apiKey - The API key (optional for local models)
    * @param {Map} commentPathToIdMap - Map of comment paths to IDs
    */
-  async summarizeUsingLiteLLM(text, model, apiKey, commentPathToIdMap, streamingEnabled = false) {
+  async summarizeUsingLiteLLM(
+    text,
+    model,
+    apiKey,
+    commentPathToIdMap,
+    streamingEnabled = false
+  ) {
     // Validate required parameters - API key is optional for LiteLLM
     if (!text || !model) {
       console.error("Missing required parameters for LiteLLM summarization");
@@ -774,9 +789,9 @@ class Summarization {
     }
 
     try {
-      // Conservative token limit for LiteLLM as it depends on the underlying model
-      const tokenLimit = 15_000;
-      const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
+      // Get configured max tokens
+      const { maxTokens, temperature } = await this.getAIProviderModel();
+      const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
 
       // Create the system and user prompts for better summarization
       const systemPrompt = this.getSystemMessage();
@@ -803,7 +818,9 @@ class Summarization {
             apiKey: apiKey,
             model: model,
             messages: messages,
-            streaming: true
+            streaming: true,
+            max_tokens: maxTokens,
+            temperature: temperature,
           },
           commentPathToIdMap
         );
@@ -814,7 +831,9 @@ class Summarization {
             apiKey: apiKey,
             model: model,
             messages: messages,
-            streaming: false
+            streaming: false,
+            max_tokens: maxTokens,
+            temperature: temperature,
           }
         );
 
@@ -836,12 +855,17 @@ class Summarization {
 
       // Update the summary panel with an error message
       let errorMessage = `Error generating summary using LiteLLM model ${model}. `;
-      if (error.message.includes("Connection refused") || error.message.includes("ECONNREFUSED")) {
-        errorMessage += "LiteLLM server is not running. Please start the LiteLLM server at http://127.0.0.1:4000.";
+      if (
+        error.message.includes("Connection refused") ||
+        error.message.includes("ECONNREFUSED")
+      ) {
+        errorMessage +=
+          "LiteLLM server is not running. Please start the LiteLLM server at http://127.0.0.1:4000.";
       } else if (error.message.includes("429")) {
         errorMessage += "Rate limit exceeded. Please try again later.";
       } else if (error.message.includes("404")) {
-        errorMessage += "Model not found. Please check if the model is available in LiteLLM.";
+        errorMessage +=
+          "Model not found. Please check if the model is available in LiteLLM.";
       } else {
         errorMessage += error.message + " Please try again later.";
       }
@@ -860,7 +884,13 @@ class Summarization {
    * @param {string} apiKey - The API key
    * @param {Map} commentPathToIdMap - Map of comment paths to IDs
    */
-  async summarizeUsingAnthropic(text, model, apiKey, commentPathToIdMap, streamingEnabled = false) {
+  async summarizeUsingAnthropic(
+    text,
+    model,
+    apiKey,
+    commentPathToIdMap,
+    streamingEnabled = false
+  ) {
     // Validate required parameters
     if (!text || !model || !apiKey) {
       console.error("Missing required parameters for Anthropic summarization");
@@ -872,8 +902,9 @@ class Summarization {
     }
 
     try {
-      // Limit the input text to 40,000 tokens for Anthropic
-      const tokenLimitText = this.splitInputTextAtTokenLimit(text, 40_000);
+      // Get configured max tokens
+      const { maxTokens, temperature } = await this.getAIProviderModel();
+      const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
 
       // Create the system and user prompts for better summarization
       const systemPrompt = this.getSystemMessage();
@@ -897,7 +928,9 @@ class Summarization {
             model: model,
             messages: messages,
             system: systemPrompt,
-            streaming: true
+            streaming: true,
+            max_tokens: maxTokens,
+            temperature: temperature,
           },
           commentPathToIdMap
         );
@@ -909,7 +942,9 @@ class Summarization {
             model: model,
             messages: messages,
             system: systemPrompt,
-            streaming: false
+            streaming: false,
+            max_tokens: maxTokens,
+            temperature: temperature,
           }
         );
 
@@ -969,8 +1004,9 @@ class Summarization {
     }
 
     try {
-      // Limit the input text to 40,000 tokens for DeepSeek
-      const tokenLimitText = this.splitInputTextAtTokenLimit(text, 40_000);
+      // Get configured max tokens
+      const { maxTokens, temperature } = await this.getAIProviderModel();
+      const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
 
       // Create the system and user prompts for better summarization
       const systemPrompt = this.getSystemMessage();
@@ -996,6 +1032,8 @@ class Summarization {
           apiKey: apiKey,
           model: model,
           messages: messages,
+          max_tokens: maxTokens,
+          temperature: temperature,
         }
       );
 
@@ -1201,7 +1239,6 @@ ${languageInstruction}`;
     return prompt;
   }
 
-
   /**
    * Summarizes text using Gemini
    * @param {string} text - The text to summarize
@@ -1232,9 +1269,9 @@ ${languageInstruction}`;
         text: `<div>Generating summary... This may take a few moments.<span class="loading-spinner"></span></div>`,
       });
 
-      // Limit the input text to avoid token limits
-      const tokenLimit = model.includes("1.5") ? 30000 : 15000;
-      const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
+      // Get configured max tokens
+      const { maxTokens, temperature } = await this.getAIProviderModel();
+      const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
       console.log("文本长度限制为:", tokenLimit, "字符");
 
       // Create the system and user prompts
@@ -1252,6 +1289,8 @@ ${languageInstruction}`;
           model: model,
           systemPrompt: systemPrompt,
           userPrompt: userPrompt,
+          max_tokens: maxTokens,
+          temperature: temperature,
         }
       );
       console.log("收到Gemini API响应:", response ? "成功" : "失败");
@@ -1324,94 +1363,117 @@ ${languageInstruction}`;
    * @param {Map} commentPathToIdMap - Map of comment paths to IDs
    */
   async handleStreamingResponse(messageType, requestData, commentPathToIdMap) {
-    let accumulatedText = '';
-    
-    try {
-      // Show initial streaming message
-      this.enhancer.summaryPanel.updateContent({
-        title: this.enhancer.domUtils.getHNPostTitle(),
-        text: `<div>Generating summary... <span class="loading-spinner"></span></div>`,
-        metadata: ""
-      });
+    let accumulatedText = "";
+    let lastUpdateTime = 0;
+    const UPDATE_INTERVAL = 100; // Update UI every 100ms
 
-      // Create a message listener for streaming responses
+    // Show initial streaming message
+    this.enhancer.summaryPanel.updateContent({
+      title: "Thread Summary",
+      text: `<div>Generating summary... <span class="loading-spinner"></span></div>`,
+      metadata: "",
+    });
+
+    // Use a Promise to wait for the streaming to complete
+    const streamingPromise = new Promise((resolve, reject) => {
       const messageListener = (message) => {
+        // Handle stream chunks
         if (message.type === `${messageType}_STREAM_CHUNK`) {
           const chunk = message.data;
-          let content = '';
-          
-          if (messageType === 'OPENAI_API_REQUEST' || messageType === 'LITELLM_API_REQUEST') {
-            content = chunk.choices?.[0]?.delta?.content || '';
-          } else if (messageType === 'ANTHROPIC_API_REQUEST') {
-            if (chunk.type === 'content_block_delta') {
-              content = chunk.delta?.text || '';
+          let content = "";
+
+          if (
+            messageType === "OPENAI_API_REQUEST" ||
+            messageType === "LITELLM_API_REQUEST"
+          ) {
+            content = chunk.choices?.[0]?.delta?.content || "";
+          } else if (messageType === "ANTHROPIC_API_REQUEST") {
+            if (chunk.type === "content_block_delta") {
+              content = chunk.delta?.text || "";
             }
           }
-          
+
           if (content) {
             accumulatedText += content;
-            
-            // Update UI with streaming content
-            const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(accumulatedText);
-            const formattedSummary = this.enhancer.markdownUtils.replacePathsWithCommentLinks(
-              summaryHtml,
-              commentPathToIdMap
-            );
-            
-            this.enhancer.summaryPanel.updateContent({
-              title: this.enhancer.domUtils.getHNPostTitle(),
-              text: formattedSummary,
-              metadata: this.getMetadata()
-            });
+            const now = Date.now();
+            if (now - lastUpdateTime > UPDATE_INTERVAL) {
+              this.updateStreamingUI(accumulatedText, commentPathToIdMap);
+              lastUpdateTime = now;
+            }
+          }
+          // Check for finish reason
+          if (chunk.choices?.[0]?.finish_reason === "stop") {
+            resolve();
           }
         }
       };
 
-      // Add message listener
+      // Add the listener
       chrome.runtime.onMessage.addListener(messageListener);
 
-      try {
-        // Send streaming request and wait for completion
-        const response = await this.enhancer.apiClient.sendBackgroundMessage(
-          messageType,
-          requestData
-        );
-
-        // Handle the response appropriately
-        if (requestData.streaming) {
-          // For streaming, the final response contains the complete text
-          if (response.choices?.[0]?.message?.content) {
-            accumulatedText = response.choices[0].message.content;
-          } else if (response.content?.[0]?.text) {
-            accumulatedText = response.content[0].text;
+      // Send the initial request and handle its completion
+      this.enhancer.apiClient
+        .sendBackgroundMessage(messageType, requestData)
+        .then((response) => {
+          // This is called when the background script calls sendResponse (i.e., stream is done)
+          if (response && response.done) {
+            resolve();
           }
-        } else {
-          // For non-streaming, extract content normally
-          if (response.choices?.[0]?.message?.content) {
-            accumulatedText = response.choices[0].message.content;
-          } else if (response.content?.[0]?.text) {
-            accumulatedText = response.content[0].text;
+          // If the response is not what we expect, it might be an error or non-streaming response
+          else if (response && !response.success) {
+            reject(
+              new Error(
+                response.error || "Unknown error from background script"
+              )
+            );
+          } else {
+            // This case might happen if the stream ends without a clear signal recognized above.
+            // We resolve to ensure cleanup happens.
+            resolve();
           }
-        }
+        })
+        .catch(reject)
+        .finally(() => {
+          // IMPORTANT: Clean up the listener once the streaming is fully complete
+          chrome.runtime.onMessage.removeListener(messageListener);
+        });
+    });
 
-        // Final update when complete
-        if (accumulatedText) {
-          await this.showSummaryInPanel(accumulatedText, commentPathToIdMap, 0);
-        }
-      } finally {
-        // Remove message listener
-        chrome.runtime.onMessage.removeListener(messageListener);
-      }
-      
+    try {
+      await streamingPromise;
     } catch (error) {
-      console.error("Error in streaming response:", error);
+      console.error("Error during streaming:", error);
       this.enhancer.summaryPanel.updateContent({
         title: "Error",
         text: `Error generating streaming summary: ${error.message}`,
       });
+      return; // Stop further execution
     }
+
+    // Final UI update after the stream is confirmed to be complete
+    this.updateStreamingUI(accumulatedText, commentPathToIdMap, true);
+    await this.showSummaryInPanel(accumulatedText, commentPathToIdMap, 0);
   }
 
+  /**
+   * Updates the UI with streaming content
+   * @param {string} text - The text to display
+   * @param {Map} commentPathToIdMap - Map of comment paths to IDs
+   * @param {boolean} isFinal - Whether this is the final update
+   */
+  updateStreamingUI(text, commentPathToIdMap, isFinal = false) {
+    const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(text);
+    const formattedSummary =
+      this.enhancer.markdownUtils.replacePathsWithCommentLinks(
+        summaryHtml,
+        commentPathToIdMap
+      );
+
+    this.enhancer.summaryPanel.updateContent({
+      title: "Thread Summary",
+      text: formattedSummary + (isFinal ? "" : "..."),
+    });
+  }
 
   /**
    * Shows the summary in the summary panel

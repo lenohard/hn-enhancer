@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,339 +9,432 @@
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
     <script src="options.js" defer></script>
 </head>
-<body class="flex items-center justify-center bg-gray-100" style="min-width: 400px">
-<div class="m-6 p-6 bg-white rounded-lg shadow-md mx-auto " style="min-width: 350px">
-    <form>
-        <fieldset>
-            <legend class="text-sm/6 font-semibold text-gray-900">Hacker News Companion Settings</legend>
-            <p class="mt-1 text-sm/6 text-gray-600">Select the LLM provider for summarization.</p>
 
-            <div class="mt-6 space-y-6">
-                <!-- Language Selection -->
-                <div class="space-y-3">
-                    <div class="flex items-center">
-                        <label for="language-select" class="block text-sm font-medium text-gray-900">Summary Language</label>
+<body class="flex items-center justify-center bg-gray-100" style="min-width: 400px">
+    <div class="m-6 p-6 bg-white rounded-lg shadow-md mx-auto " style="min-width: 350px">
+        <form>
+            <fieldset>
+                <legend class="text-sm/6 font-semibold text-gray-900">Hacker News Companion Settings</legend>
+                <p class="mt-1 text-sm/6 text-gray-600">Select the LLM provider for summarization.</p>
+
+                <div class="mt-6 space-y-6">
+                    <!-- Language Selection -->
+                    <div class="space-y-3">
+                        <div class="flex items-center">
+                            <label for="language-select" class="block text-sm font-medium text-gray-900">Summary
+                                Language</label>
+                        </div>
+                        <div class="space-y-3">
+                            <div>
+                                <div class="mt-2 grid grid-cols-1">
+                                    <select id="language-select" name="language-select"
+                                        class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pl-3 pr-8 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                                        <option value="en">English</option>
+                                        <option value="zh">中文 (Chinese)</option>
+                                        <option value="es">Español (Spanish)</option>
+                                        <option value="fr">Français (French)</option>
+                                        <option value="de">Deutsch (German)</option>
+                                        <option value="ja">日本語 (Japanese)</option>
+                                        <option value="ko">한국어 (Korean)</option>
+                                        <option value="ru">Русский (Russian)</option>
+                                        <option value="pt">Português (Portuguese)</option>
+                                        <option value="it">Italiano (Italian)</option>
+                                    </select>
+                                    <svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4"
+                                        viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
+                                        <path fill-rule="evenodd"
+                                            d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                            clip-rule="evenodd" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
+                    <!-- Streaming Configuration -->
                     <div class="space-y-3">
                         <div>
-                            <div class="mt-2 grid grid-cols-1">
-                                <select id="language-select"
-                                        name="language-select"
-                                        class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pl-3 pr-8 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
-                                    <option value="en">English</option>
-                                    <option value="zh">中文 (Chinese)</option>
-                                    <option value="es">Español (Spanish)</option>
-                                    <option value="fr">Français (French)</option>
-                                    <option value="de">Deutsch (German)</option>
-                                    <option value="ja">日本語 (Japanese)</option>
-                                    <option value="ko">한국어 (Korean)</option>
-                                    <option value="ru">Русский (Russian)</option>
-                                    <option value="pt">Português (Portuguese)</option>
-                                    <option value="it">Italiano (Italian)</option>
-                                </select>
-                                <svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
-                                    <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                                </svg>
+                            <label for="streaming-enabled" class="block text-sm font-medium text-gray-900">Response
+                                Streaming</label>
+                            <p class="mt-1 text-sm text-gray-600">Enable streaming for real-time response display (when
+                                supported by provider)</p>
+                        </div>
+                        <div class="flex items-center">
+                            <input id="streaming-enabled" name="streaming-enabled" type="checkbox"
+                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                            <label for="streaming-enabled" class="ml-3 block text-sm font-medium text-gray-900">Enable
+                                streaming responses</label>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Parameters -->
+                    <div class="space-y-3">
+                        <div class="flex items-center">
+                            <label for="max-tokens" class="block text-sm font-medium text-gray-900">Max Tokens</label>
+                        </div>
+                        <div class="space-y-3">
+                            <div>
+                                <div class="mt-2 grid grid-cols-1">
+                                    <input type="number" id="max-tokens" name="max-tokens" min="1000" max="200000"
+                                        step="1000" value="100000"
+                                        class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
+                                        placeholder="100000">
+                                </div>
+                                <p class="mt-1 text-sm text-gray-600">Maximum number of tokens to use for AI requests
+                                    (default: 100000)</p>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Streaming Configuration -->
-                <div class="space-y-3">
-                    <div>
-                        <label for="streaming-enabled" class="block text-sm font-medium text-gray-900">Response Streaming</label>
-                        <p class="mt-1 text-sm text-gray-600">Enable streaming for real-time response display (when supported by provider)</p>
-                    </div>
-                    <div class="flex items-center">
-                        <input id="streaming-enabled" name="streaming-enabled" type="checkbox"
-                               class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
-                        <label for="streaming-enabled" class="ml-3 block text-sm font-medium text-gray-900">Enable streaming responses</label>
-                    </div>
-                </div>
-
-                <div class="relative">
-                    <div class="absolute inset-0 flex items-center" aria-hidden="true">
-                        <div class="w-full border-t border-gray-300"></div>
-                    </div>
-                    <div class="relative flex justify-center">
-                        <span class="bg-white px-2 text-sm text-gray-500">Cloud Services</span>
-                    </div>
-                </div>
-
-
-
-                <div class="relative">
-                    <div class="absolute inset-0 flex items-center" aria-hidden="true">
-                        <div class="w-full border-t border-gray-300"></div>
-                    </div>
-                    <div class="relative flex justify-center">
-                        <span class="bg-white px-2 text-sm text-gray-500">Cloud based LLMs (API Key Required)</span>
-                    </div>
-                </div>
-
-                <!-- Anthropic -->
-                <div class="space-y-3">
-                    <div class="flex items-center">
-                        <input id="anthropic" name="provider-selection" type="radio"
-                               class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 forced-colors:appearance-auto forced-colors:before:hidden [&:not(:checked)]:before:hidden">
-                        <label for="anthropic" class="ml-3 block text-sm font-medium text-gray-900">Anthropic</label>
-                        <span class="inline-flex items-center rounded-md ml-3 bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20" title="Supports larger context">🌟 Best performance 🌟</span>
-                    </div>
-                    <div class="ml-7 space-y-3">
-                        <div class="mt-2 grid grid-cols-1">
-                            <label for="anthropic-key" class="sr-only">Enter Anthropic API Key</label>
-                            <input type="password"
-                                   id="anthropic-key"
-                                   name="anthropic-key"
-                                   class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
-                                   placeholder="Enter Anthropic API Key">
-                            <details class="col-start-1 row-start-1 justify-self-end self-center mr-3 inline-block relative">
-                                <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
-                                    <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                                        <path fill-rule="evenodd" d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z" clip-rule="evenodd" />
-                                    </svg>
-                                </summary>
-                                <div class="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
-                                    🔑 API key is securely stored in your browser's local storage and can sync across your devices with browser sync. The key is transmitted only to the selected LLM provider when making requests.
-                                </div>
-                            </details>
+                    <!-- Temperature Parameter -->
+                    <div class="space-y-3">
+                        <div class="flex items-center">
+                            <label for="temperature" class="block text-sm font-medium text-gray-900">Temperature</label>
                         </div>
-                        <div>
-                            <label for="anthropic-model" class="block text-sm font-medium text-gray-900">Select Anthropic Model</label>
-                            <div class="mt-2 grid grid-cols-1">
-                                <select id="anthropic-model"
-                                        name="anthropic-model"
-                                        class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pl-3 pr-8 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
-                                    <option value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet</option>
-                                    <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku</option>
-                                    <option value="claude-3-opus-latest">Claude 3 Opus</option>
-                                </select>
-                                <svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
-                                    <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                                </svg>
+                        <div class="space-y-3">
+                            <div>
+                                <div class="mt-2 grid grid-cols-1">
+                                    <input type="number" id="temperature" name="temperature" min="0" max="2" step="0.1"
+                                        value="0.7"
+                                        class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
+                                        placeholder="0.7">
+                                </div>
+                                <p class="mt-1 text-sm text-gray-600">Controls randomness in AI responses. Lower values
+                                    (0.1) are more focused, higher values (1.5) are more creative (default: 0.7)</p>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Gemini -->
-                <div class="space-y-3">
-                    <div class="flex items-center">
-                        <input id="gemini" name="provider-selection" type="radio"
-                               class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 forced-colors:appearance-auto forced-colors:before:hidden [&:not(:checked)]:before:hidden">
-                        <label for="gemini" class="ml-3 block text-sm font-medium text-gray-900">Google Gemini</label>
-                    </div>
-                    <div class="ml-7 space-y-3">
-                        <div class="mt-2 grid grid-cols-1">
-                            <label for="gemini-key" class="sr-only">Enter Gemini API Key</label>
-                            <input type="password"
-                                   id="gemini-key"
-                                   name="gemini-key"
-                                   class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
-                                   placeholder="Enter Gemini API Key">
-                            <details class="col-start-1 row-start-1 justify-self-end self-center mr-3 inline-block relative">
-                                <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
-                                    <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                                        <path fill-rule="evenodd" d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z" clip-rule="evenodd" />
-                                    </svg>
-                                </summary>
-                                <div class="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
-                                    🔑 API key is securely stored in your browser's local storage and can sync across your devices with browser sync. The key is transmitted only to the selected LLM provider when making requests.
-                                </div>
-                            </details>
+                    <div class="relative">
+                        <div class="absolute inset-0 flex items-center" aria-hidden="true">
+                            <div class="w-full border-t border-gray-300"></div>
                         </div>
-                        <div>
-                            <label for="gemini-model" class="block text-sm font-medium text-gray-900">Select Gemini Model</label>
-                            <div class="mt-2 flex gap-2">
-                                <div class="flex-1 grid grid-cols-1">
-                                    <select id="gemini-model"
-                                            name="gemini-model"
-                                            class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pl-3 pr-8 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
-                                        <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
-                                        <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
-                                        <option value="gemini-2.0-pro-exp">Gemini 2.0 Pro</option>
+                        <div class="relative flex justify-center">
+                            <span class="bg-white px-2 text-sm text-gray-500">Cloud Services</span>
+                        </div>
+                    </div>
+
+
+
+                    <div class="relative">
+                        <div class="absolute inset-0 flex items-center" aria-hidden="true">
+                            <div class="w-full border-t border-gray-300"></div>
+                        </div>
+                        <div class="relative flex justify-center">
+                            <span class="bg-white px-2 text-sm text-gray-500">Cloud based LLMs (API Key Required)</span>
+                        </div>
+                    </div>
+
+                    <!-- Anthropic -->
+                    <div class="space-y-3">
+                        <div class="flex items-center">
+                            <input id="anthropic" name="provider-selection" type="radio"
+                                class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 forced-colors:appearance-auto forced-colors:before:hidden [&:not(:checked)]:before:hidden">
+                            <label for="anthropic"
+                                class="ml-3 block text-sm font-medium text-gray-900">Anthropic</label>
+                            <span
+                                class="inline-flex items-center rounded-md ml-3 bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20"
+                                title="Supports larger context">🌟 Best performance 🌟</span>
+                        </div>
+                        <div class="ml-7 space-y-3">
+                            <div class="mt-2 grid grid-cols-1">
+                                <label for="anthropic-key" class="sr-only">Enter Anthropic API Key</label>
+                                <input type="password" id="anthropic-key" name="anthropic-key"
+                                    class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
+                                    placeholder="Enter Anthropic API Key">
+                                <details
+                                    class="col-start-1 row-start-1 justify-self-end self-center mr-3 inline-block relative">
+                                    <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
+                                        <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor"
+                                            aria-hidden="true">
+                                            <path fill-rule="evenodd"
+                                                d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z"
+                                                clip-rule="evenodd" />
+                                        </svg>
+                                    </summary>
+                                    <div
+                                        class="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
+                                        🔑 API key is securely stored in your browser's local storage and can sync
+                                        across your devices with browser sync. The key is transmitted only to the
+                                        selected LLM provider when making requests.
+                                    </div>
+                                </details>
+                            </div>
+                            <div>
+                                <label for="anthropic-model" class="block text-sm font-medium text-gray-900">Select
+                                    Anthropic Model</label>
+                                <div class="mt-2 grid grid-cols-1">
+                                    <select id="anthropic-model" name="anthropic-model"
+                                        class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pl-3 pr-8 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                                        <option value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet</option>
+                                        <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku</option>
+                                        <option value="claude-3-opus-latest">Claude 3 Opus</option>
                                     </select>
-                                    <svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
-                                        <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                                    <svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4"
+                                        viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
+                                        <path fill-rule="evenodd"
+                                            d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                            clip-rule="evenodd" />
                                     </svg>
                                 </div>
-                                <button type="button" id="refresh-gemini-models"
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gemini -->
+                    <div class="space-y-3">
+                        <div class="flex items-center">
+                            <input id="gemini" name="provider-selection" type="radio"
+                                class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 forced-colors:appearance-auto forced-colors:before:hidden [&:not(:checked)]:before:hidden">
+                            <label for="gemini" class="ml-3 block text-sm font-medium text-gray-900">Google
+                                Gemini</label>
+                        </div>
+                        <div class="ml-7 space-y-3">
+                            <div class="mt-2 grid grid-cols-1">
+                                <label for="gemini-key" class="sr-only">Enter Gemini API Key</label>
+                                <input type="password" id="gemini-key" name="gemini-key"
+                                    class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
+                                    placeholder="Enter Gemini API Key">
+                                <details
+                                    class="col-start-1 row-start-1 justify-self-end self-center mr-3 inline-block relative">
+                                    <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
+                                        <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor"
+                                            aria-hidden="true">
+                                            <path fill-rule="evenodd"
+                                                d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z"
+                                                clip-rule="evenodd" />
+                                        </svg>
+                                    </summary>
+                                    <div
+                                        class="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
+                                        🔑 API key is securely stored in your browser's local storage and can sync
+                                        across your devices with browser sync. The key is transmitted only to the
+                                        selected LLM provider when making requests.
+                                    </div>
+                                </details>
+                            </div>
+                            <div>
+                                <label for="gemini-model" class="block text-sm font-medium text-gray-900">Select Gemini
+                                    Model</label>
+                                <div class="mt-2 flex gap-2">
+                                    <div class="flex-1 grid grid-cols-1">
+                                        <select id="gemini-model" name="gemini-model"
+                                            class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pl-3 pr-8 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                                            <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
+                                            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+                                            <option value="gemini-2.0-pro-exp">Gemini 2.0 Pro</option>
+                                        </select>
+                                        <svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4"
+                                            viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
+                                            <path fill-rule="evenodd"
+                                                d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                                clip-rule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <button type="button" id="refresh-gemini-models"
                                         class="rounded-md bg-gray-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600">
-                                    刷新
-                                </button>
+                                        刷新
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- DeepSeek -->
-                <div class="space-y-3">
-                    <div class="flex items-center">
-                        <input id="deepseek" name="provider-selection" type="radio"
-                               class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 forced-colors:appearance-auto forced-colors:before:hidden [&:not(:checked)]:before:hidden">
-                        <label for="deepseek" class="ml-3 block text-sm font-medium text-gray-900">DeepSeek</label>
-                    </div>
-                    <div class="ml-7 space-y-3">
-                        <div class="mt-2 grid grid-cols-1">
-                            <label for="deepseek-key" class="sr-only">Enter DepSeek API Key</label>
-                            <input type="password"
-                                   id="deepseek-key"
-                                   name="deepseek-key"
-                                   class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
-                                   placeholder="Enter DeepSeek API Key">
-                            <details class="col-start-1 row-start-1 justify-self-end self-center mr-3 inline-block relative">
-                                <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
-                                    <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                                        <path fill-rule="evenodd" d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z" clip-rule="evenodd" />
-                                    </svg>
-                                </summary>
-                                <div class="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
-                                    🔑 API key is securely stored in your browser's local storage and can sync across your devices with browser sync. The key is transmitted only to the selected LLM provider when making requests.
-                                </div>
-                            </details>
+                    <!-- DeepSeek -->
+                    <div class="space-y-3">
+                        <div class="flex items-center">
+                            <input id="deepseek" name="provider-selection" type="radio"
+                                class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 forced-colors:appearance-auto forced-colors:before:hidden [&:not(:checked)]:before:hidden">
+                            <label for="deepseek" class="ml-3 block text-sm font-medium text-gray-900">DeepSeek</label>
                         </div>
-                        <div>
-                            <label for="deepseek-model" class="block text-sm font-medium text-gray-900">Select DeepSeek Model</label>
+                        <div class="ml-7 space-y-3">
                             <div class="mt-2 grid grid-cols-1">
-                                <select id="deepseek-model"
-                                        name="deepseek-model"
+                                <label for="deepseek-key" class="sr-only">Enter DepSeek API Key</label>
+                                <input type="password" id="deepseek-key" name="deepseek-key"
+                                    class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
+                                    placeholder="Enter DeepSeek API Key">
+                                <details
+                                    class="col-start-1 row-start-1 justify-self-end self-center mr-3 inline-block relative">
+                                    <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
+                                        <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor"
+                                            aria-hidden="true">
+                                            <path fill-rule="evenodd"
+                                                d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z"
+                                                clip-rule="evenodd" />
+                                        </svg>
+                                    </summary>
+                                    <div
+                                        class="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
+                                        🔑 API key is securely stored in your browser's local storage and can sync
+                                        across your devices with browser sync. The key is transmitted only to the
+                                        selected LLM provider when making requests.
+                                    </div>
+                                </details>
+                            </div>
+                            <div>
+                                <label for="deepseek-model" class="block text-sm font-medium text-gray-900">Select
+                                    DeepSeek Model</label>
+                                <div class="mt-2 grid grid-cols-1">
+                                    <select id="deepseek-model" name="deepseek-model"
                                         class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pl-3 pr-8 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
-                                    <option value="deepseek-chat">DeepSeek V3</option>
-                                </select>
-                                <svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
-                                    <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                                </svg>
+                                        <option value="deepseek-chat">DeepSeek V3</option>
+                                    </select>
+                                    <svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4"
+                                        viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
+                                        <path fill-rule="evenodd"
+                                            d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                            clip-rule="evenodd" />
+                                    </svg>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- OpenAI -->
-                <div class="space-y-3">
-                    <div class="flex items-center ">
-                        <input id="openai" name="provider-selection" type="radio"
-                               class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 forced-colors:appearance-auto forced-colors:before:hidden [&:not(:checked)]:before:hidden">
-                        <label for="openai" class="ml-3 block text-sm font-medium text-gray-900">OpenAI</label>
-                    </div>
-                    <div class="ml-7 space-y-3">
-                        <div class="mt-2 grid grid-cols-1">
-                            <label for="openai-key" class="sr-only">Enter OpenAI API Key</label>
-                            <input type="password"
-                                   id="openai-key"
-                                   name="openai-key"
-                                   placeholder="Enter OpenAI API Key"
-                                   class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
-                            <details class="col-start-1 row-start-1 justify-self-end self-center mr-3 inline-block relative">
-                                <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
-                                    <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                                        <path fill-rule="evenodd" d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z" clip-rule="evenodd" />
-                                    </svg>
-                                </summary>
-                                <div class="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
-                                    🔑 API key is securely stored in your browser's local storage and can sync across your devices with browser sync. The key is transmitted only to the selected LLM provider when making requests.
-                                </div>
-                            </details>
+                    <!-- OpenAI -->
+                    <div class="space-y-3">
+                        <div class="flex items-center ">
+                            <input id="openai" name="provider-selection" type="radio"
+                                class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 forced-colors:appearance-auto forced-colors:before:hidden [&:not(:checked)]:before:hidden">
+                            <label for="openai" class="ml-3 block text-sm font-medium text-gray-900">OpenAI</label>
                         </div>
-                        <div>
-                            <label for="openai-model" class="block text-sm font-medium text-gray-900">Select OpenAI Model</label>
+                        <div class="ml-7 space-y-3">
                             <div class="mt-2 grid grid-cols-1">
-                                <select id="openai-model"
-                                        name="openai-model"
+                                <label for="openai-key" class="sr-only">Enter OpenAI API Key</label>
+                                <input type="password" id="openai-key" name="openai-key"
+                                    placeholder="Enter OpenAI API Key"
+                                    class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                                <details
+                                    class="col-start-1 row-start-1 justify-self-end self-center mr-3 inline-block relative">
+                                    <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
+                                        <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor"
+                                            aria-hidden="true">
+                                            <path fill-rule="evenodd"
+                                                d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z"
+                                                clip-rule="evenodd" />
+                                        </svg>
+                                    </summary>
+                                    <div
+                                        class="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
+                                        🔑 API key is securely stored in your browser's local storage and can sync
+                                        across your devices with browser sync. The key is transmitted only to the
+                                        selected LLM provider when making requests.
+                                    </div>
+                                </details>
+                            </div>
+                            <div>
+                                <label for="openai-model" class="block text-sm font-medium text-gray-900">Select OpenAI
+                                    Model</label>
+                                <div class="mt-2 grid grid-cols-1">
+                                    <select id="openai-model" name="openai-model"
                                         class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pl-3 pr-8 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
-                                    <option value="gpt-4">GPT-4</option>
-                                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                                </select>
-                                <svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
-                                    <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                                </svg>
+                                        <option value="gpt-4">GPT-4</option>
+                                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                                    </select>
+                                    <svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4"
+                                        viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
+                                        <path fill-rule="evenodd"
+                                            d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                                            clip-rule="evenodd" />
+                                    </svg>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
 
-                <!-- LiteLLM -->
-                <div class="space-y-3">
-                    <div class="flex items-center">
-                        <input id="litellm" name="provider-selection" type="radio"
-                               class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 forced-colors:appearance-auto forced-colors:before:hidden [&:not(:checked)]:before:hidden">
-                        <label for="litellm" class="ml-3 block text-sm font-medium text-gray-900">LiteLLM</label>
-                        <span class="inline-flex items-center rounded-md ml-3 bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 ring-1 ring-inset ring-purple-700/10">Local Proxy</span>
+                    <!-- LiteLLM -->
+                    <div class="space-y-3">
+                        <div class="flex items-center">
+                            <input id="litellm" name="provider-selection" type="radio"
+                                class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 forced-colors:appearance-auto forced-colors:before:hidden [&:not(:checked)]:before:hidden">
+                            <label for="litellm" class="ml-3 block text-sm font-medium text-gray-900">LiteLLM</label>
+                            <span
+                                class="inline-flex items-center rounded-md ml-3 bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 ring-1 ring-inset ring-purple-700/10">Local
+                                Proxy</span>
 
-                        <details class="ml-2 inline-block relative">
-                            <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
-                                <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                                    <path fill-rule="evenodd" d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z" clip-rule="evenodd" />
-                                </svg>
-                            </summary>
-                            <div class="absolute right-0 -translate-x-1 mt-2 w-80 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
-                                📡 LiteLLM is a local proxy server that provides OpenAI-compatible API endpoints for multiple LLM providers. It runs at http://127.0.0.1:4000 and supports models from OpenAI, Anthropic, Google, and many others through a unified interface.
-                                <p class="mt-3 text-xs text-gray-500">💡 Start the LiteLLM server before using this option. You can configure different models and providers through LiteLLM's configuration.</p>
-                            </div>
-                        </details>
-                    </div>
-                    <div class="ml-7 space-y-3">
-                        <div class="mt-2 grid grid-cols-1">
-                            <label for="litellm-key" class="sr-only">Enter LiteLLM API Key (Optional)</label>
-                            <input type="password"
-                                   id="litellm-key"
-                                   name="litellm-key"
-                                   placeholder="Enter API Key (optional for local models)"
-                                   class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
-                            <details class="col-start-1 row-start-1 justify-self-end self-center mr-3 inline-block relative">
+                            <details class="ml-2 inline-block relative">
                                 <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
-                                    <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                                        <path fill-rule="evenodd" d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z" clip-rule="evenodd" />
+                                    <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor"
+                                        aria-hidden="true">
+                                        <path fill-rule="evenodd"
+                                            d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z"
+                                            clip-rule="evenodd" />
                                     </svg>
                                 </summary>
-                                <div class="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
-                                    🔑 API key is optional for local models but may be required for cloud providers configured through LiteLLM. The key is transmitted only to the LiteLLM server.
+                                <div
+                                    class="absolute right-0 -translate-x-1 mt-2 w-80 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
+                                    📡 LiteLLM is a local proxy server that provides OpenAI-compatible API endpoints for
+                                    multiple LLM providers. It runs at http://127.0.0.1:4000 and supports models from
+                                    OpenAI, Anthropic, Google, and many others through a unified interface.
+                                    <p class="mt-3 text-xs text-gray-500">💡 Start the LiteLLM server before using this
+                                        option. You can configure different models and providers through LiteLLM's
+                                        configuration.</p>
                                 </div>
                             </details>
                         </div>
-                        <div>
-                            <label for="litellm-model" class="block text-sm font-medium text-gray-900">Enter LiteLLM Model</label>
-                            <!-- Search input (initially hidden, shown when dropdown is available) -->
-                            <div id="litellm-search-container" class="mt-2 hidden">
-                                <input type="text"
-                                       id="litellm-model-search"
-                                       placeholder="Search models..."
-                                       class="block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm mb-2">
+                        <div class="ml-7 space-y-3">
+                            <div class="mt-2 grid grid-cols-1">
+                                <label for="litellm-key" class="sr-only">Enter LiteLLM API Key (Optional)</label>
+                                <input type="password" id="litellm-key" name="litellm-key"
+                                    placeholder="Enter API Key (optional for local models)"
+                                    class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                                <details
+                                    class="col-start-1 row-start-1 justify-self-end self-center mr-3 inline-block relative">
+                                    <summary class="list-none text-gray-400 hover:text-gray-500 cursor-pointer">
+                                        <svg class="size-5 sm:size-4" viewBox="0 0 16 16" fill="currentColor"
+                                            aria-hidden="true">
+                                            <path fill-rule="evenodd"
+                                                d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-6 3.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM7.293 5.293a1 1 0 1 1 .99 1.667c-.459.134-1.033.566-1.033 1.29v.25a.75.75 0 1 0 1.5 0v-.115a2.5 2.5 0 1 0-2.518-4.153.75.75 0 1 0 1.061 1.06Z"
+                                                clip-rule="evenodd" />
+                                        </svg>
+                                    </summary>
+                                    <div
+                                        class="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-10 p-4 text-sm text-gray-600">
+                                        🔑 API key is optional for local models but may be required for cloud providers
+                                        configured through LiteLLM. The key is transmitted only to the LiteLLM server.
+                                    </div>
+                                </details>
                             </div>
-                            <div class="mt-2 flex gap-2">
-                                <div class="flex-1 grid grid-cols-1">
-                                    <input type="text"
-                                           id="litellm-model"
-                                           name="litellm-model"
-                                           placeholder="e.g., gpt-4, claude-3-sonnet, ollama/llama2"
-                                           class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                            <div>
+                                <label for="litellm-model" class="block text-sm font-medium text-gray-900">Enter LiteLLM
+                                    Model</label>
+                                <!-- Search input (initially hidden, shown when dropdown is available) -->
+                                <div id="litellm-search-container" class="mt-2 hidden">
+                                    <input type="text" id="litellm-model-search" placeholder="Search models..."
+                                        class="block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm mb-2">
                                 </div>
-                                <button type="button" id="refresh-litellm-models"
+                                <div class="mt-2 flex gap-2">
+                                    <div class="flex-1 grid grid-cols-1">
+                                        <input type="text" id="litellm-model" name="litellm-model"
+                                            placeholder="e.g., gpt-4, claude-3-sonnet, ollama/llama2"
+                                            class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                                    </div>
+                                    <button type="button" id="refresh-litellm-models"
                                         class="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-purple-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600">
-                                    刷新
-                                </button>
+                                        刷新
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="mt-6 flex items-center justify-between gap-x-6">
-                    <button type="button" id="test-connection" 
+                    <div class="mt-6 flex items-center justify-between gap-x-6">
+                        <button type="button" id="test-connection"
                             class="rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600">
-                        Test Connection
-                    </button>
-                    <div class="flex items-center gap-x-6">
-                        <button type="button" class="text-sm font-semibold text-gray-900">Cancel</button>
-                        <button type="submit"
-                                class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
-                            Save
+                            Test Connection
                         </button>
+                        <div class="flex items-center gap-x-6">
+                            <button type="button" class="text-sm font-semibold text-gray-900">Cancel</button>
+                            <button type="submit"
+                                class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+                                Save
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </fieldset>
-    </form>
-</div>
+            </fieldset>
+        </form>
+    </div>
 </body>
+
 </html>
