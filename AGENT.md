@@ -621,7 +621,314 @@ const settings = await chrome.storage.sync.get([
 
 ### AI 提供商集成指南
 
-提供商相关信息详见 [`./AI_PROVIDER_INTEGRATION_GUIDE.md`](AI_PROVIDER_INTEGRATION_GUIDE.md)
+#### 架构概述
+
+HN Enhancer 扩展遵循模块化架构进行 AI 提供商集成：
+
+**核心组件**:
+
+1. **Background Script** (`background.js`)
+   - 处理所有外部 API 调用（CORS 限制）
+   - 包含提供商特定的请求处理器
+   - 路由聊天请求到适当的提供商
+   - 管理模型获取功能
+
+2. **Summarization Module** (`src/summarization.js`)
+   - 包含提供商特定的摘要方法
+   - 处理 token 限制和文本处理
+   - 管理 UI 更新和错误处理
+
+3. **Options Page** (`src/options/options.html` + `src/options/options.js`)
+   - 提供商配置的用户界面
+   - API 密钥管理
+   - 模型选择和测试
+
+4. **Chat Modal** (`src/chat-modal.js`)
+   - 处理对话式 AI 交互
+   - 发送通用聊天请求，由后台脚本路由
+
+#### 实现模式
+
+每个 AI 提供商都遵循一致的模式：
+
+**1. Background Script 集成**
+
+消息监听器：
+```javascript
+case "PROVIDER_API_REQUEST":
+  return handleAsyncMessage(
+    message,
+    async () => await handleProviderRequest(message.data),
+    sendResponse
+  );
+```
+
+API 处理器函数：
+```javascript
+async function handleProviderRequest(data) {
+  const { apiKey, model, messages } = data;
+  
+  // 验证
+  if (!model || !messages) {
+    throw new Error("Missing required parameters");
+  }
+  
+  // API 调用
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiKey && { "Authorization": `Bearer ${apiKey}` }),
+    },
+    body: JSON.stringify(payload),
+  });
+  
+  // 错误处理和响应处理
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API Error: ${response.status} \nBody: ${errorText}`);
+  }
+  
+  return await response.json();
+}
+```
+
+聊天请求处理器：
+```javascript
+case "provider-name":
+  const providerResponse = await handleProviderRequest({
+    apiKey,
+    model,
+    messages,
+  });
+  return providerResponse.choices[0]?.message?.content || "No response content";
+```
+
+**2. Summarization 集成**
+
+在 `summarizeThread` 方法中添加提供商案例：
+```javascript
+case "provider-name":
+  const providerKey = data.settings?.[providerSelection]?.apiKey;
+  await this.summarizeUsingProvider(
+    formattedComment,
+    model,
+    providerKey,
+    commentPathToIdMap
+  );
+  break;
+```
+
+实现摘要方法：
+```javascript
+async summarizeUsingProvider(text, model, apiKey, commentPathToIdMap) {
+  // 验证（对于本地提供商，API 密钥可能是可选的）
+  if (!text || !model) {
+    console.error("Missing required parameters");
+    this.enhancer.summaryPanel.updateContent({
+      title: "Error",
+      text: "Missing configuration",
+    });
+    return;
+  }
+
+  try {
+    // Token 限制
+    const tokenLimit = 15_000;
+    const tokenLimitText = this.splitInputTextAtTokenLimit(text, tokenLimit);
+
+    // 提示准备
+    const systemPrompt = this.getSystemMessage();
+    const postTitle = this.enhancer.domUtils.getHNPostTitle();
+    const userPrompt = await this.getUserMessage(postTitle, tokenLimitText);
+
+    // 消息格式化
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ];
+
+    // API 调用
+    const response = await this.enhancer.apiClient.sendBackgroundMessage(
+      "PROVIDER_API_REQUEST",
+      { apiKey, model, messages }
+    );
+
+    // 响应处理
+    const summary = response?.choices[0]?.message?.content;
+    if (!summary) {
+      throw new Error("No summary generated from API response");
+    }
+
+    // UI 更新
+    await this.showSummaryInPanel(summary, commentPathToIdMap, response.duration);
+    
+  } catch (error) {
+    console.error("Error in provider summarization:", error);
+    
+    // 提供商特定的错误处理
+    let errorMessage = `Error generating summary using ${model}. `;
+    if (error.message.includes("Connection refused")) {
+      errorMessage += "Server is not running.";
+    } else if (error.message.includes("429")) {
+      errorMessage += "Rate limit exceeded.";
+    } else {
+      errorMessage += error.message;
+    }
+
+    this.enhancer.summaryPanel.updateContent({
+      title: "Error",
+      text: errorMessage,
+    });
+  }
+}
+```
+
+**3. Options Page 集成**
+
+HTML 结构：
+```html
+<div class="space-y-3">
+    <div class="flex items-center">
+        <input id="provider-id" name="provider-selection" type="radio"
+               class="relative size-4 appearance-none rounded-full border border-gray-300 bg-white...">
+        <label for="provider-id" class="ml-3 block text-sm font-medium text-gray-900">Provider Name</label>
+        <span class="inline-flex items-center rounded-md ml-3 bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 ring-1 ring-inset ring-purple-700/10">Label</span>
+    </div>
+    
+    <div class="ml-7 space-y-3">
+        <!-- API Key Input -->
+        <div class="mt-2 grid grid-cols-1">
+            <input type="password" id="provider-key" name="provider-key"
+                   placeholder="Enter API Key (optional if applicable)"
+                   class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5...">
+        </div>
+        
+        <!-- Model Selection -->
+        <div>
+            <label for="provider-model" class="block text-sm font-medium text-gray-900">Model</label>
+            <div class="mt-2 flex gap-2">
+                <div class="flex-1 grid grid-cols-1">
+                    <input type="text" id="provider-model" name="provider-model"
+                           placeholder="Enter model name"
+                           class="col-start-1 row-start-1 block w-full rounded-md...">
+                </div>
+                <button type="button" id="refresh-provider-models"
+                        class="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white...">
+                    刷新
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+```
+
+JavaScript 集成：
+```javascript
+// 模型获取函数
+async function fetchProviderModels() {
+    try {
+        const apiKey = document.getElementById('provider-key').value;
+        
+        const data = await sendBackgroundMessage('FETCH_PROVIDER_MODELS', {
+            apiKey: apiKey || undefined
+        });
+
+        // 使用模型更新 UI
+        const inputElement = document.getElementById('provider-model');
+        // 实现取决于您是否想要下拉菜单或文本输入
+        
+    } catch (error) {
+        console.error('获取模型时出错:', error);
+        alert(`获取模型失败: ${error.message}`);
+    }
+}
+
+// 事件监听器
+const refreshButton = document.getElementById('refresh-provider-models');
+refreshButton.addEventListener('click', async () => {
+    const originalText = refreshButton.textContent;
+    refreshButton.textContent = '刷新中...';
+    refreshButton.disabled = true;
+    
+    try {
+        await fetchProviderModels();
+        refreshButton.textContent = '已刷新';
+        setTimeout(() => refreshButton.textContent = originalText, 2000);
+    } catch (error) {
+        refreshButton.textContent = '刷新失败';
+        setTimeout(() => refreshButton.textContent = originalText, 3000);
+    } finally {
+        refreshButton.disabled = false;
+    }
+});
+```
+
+#### 提供商特定考虑
+
+**API 密钥要求**:
+- **必需**: OpenAI, Anthropic, Gemini, DeepSeek
+- **可选**: LiteLLM（取决于底层模型）
+- **不需要**: Chrome 内置 AI（已移除）
+
+**响应格式处理**:
+不同提供商返回不同的响应格式：
+- **OpenAI 兼容**（OpenAI, LiteLLM, DeepSeek, Gemini）: `response.choices[0].message.content`
+- **Anthropic**: `response.content[0].text`
+
+**Token 限制**:
+根据提供商能力设置适当的 token 限制：
+- OpenAI: 25,000 (GPT-4) / 15,000 (GPT-3.5)
+- 其他: 保守的 15,000 默认值
+
+**错误处理**:
+实现提供商特定的错误消息：
+- 本地提供商的连接错误
+- 云提供商的速率限制
+- 认证错误
+- 模型可用性错误
+
+#### 文件位置摘要
+
+1. **Background Script**: `/background.js`
+   - 添加消息案例
+   - 实现处理器函数
+   - 更新聊天请求处理器
+   - 添加模型获取（可选）
+
+2. **Summarization**: `/src/summarization.js`
+   - 添加 switch 案例
+   - 实现摘要方法
+
+3. **Options HTML**: `/src/options/options.html`
+   - 添加提供商部分
+
+4. **Options JS**: `/src/options/options.js`
+   - 添加模型获取函数
+   - 添加事件监听器
+   - 更新输入启用/禁用逻辑
+
+#### 测试清单
+
+- [ ] 提供商出现在选项页面
+- [ ] API 密钥输入工作（如果需要）
+- [ ] 模型选择工作
+- [ ] 模型刷新按钮工作（如果适用）
+- [ ] 测试连接工作
+- [ ] 摘要功能工作
+- [ ] 聊天功能工作
+- [ ] 错误处理显示适当消息
+- [ ] 设置在浏览器会话间持久化
+
+#### 常见陷阱
+
+1. **CORS 问题**: 所有 API 调用必须通过后台脚本
+2. **消息传递**: 使用适当的异步消息处理模式
+3. **错误传播**: 确保错误正确冒泡以供 UI 显示
+4. **输入验证**: 检查缺失的必需参数
+5. **存储**: 使用 Chrome 存储 API 进行持久化
+6. **UI 状态**: 根据提供商选择正确启用/禁用输入
+7. **Token 限制**: 设置适当限制以避免 API 错误
 
 ### 当前支持的提供商 (清理后)
 
