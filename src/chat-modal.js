@@ -993,9 +993,9 @@ ${systemPromptIntro}
         this.enhancer.logDebug("Added Chrome AI response to history.");
 
         // --- Save History (Chrome AI) - Only save after getting a response ---
-        const commentId = this.enhancer.domUtils.getCommentId(
-          this.targetCommentElement
-        );
+        const commentId = this.isPostChat 
+          ? "post" 
+          : this.enhancer.domUtils.getCommentId(this.targetCommentElement);
         await this.enhancer.hnState.saveChatHistory(
           this.currentPostId,
           commentId,
@@ -1004,8 +1004,11 @@ ${systemPromptIntro}
         );
         this.enhancer.logDebug("Saved history after Chrome AI response.");
 
-        // Update cache indicators for the comment
-        if (commentId && this.targetCommentElement) {
+        // Update cache indicators
+        if (this.isPostChat) {
+          // Update post-level cache indicators
+          await this.enhancer.addCacheIndicators(null);
+        } else if (commentId && this.targetCommentElement) {
           this.updateCacheIndicatorsForComment(commentId);
         }
 
@@ -1084,9 +1087,9 @@ ${systemPromptIntro}
       );
 
       // --- Save History (Background Provider) - Only save after getting a response ---
-      const commentId = this.enhancer.domUtils.getCommentId(
-        this.targetCommentElement
-      );
+      const commentId = this.isPostChat 
+        ? "post" 
+        : this.enhancer.domUtils.getCommentId(this.targetCommentElement);
       await this.enhancer.hnState.saveChatHistory(
         this.currentPostId,
         commentId,
@@ -1095,8 +1098,11 @@ ${systemPromptIntro}
       );
       this.enhancer.logDebug(`Saved history after ${aiProvider} response.`);
 
-      // Update cache indicators for the comment
-      if (commentId && this.targetCommentElement) {
+      // Update cache indicators
+      if (this.isPostChat) {
+        // Update post-level cache indicators
+        await this.enhancer.addCacheIndicators(null);
+      } else if (commentId && this.targetCommentElement) {
         this.updateCacheIndicatorsForComment(commentId);
       }
 

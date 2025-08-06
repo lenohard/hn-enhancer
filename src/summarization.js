@@ -324,6 +324,9 @@ class Summarization {
 
         if (targetCommentId) {
           this.updateCacheIndicatorsForComment(targetCommentId);
+        } else {
+          // Update post-level indicators when saving post summary
+          this.updateCacheIndicatorsForPost();
         }
       }
     } catch (error) {
@@ -1319,6 +1322,25 @@ ${languageInstruction}`;
       }
     } catch (error) {
       console.error("Error updating cache indicators:", error);
+    }
+  }
+
+  /**
+   * Updates cache indicators for the post
+   */
+  async updateCacheIndicatorsForPost() {
+    try {
+      const sublineElement = document.querySelector(".subtext .subline");
+      if (sublineElement) {
+        const existingIndicators =
+          sublineElement.querySelector(".cache-indicators");
+        if (existingIndicators) {
+          existingIndicators.remove();
+        }
+        await this.enhancer.addCacheIndicators(); // Call without comment parameter for post-level
+      }
+    } catch (error) {
+      console.error("Error updating post cache indicators:", error);
     }
   }
 }

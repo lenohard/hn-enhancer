@@ -420,9 +420,9 @@ class HNState {
   }
 
   /**
-   * Checks if chat history exists for the given comment.
+   * Checks if chat history exists for the given comment or post.
    * @param {string} postId - The ID of the post.
-   * @param {string} commentId - The ID of the comment.
+   * @param {string} commentId - The ID of the comment (or "post" for post-level chat).
    * @returns {Promise<boolean>} True if chat history exists for any context type.
    */
   static async hasChatHistory(postId, commentId) {
@@ -430,6 +430,25 @@ class HNState {
       return false;
     }
 
+    // For post-level chat, check for all context types
+    if (commentId === "post") {
+      const contextTypes = ["descendants", "children"];
+      try {
+        for (const contextType of contextTypes) {
+          const key = this._getChatHistoryKey(postId, "post", contextType);
+          const data = await chrome.storage.local.get(key);
+          if (data[key] && data[key].length > 0) {
+            return true;
+          }
+        }
+        return false;
+      } catch (error) {
+        console.error(`Error checking post chat history for ${postId}:`, error);
+        return false;
+      }
+    }
+
+    // For comment-level chat, check all context types
     const contextTypes = ["parents", "descendants", "children"];
 
     try {

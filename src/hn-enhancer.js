@@ -168,6 +168,9 @@ window.HNEnhancer = class HNEnhancer {
     this.uiComponents.injectSummarizePostLink();
     this.uiComponents.injectChatPostLink();
 
+    // Add cache indicators to the post title area
+    this.addCacheIndicators(); // Call without comment parameter for post-level indicators
+
     // Go through all the comments in this post and inject all our nav elements - author, summarize etc.
     const allComments = document.querySelectorAll(".athing.comtr");
 
@@ -980,28 +983,41 @@ window.HNEnhancer = class HNEnhancer {
   }
 
   /**
-   * Adds cache indicators to comment headers to show if summary or chat history exists
-   * @param {HTMLElement} comment - The comment element
+   * Adds cache indicators to comment headers or post title to show if summary or chat history exists
+   * @param {HTMLElement} comment - The comment element (optional, if null will add to post title)
    */
-  async addCacheIndicators(comment) {
-    const commentId = this.domUtils.getCommentId(comment);
-    if (!commentId) {
-      return;
-    }
-
+  async addCacheIndicators(comment = null) {
     const postId = this.domUtils.getCurrentHNItemId();
     if (!postId) {
       return;
     }
 
-    // Find the comment header where we'll add indicators
-    const comhead = comment.querySelector(".comhead");
-    if (!comhead) {
-      return;
+    let targetElement, commentId, isPostLevel;
+
+    if (comment) {
+      // Comment-level indicators
+      commentId = this.domUtils.getCommentId(comment);
+      if (!commentId) {
+        return;
+      }
+
+      targetElement = comment.querySelector(".comhead");
+      if (!targetElement) {
+        return;
+      }
+      isPostLevel = false;
+    } else {
+      // Post-level indicators
+      commentId = null;
+      targetElement = document.querySelector(".subtext .subline");
+      if (!targetElement) {
+        return;
+      }
+      isPostLevel = true;
     }
 
     // Check if indicators already exist
-    if (comhead.querySelector(".cache-indicators")) {
+    if (targetElement.querySelector(".cache-indicators")) {
       return;
     }
 
@@ -1026,14 +1042,22 @@ window.HNEnhancer = class HNEnhancer {
         );
       }
 
-      // Check for chat history
-      const hasChatHistory = await HNState.hasChatHistory(postId, commentId);
+      // Check for chat history (only for comments, not post-level)
+      let hasChatHistory = false;
+      if (!isPostLevel) {
+        hasChatHistory = await HNState.hasChatHistory(postId, commentId);
+      } else {
+        // For post-level, check if there's any chat history for the post
+        hasChatHistory = await HNState.hasChatHistory(postId, "post");
+      }
 
       // Add summary indicator
       if (hasSummary) {
         const summaryIndicator = document.createElement("span");
         summaryIndicator.innerHTML = "📋";
-        summaryIndicator.title = "This comment has a cached summary";
+        summaryIndicator.title = isPostLevel
+          ? "This post has a cached summary"
+          : "This comment has a cached summary";
         summaryIndicator.className = "summary-indicator";
         summaryIndicator.style.marginRight = "2px";
         summaryIndicator.style.cursor = "help";
@@ -1044,7 +1068,9 @@ window.HNEnhancer = class HNEnhancer {
       if (hasChatHistory) {
         const chatIndicator = document.createElement("span");
         chatIndicator.innerHTML = "💬";
-        chatIndicator.title = "This comment has chat history";
+        chatIndicator.title = isPostLevel
+          ? "This post has chat history"
+          : "This comment has chat history";
         chatIndicator.className = "chat-indicator";
         chatIndicator.style.marginRight = "2px";
         chatIndicator.style.cursor = "help";
@@ -1053,16 +1079,25 @@ window.HNEnhancer = class HNEnhancer {
 
       // Only add the container if we have indicators
       if (indicatorsContainer.children.length > 0) {
-        // Insert after the comment author
-        const hnuser = comhead.querySelector(".hnuser");
-        if (hnuser) {
-          hnuser.parentNode.insertBefore(
-            indicatorsContainer,
-            hnuser.nextSibling
-          );
+        if (isPostLevel) {
+          // For post-level, add at the end of the subline
+          targetElement.appendChild(document.createTextNode(" | "));
+          targetElement.appendChild(indicatorsContainer);
         } else {
-          // Fallback: add at the beginning of comhead
-          comhead.insertBefore(indicatorsContainer, comhead.firstChild);
+          // For comment-level, insert after the comment author
+          const hnuser = targetElement.querySelector(".hnuser");
+          if (hnuser) {
+            hnuser.parentNode.insertBefore(
+              indicatorsContainer,
+              hnuser.nextSibling
+            );
+          } else {
+            // Fallback: add at the beginning of comhead
+            targetElement.insertBefore(
+              indicatorsContainer,
+              targetElement.firstChild
+            );
+          }
         }
       }
     } catch (error) {
