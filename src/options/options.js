@@ -792,9 +792,53 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // Add cache management event listeners
+  const viewCacheStatsButton = document.getElementById("view-cache-stats");
+  const clearCacheButton = document.getElementById("clear-cache");
+  const cacheStatsDiv = document.getElementById("cache-stats");
+
+  viewCacheStatsButton.addEventListener("click", async () => {
+    try {
+      const stats = await HNState.getSummaryCacheStats();
+      cacheStatsDiv.innerHTML = `
+        <div class="space-y-2">
+          <div><strong>Total Entries:</strong> ${stats.totalEntries}</div>
+          <div><strong>Expired Entries:</strong> ${stats.expiredEntries}</div>
+          <div><strong>Cache Size:</strong> ${stats.totalSizeKB} KB (${stats.totalSizeBytes} bytes)</div>
+          <div class="text-xs text-gray-500 mt-2">Cache entries expire after 24 hours</div>
+        </div>
+      `;
+      cacheStatsDiv.classList.remove("hidden");
+    } catch (error) {
+      cacheStatsDiv.innerHTML = `<div class="text-red-600">Error loading cache stats: ${error.message}</div>`;
+      cacheStatsDiv.classList.remove("hidden");
+    }
+  });
+
+  clearCacheButton.addEventListener("click", async () => {
+    if (confirm("Are you sure you want to clear all cached summaries? This action cannot be undone.")) {
+      try {
+        // Get all storage data and remove summary keys
+        const allData = await chrome.storage.local.get(null);
+        const summaryKeys = Object.keys(allData).filter(key => key.startsWith('summary_'));
+        
+        if (summaryKeys.length > 0) {
+          await chrome.storage.local.remove(summaryKeys);
+          cacheStatsDiv.innerHTML = `<div class="text-green-600">Successfully cleared ${summaryKeys.length} cached summaries.</div>`;
+        } else {
+          cacheStatsDiv.innerHTML = `<div class="text-gray-600">No cached summaries found.</div>`;
+        }
+        cacheStatsDiv.classList.remove("hidden");
+      } catch (error) {
+        cacheStatsDiv.innerHTML = `<div class="text-red-600">Error clearing cache: ${error.message}</div>`;
+        cacheStatsDiv.classList.remove("hidden");
+      }
+    }
+  });
+
   // Add cancel button event listener
   const cancelButton = document.querySelector(
-    'button[type="button"]:not(#test-connection):not(#refresh-gemini-models):not(#refresh-litellm-models)'
+    'button[type="button"]:not(#test-connection):not(#refresh-gemini-models):not(#refresh-litellm-models):not(#view-cache-stats):not(#clear-cache)'
   );
   cancelButton.addEventListener("click", () => {
     window.close();

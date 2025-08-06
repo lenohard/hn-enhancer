@@ -3,7 +3,7 @@
  * Coordinates all functionality and initializes components
  */
 window.HNEnhancer = class HNEnhancer {
-  static DEBUG = false; // Set to true when debugging
+  static DEBUG = true; // Set to true when debugging
 
   static CHROME_AI_AVAILABLE = {
     YES: "readily",
@@ -184,6 +184,8 @@ window.HNEnhancer = class HNEnhancer {
       this.injectChatLink(comment); // <-- Add chat link injection
       // Insert toggle grandchildren button
       this.injectToggleGrandchildrenButton(comment);
+      // Add cache indicators
+      this.addCacheIndicators(comment);
     });
 
     // Set up the hover events on all user elements - in the main post subline and each comment
@@ -975,6 +977,105 @@ window.HNEnhancer = class HNEnhancer {
         this.logDebug("Post chat modal opened via keyboard shortcut.");
       }
     }
+  }
+
+  /**
+   * Adds cache indicators to comment headers to show if summary or chat history exists
+   * @param {HTMLElement} comment - The comment element
+   */
+  async addCacheIndicators(comment) {
+    const commentId = this.domUtils.getCommentId(comment);
+    if (!commentId) {
+      return;
+    }
+
+    const postId = this.domUtils.getCurrentHNItemId();
+    if (!postId) {
+      return;
+    }
+
+    // Find the comment header where we'll add indicators
+    const comhead = comment.querySelector(".comhead");
+    if (!comhead) {
+      return;
+    }
+
+    // Check if indicators already exist
+    if (comhead.querySelector(".cache-indicators")) {
+      return;
+    }
+
+    // Create indicators container
+    const indicatorsContainer = document.createElement("span");
+    indicatorsContainer.className = "cache-indicators";
+    indicatorsContainer.style.marginLeft = "5px";
+
+    try {
+      // Get current AI settings for summary check
+      const { aiProvider, model, language } = await this.getAIProviderModel();
+
+      // Check for summary cache
+      let hasSummary = false;
+      if (aiProvider && model && language) {
+        hasSummary = await HNState.hasSummary(
+          postId,
+          commentId,
+          aiProvider,
+          model,
+          language
+        );
+      }
+
+      // Check for chat history
+      const hasChatHistory = await HNState.hasChatHistory(postId, commentId);
+
+      // Add summary indicator
+      if (hasSummary) {
+        const summaryIndicator = document.createElement("span");
+        summaryIndicator.innerHTML = "📋";
+        summaryIndicator.title = "This comment has a cached summary";
+        summaryIndicator.className = "summary-indicator";
+        summaryIndicator.style.marginRight = "2px";
+        summaryIndicator.style.cursor = "help";
+        indicatorsContainer.appendChild(summaryIndicator);
+      }
+
+      // Add chat indicator
+      if (hasChatHistory) {
+        const chatIndicator = document.createElement("span");
+        chatIndicator.innerHTML = "💬";
+        chatIndicator.title = "This comment has chat history";
+        chatIndicator.className = "chat-indicator";
+        chatIndicator.style.marginRight = "2px";
+        chatIndicator.style.cursor = "help";
+        indicatorsContainer.appendChild(chatIndicator);
+      }
+
+      // Only add the container if we have indicators
+      if (indicatorsContainer.children.length > 0) {
+        // Insert after the comment author
+        const hnuser = comhead.querySelector(".hnuser");
+        if (hnuser) {
+          hnuser.parentNode.insertBefore(
+            indicatorsContainer,
+            hnuser.nextSibling
+          );
+        } else {
+          // Fallback: add at the beginning of comhead
+          comhead.insertBefore(indicatorsContainer, comhead.firstChild);
+        }
+      }
+    } catch (error) {
+      console.error("Error adding cache indicators:", error);
+    }
+  }
+
+  /**
+   * Gets AI provider and model from storage (helper method for indicators)
+   * @returns {Promise<Object>} The AI provider, model, and language
+   */
+  async getAIProviderModel() {
+    return await this.apiClient.sendBackgroundMessage("FETCH_AI_SETTINGS");
   }
 }; // <-- Moved openChatModal inside the class and kept the final brace
 // Initialize the extension

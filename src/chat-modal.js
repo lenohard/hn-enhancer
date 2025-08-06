@@ -993,13 +993,21 @@ ${systemPromptIntro}
         this.enhancer.logDebug("Added Chrome AI response to history.");
 
         // --- Save History (Chrome AI) - Only save after getting a response ---
+        const commentId = this.enhancer.domUtils.getCommentId(
+          this.targetCommentElement
+        );
         await this.enhancer.hnState.saveChatHistory(
           this.currentPostId,
-          this.enhancer.domUtils.getCommentId(this.targetCommentElement),
+          commentId,
           this.currentContextType,
           this.conversationHistory
         );
         this.enhancer.logDebug("Saved history after Chrome AI response.");
+
+        // Update cache indicators for the comment
+        if (commentId && this.targetCommentElement) {
+          this.updateCacheIndicatorsForComment(commentId);
+        }
 
         // Re-enable input after successful stream completion for Chrome AI
         this.inputElement.disabled = false;
@@ -1076,13 +1084,21 @@ ${systemPromptIntro}
       );
 
       // --- Save History (Background Provider) - Only save after getting a response ---
+      const commentId = this.enhancer.domUtils.getCommentId(
+        this.targetCommentElement
+      );
       await this.enhancer.hnState.saveChatHistory(
         this.currentPostId,
-        this.enhancer.domUtils.getCommentId(this.targetCommentElement),
+        commentId,
         this.currentContextType,
         this.conversationHistory
       );
       this.enhancer.logDebug(`Saved history after ${aiProvider} response.`);
+
+      // Update cache indicators for the comment
+      if (commentId && this.targetCommentElement) {
+        this.updateCacheIndicatorsForComment(commentId);
+      }
 
       // Re-enable input
       this.inputElement.disabled = false;
@@ -1701,6 +1717,30 @@ ${systemPromptIntro}
         "system"
       );
       // Optionally suggest changing settings
+    }
+  }
+
+  /**
+   * Updates cache indicators for a specific comment
+   * @param {string} commentId - The comment ID to update indicators for
+   */
+  async updateCacheIndicatorsForComment(commentId) {
+    try {
+      const commentElement =
+        this.enhancer.domUtils.findCommentElementById(commentId);
+      if (commentElement) {
+        // Remove existing indicators
+        const existingIndicators =
+          commentElement.querySelector(".cache-indicators");
+        if (existingIndicators) {
+          existingIndicators.remove();
+        }
+
+        // Re-add indicators with updated state
+        await this.enhancer.addCacheIndicators(commentElement);
+      }
+    } catch (error) {
+      console.error("Error updating cache indicators:", error);
     }
   }
 }

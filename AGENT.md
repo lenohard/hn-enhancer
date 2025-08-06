@@ -1001,3 +1001,57 @@ refreshButton.addEventListener('click', async () => {
 - 用户现在可以获得流式响应，无论底层模型如何
 - 通过 LiteLLM 在所有支持的提供商中提供一致的流式体验
 - 为支持流式的本地模型 (如 Ollama 模型) 启用流式
+
+## Caching Lessons Learned
+
+### 1. Storage Mechanism
+- **`chrome.storage.local`**: Ideal for larger amounts of data (like cached summaries or chat history) that need to persist across browser sessions. It's asynchronous and provides good performance for extensions.
+- **`chrome.storage.sync`**: Useful for user settings that need to synchronize across different instances of the browser (e.g., across multiple devices). It has stricter size limits than `local` storage.
+
+### 2. Context and Permissions
+- **Content Scripts vs. Background Scripts**: Content scripts (which interact with web pages) do NOT have direct access to `chrome.storage` APIs. Only background scripts (service workers) have direct access.
+- **Communication**: To store or retrieve data from content scripts, messages must be sent to the background script using `chrome.runtime.sendMessage`.
+
+### 3. Designing Caching Keys
+- **Specificity**: Keys must be unique enough to differentiate distinct pieces of cached data. For example, a summary of a full post should have a different key than a summary of a specific comment thread, even if they share the same `postId`.
+- **Parameters in Keys**: Include relevant parameters in the key to ensure uniqueness (e.g., `postId`, `commentId`, `AIProvider`, `model`, `language`). This ensures that if any of these parameters change, a new summary is generated or retrieved from a different cache entry.
+
+### 4. Cache Invalidation and Management
+- **Expiration**: Implement a mechanism to expire old cache entries (e.g., based on timestamp) to prevent stale data and manage storage space.
+- **Manual Clearing**: Provide UI options for users to manually clear the cache, giving them control over their stored data.
+- **Cache Statistics**: Offer statistics (e.g., total entries, size, expired entries) to give users visibility into the cache's state.
+
+### 5. Error Handling
+- **Graceful Degradation**: If caching fails (e.g., storage error), the core functionality (summarization in this case) should still work. Don't let caching errors block the main user experience.
+
+### 6. Performance Considerations
+- **Asynchronous Operations**: All `chrome.storage` operations are asynchronous, so use `async/await` to handle them properly.
+- **Minimize Reads/Writes**: While `chrome.storage` is optimized, frequent or large reads/writes can still impact performance. Cache data in memory for short-term use if appropriate.
+
+### Example Keying Strategy for Summaries
+- **Full Post Summary**: `summary_${postId}_post_${provider}_${model}_${language}`
+- **Comment Thread Summary**: `summary_${postId}_${commentId}_${provider}_${model}_${language}`
+
+This ensures that summaries for the entire post and for specific comments are stored and retrieved independently, even if they belong to the same post.
+
+## Summarization Caching - Current Issue and Progress
+
+### Issue Description
+The current summarization caching implementation mixes summaries for entire posts with summaries for individual comment threads. This occurs because the `summarizeThread` function, intended for individual comment threads, was still using `getHNThread` which retrieves the entire post's content. As a result, the caching key generated (`postId` with a `null` `commentId` because `getCurrentCommentId` incorrectly determined it was a full post summary) was not unique for sub-thread summaries, leading to overwriting or incorrect retrieval.
+
+### Problematic Code Location
+- `src/summarization.js`: `summarizeThread` and `summarizeTextWithAI`
+- `src/hn-state.js`: `getSummary` and `saveSummary` were functioning correctly but were provided with an ambiguous `commentId`.
+
+### Progress Made
+1.  **Initial Caching Implementation**: Implemented caching methods (`saveSummary`, `getSummary`, `clearSummary`, `clearAllSummariesForPost`, `getSummaryCacheStats`) in `src/hn-state.js`.
+2.  **Integration into Summarization**: Integrated caching logic into `summarizeTextWithAI` in `src/summarization.js` to check cache before generating new summaries and save after generation.
+3.  **Cross-Context Communication Fix**: Resolved the `TypeError: Cannot read properties of undefined (reading 'sync')` by migrating `getAIProviderModel` to use background script messaging, ensuring proper access to `chrome.storage.sync`.
+4.  **UI for Cache Management**: Added cache statistics display and clear cache functionality to the options page (`src/options/options.html` and `src/options/options.js`).
+5.  **Initial Attempt to Differentiate**: Identified that `summarizeThread` was not correctly extracting sub-thread content, leading to incorrect caching keys.
+
+### Next Steps (after memory clear and restart)
+1.  **Refine `summarizeThread`**: Modify `summarizeThread` in `src/summarization.js` to correctly extract only the target comment and its descendants using `DomUtils.getDescendantComments` and `formatCommentForLLM`.
+2.  **Ensure Correct `commentId`**: Pass the actual `commentId` of the sub-thread's root comment to `HNState.saveSummary` and `HNState.getSummary` within `summarizeThread`. This will create distinct caching keys for sub-thread summaries.
+3.  **Review `summarizeAllComments`**: Confirm that `summarizeAllComments` correctly uses a `null` `commentId` to represent a full post summary.
+4.  **Thorough Testing**: Test both full post summaries and individual comment thread summaries to confirm they are cached and retrieved independently.

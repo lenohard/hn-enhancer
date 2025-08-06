@@ -147,6 +147,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse
       );
 
+    case "FETCH_AI_SETTINGS":
+      return handleAsyncMessage(
+        message,
+        async () => {
+          const settingsData = await chrome.storage.sync.get("settings");
+          const aiProvider = settingsData.settings?.providerSelection;
+          const model = settingsData.settings?.[aiProvider]?.model;
+          const language = settingsData.settings?.language || "en";
+          const maxTokens = settingsData.settings?.maxTokens || 100000;
+          const temperature = settingsData.settings?.temperature || 0.7;
+          return { aiProvider, model, language, maxTokens, temperature };
+        },
+        sendResponse
+      );
+
     case "GEMINI_API_REQUEST":
       return handleAsyncMessage(
         message,
