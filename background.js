@@ -224,9 +224,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         );
       }
     case "HN_CHAT_REQUEST":
+      if (message.data?.streaming) {
+        return handleStreamingMessage(
+          message,
+          sender,
+          async () => await handleChatRequest(message.data),
+          sendResponse
+        );
+      }
       return handleAsyncMessage(
         message,
-        async () => await handleChatRequest(message.data), // Directly return the result (string or thrown error)
+        async () => await handleChatRequest(message.data),
         sendResponse
       );
 
@@ -644,7 +652,7 @@ async function handleDeepSeekRequest(data) {
 // Handle Chat Request (routes to specific provider handlers)
 async function handleChatRequest(data) {
   // The 'messages' received here is the full conversation history
-  const { provider, model, messages } = data;
+  const { provider, model, messages, streaming = false } = data;
   console.log(`处理聊天请求，提供者: ${provider}, 模型: ${model}`);
   console.log("收到的完整对话历史:", JSON.stringify(messages, null, 2));
 
@@ -665,6 +673,16 @@ async function handleChatRequest(data) {
     throw new Error(`Missing API key for ${provider}`);
   }
 
+  const streamingCapableProviders = ["openai", "anthropic", "litellm"];
+  const shouldStream =
+    streaming && streamingCapableProviders.includes(provider);
+
+  if (streaming && !shouldStream) {
+    console.log(
+      `Provider ${provider} does not support streaming. Falling back to non-streaming response.`
+    );
+  }
+
   // 2. Call the appropriate handler
   try {
     switch (provider) {
@@ -673,7 +691,11 @@ async function handleChatRequest(data) {
           apiKey,
           model,
           messages,
+          streaming: shouldStream,
         });
+        if (shouldStream) {
+          return openaiResponse;
+        }
         // Directly return the text content on success
         return (
           openaiResponse.choices[0]?.message?.content || "No response content"
@@ -685,7 +707,11 @@ async function handleChatRequest(data) {
           apiKey,
           model,
           messages, // Pass the original messages array
+          streaming: shouldStream,
         });
+        if (shouldStream) {
+          return anthropicResponse;
+        }
         // Directly return the text content on success
         return anthropicResponse.content[0]?.text || "No response content";
 
@@ -719,7 +745,11 @@ async function handleChatRequest(data) {
           apiKey,
           model,
           messages,
+          streaming: shouldStream,
         });
+        if (shouldStream) {
+          return litellmResponse;
+        }
         // Directly return the text content on success
         return (
           litellmResponse.choices[0]?.message?.content || "No response content"

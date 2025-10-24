@@ -511,6 +511,88 @@ class ChatModal {
   }
 
   /**
+   * Checks whether streaming responses are enabled in settings
+   * @private
+   * @returns {Promise<boolean>}
+   */
+  async _isChatStreamingEnabled() {
+    try {
+      const data = await chrome.storage.sync.get("settings");
+      return Boolean(data.settings?.streamingEnabled);
+    } catch (error) {
+      console.error("Error reading streaming setting:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Determines if the selected provider supports streaming chat responses
+   * @param {string} provider - AI provider identifier
+   * @private
+   * @returns {boolean}
+   */
+  _providerSupportsStreaming(provider) {
+    return ["openai", "anthropic", "litellm"].includes(provider);
+  }
+
+  /**
+   * Handles streaming chat responses from the background script
+   * @param {string} messageType - Message type sent to background (e.g., 'HN_CHAT_REQUEST')
+   * @param {object} requestData - Payload sent to background
+   * @param {string} provider - Current AI provider
+   * @private
+   * @returns {Promise<string>} - The accumulated response text
+   */
+  async _handleStreamingChatResponse(messageType, requestData, provider) {
+    const chunkEventType = `${messageType}_STREAM_CHUNK`;
+    let accumulatedText = "";
+
+    return new Promise((resolve, reject) => {
+      const messageListener = (message) => {
+        if (message.type !== chunkEventType) {
+          return;
+        }
+
+        const chunk = message.data;
+        let content = "";
+
+        if (provider === "anthropic") {
+          if (chunk.type === "content_block_delta") {
+            content = chunk.delta?.text || "";
+          }
+        } else {
+          content = chunk.choices?.[0]?.delta?.content || "";
+        }
+
+        if (content) {
+          accumulatedText += content;
+          this._displayMessage(content, "llm", true);
+        }
+      };
+
+      chrome.runtime.onMessage.addListener(messageListener);
+
+      this.enhancer.apiClient
+        .sendBackgroundMessage(messageType, requestData)
+        .then(() => {
+          chrome.runtime.onMessage.removeListener(messageListener);
+
+          if (!accumulatedText.trim()) {
+            const fallbackText = "No response content";
+            this._displayMessage(fallbackText, "llm", false);
+            resolve(fallbackText);
+          } else {
+            resolve(accumulatedText);
+          }
+        })
+        .catch((error) => {
+          chrome.runtime.onMessage.removeListener(messageListener);
+          reject(error);
+        });
+    });
+  }
+
+  /**
    * Gathers context based on the selected type and initiates the chat.
    * @param {string} [contextType=this.currentContextType] - The type of context to gather ('parents', 'descendants', 'children'). Defaults to the current selection.
    * @private
@@ -1047,14 +1129,11 @@ ${systemPromptIntro}
     this.currentLlmMessageElement = null; // Reset stream target before sending
 
     try {
-      // Send the entire conversation history
-      const requestPayload = {
-        type: "HN_CHAT_REQUEST",
-        data: {
-          provider: aiProvider,
-          model: model,
-          messages: conversationHistory, // Send the full history
-        },
+      const messageType = "HN_CHAT_REQUEST";
+      const requestData = {
+        provider: aiProvider,
+        model: model,
+        messages: conversationHistory, // Send the full history
       };
 
       // Log the exact messages being sent
@@ -1063,19 +1142,35 @@ ${systemPromptIntro}
         JSON.stringify(conversationHistory, null, 2)
       );
       this.enhancer.logDebug(
-        "Sending HN_CHAT_REQUEST to background with payload:",
-        requestPayload
+        "Preparing HN_CHAT_REQUEST payload:",
+        requestData
       );
 
-      // Assume a single response object like { success: true, data: "..." } or { success: false, error: "..." }
-      // Note: sendBackgroundMessage now returns response.data directly if successful
-      const responseText = await this.enhancer.apiClient.sendBackgroundMessage(
-        requestPayload.type, // Pass type and data separately
-        requestPayload.data
-      );
+      const streamingEnabled = await this._isChatStreamingEnabled();
+      const supportsStreaming = this._providerSupportsStreaming(aiProvider);
+      let responseText = "";
 
-      // sendBackgroundMessage throws on error or unsuccessful response, so we assume success here
-      this._displayMessage(responseText, "llm", false); // Display full response
+      if (streamingEnabled && supportsStreaming) {
+        this.enhancer.logDebug(
+          `Chat streaming enabled for provider ${aiProvider}.`
+        );
+        requestData.streaming = true;
+        responseText = await this._handleStreamingChatResponse(
+          messageType,
+          requestData,
+          aiProvider
+        );
+      } else {
+        requestData.streaming = false;
+        // Assume a single response object like { success: true, data: "..." } or { success: false, error: "..." }
+        // Note: sendBackgroundMessage now returns response.data directly if successful
+        responseText = await this.enhancer.apiClient.sendBackgroundMessage(
+          messageType,
+          requestData
+        );
+        this._displayMessage(responseText, "llm", false); // Display full response
+      }
+
       // Add LLM response to history
       this.conversationHistory.push({
         role: "assistant",
