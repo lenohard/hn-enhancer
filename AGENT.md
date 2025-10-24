@@ -785,7 +785,6 @@ async summarizeUsingProvider(text, model, apiKey, commentPathToIdMap) {
 ```
 
 **3. Options Page 集成**
-
 HTML 结构：
 ```html
 <div class="space-y-3">
@@ -865,7 +864,6 @@ refreshButton.addEventListener('click', async () => {
 ```
 
 #### 提供商特定考虑
-
 **API 密钥要求**:
 - **必需**: OpenAI, Anthropic, Gemini, DeepSeek
 - **可选**: LiteLLM（取决于底层模型）
@@ -970,38 +968,6 @@ refreshButton.addEventListener('click', async () => {
 3. **CORS 错误**: 确保清单文件中有正确的主机权限
 4. **提供商移除**: 遵循系统化移除流程，更新所有相关文件
 
-**调试技巧**:
-
-- 使用浏览器开发者工具检查后台脚本日志
-- 验证消息传递流程
-- 检查 API 请求格式和响应处理
-- 确认设置持久化和加载
-
-### LiteLLM 流式支持增强 (2025-01-11)
-
-**增强**: 将流式支持扩展到 LiteLLM 提供商
-
-**所做更改**:
-
-- 更新 [`background.js`](background.js) handleLiteLLMRequest() 以支持流式参数
-- 修改 LITELLM_API_REQUEST 消息处理器在启用时使用流式
-- 更新 [`src/summarization.js`](src/summarization.js) summarizeUsingLiteLLM() 方法支持流式
-- 向 handleStreamingResponse() 方法添加 LiteLLM 流式支持
-
-**技术细节**:
-
-- LiteLLM 代理支持与 OpenAI 相同的流式格式 (`stream: true`)
-- 响应格式与 OpenAI 兼容，在块中包含增量内容
-- 保持与非流式模式的向后兼容性
-- 流式和非流式请求都有适当的错误处理
-
-**为什么 LiteLLM 流式很重要**:
-
-- LiteLLM 作为多个提供商的代理 (OpenAI、Anthropic、本地模型)
-- 用户现在可以获得流式响应，无论底层模型如何
-- 通过 LiteLLM 在所有支持的提供商中提供一致的流式体验
-- 为支持流式的本地模型 (如 Ollama 模型) 启用流式
-
 ## Caching Lessons Learned
 
 ### 1. Storage Mechanism
@@ -1035,7 +1001,6 @@ refreshButton.addEventListener('click', async () => {
 This ensures that summaries for the entire post and for specific comments are stored and retrieved independently, even if they belong to the same post.
 
 ## Summarization Caching - Current Issue and Progress
-
 ### Issue Description
 The current summarization caching implementation mixes summaries for entire posts with summaries for individual comment threads. This occurs because the `summarizeThread` function, intended for individual comment threads, was still using `getHNThread` which retrieves the entire post's content. As a result, the caching key generated (`postId` with a `null` `commentId` because `getCurrentCommentId` incorrectly determined it was a full post summary) was not unique for sub-thread summaries, leading to overwriting or incorrect retrieval.
 
