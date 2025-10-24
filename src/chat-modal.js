@@ -630,11 +630,22 @@ class ChatModal {
 
     try {
       // --- Try Loading History First ---
-      const loadedHistory = await this.enhancer.hnState.getChatHistory(
+      const storedHistoryEntry = await this.enhancer.hnState.getChatHistory(
         postId,
         commentId,
         contextType
       );
+
+      const loadedHistory = Array.isArray(storedHistoryEntry)
+        ? storedHistoryEntry
+        : Array.isArray(storedHistoryEntry?.history)
+        ? storedHistoryEntry.history
+        : null;
+      const storedPathPairs = Array.isArray(
+        storedHistoryEntry?.commentPathToIdMap
+      )
+        ? storedHistoryEntry.commentPathToIdMap
+        : null;
 
       if (loadedHistory && loadedHistory.length > 0) {
         this.enhancer.logInfo(
@@ -642,12 +653,32 @@ class ChatModal {
         );
         this.conversationHistory = loadedHistory;
 
+        if (storedPathPairs && storedPathPairs.length > 0) {
+          this.commentPathToIdMap = new Map(storedPathPairs);
+        }
+
         // 从系统消息中提取评论路径到ID的映射
         const systemMessage = this.conversationHistory.find(
           (msg) => msg.role === "system"
         );
-        if (systemMessage) {
-          this._extractCommentPathsFromSystemMessage(systemMessage.content);
+        if (
+          (!this.commentPathToIdMap ||
+            (this.commentPathToIdMap instanceof Map &&
+              this.commentPathToIdMap.size === 0)) &&
+          systemMessage
+        ) {
+          // 尝试从 DOM 重建映射
+          this.commentPathToIdMap = this._rebuildCommentPathToIdMap(
+            contextType
+          );
+          if (
+            (!this.commentPathToIdMap ||
+              (this.commentPathToIdMap instanceof Map &&
+                this.commentPathToIdMap.size === 0)) &&
+            systemMessage
+          ) {
+            this._extractCommentPathsFromSystemMessage(systemMessage.content);
+          }
         }
 
         // Render loaded history with simplified system message
@@ -733,6 +764,12 @@ class ChatModal {
           contextArray = this.enhancer.domUtils.getCommentContext(
             this.targetCommentElement
           );
+          this.commentPathToIdMap = new Map();
+          contextArray.forEach((comment) => {
+            if (comment.path && comment.id) {
+              this.commentPathToIdMap.set(comment.path, comment.id);
+            }
+          });
           break;
         case "descendants":
           // Get target comment with metadata
@@ -1082,7 +1119,8 @@ ${systemPromptIntro}
           this.currentPostId,
           commentId,
           this.currentContextType,
-          this.conversationHistory
+          this.conversationHistory,
+          this.commentPathToIdMap
         );
         this.enhancer.logDebug("Saved history after Chrome AI response.");
 
@@ -1189,7 +1227,8 @@ ${systemPromptIntro}
         this.currentPostId,
         commentId,
         this.currentContextType,
-        this.conversationHistory
+        this.conversationHistory,
+        this.commentPathToIdMap
       );
       this.enhancer.logDebug(`Saved history after ${aiProvider} response.`);
 
@@ -1362,11 +1401,22 @@ ${systemPromptIntro}
 
     try {
       // --- Try Loading History First ---
-      const loadedHistory = await this.enhancer.hnState.getChatHistory(
+      const storedHistoryEntry = await this.enhancer.hnState.getChatHistory(
         this.currentPostId,
         "post",
         contextType
       );
+
+      const loadedHistory = Array.isArray(storedHistoryEntry)
+        ? storedHistoryEntry
+        : Array.isArray(storedHistoryEntry?.history)
+        ? storedHistoryEntry.history
+        : null;
+      const storedPathPairs = Array.isArray(
+        storedHistoryEntry?.commentPathToIdMap
+      )
+        ? storedHistoryEntry.commentPathToIdMap
+        : null;
 
       if (loadedHistory && loadedHistory.length > 0) {
         this.enhancer.logInfo(
@@ -1374,12 +1424,30 @@ ${systemPromptIntro}
         );
         this.conversationHistory = loadedHistory;
 
-        // 从系统消息中提取评论路径到ID的映射
+        if (storedPathPairs && storedPathPairs.length > 0) {
+          this.commentPathToIdMap = new Map(storedPathPairs);
+        }
+
         const systemMessage = this.conversationHistory.find(
           (msg) => msg.role === "system"
         );
-        if (systemMessage) {
-          this._extractCommentPathsFromSystemMessage(systemMessage.content);
+        if (
+          (!this.commentPathToIdMap ||
+            (this.commentPathToIdMap instanceof Map &&
+              this.commentPathToIdMap.size === 0)) &&
+          systemMessage
+        ) {
+          this.commentPathToIdMap = this._rebuildCommentPathToIdMap(
+            contextType
+          );
+          if (
+            (!this.commentPathToIdMap ||
+              (this.commentPathToIdMap instanceof Map &&
+                this.commentPathToIdMap.size === 0)) &&
+            systemMessage
+          ) {
+            this._extractCommentPathsFromSystemMessage(systemMessage.content);
+          }
         }
 
         // Render loaded history with simplified system message
@@ -1767,6 +1835,122 @@ ${systemPromptIntro}
     } catch (error) {
       console.error("从系统消息中提取评论路径到ID的映射时出错:", error);
     }
+  }
+
+  /**
+   * 尝试基于当前上下文重建评论路径到ID的映射
+   * @param {string} contextType - 当前上下文类型
+   * @returns {Map<string, string>} 重建后的映射
+   * @private
+   */
+  _rebuildCommentPathToIdMap(contextType) {
+    const map = new Map();
+
+    try {
+      if (this.isPostChat) {
+        if (!this.currentPostId) {
+          return map;
+        }
+
+        if (contextType === "descendants") {
+          const allComments = document.querySelectorAll("tr.athing.comtr");
+          let commentIndex = 0;
+
+          allComments.forEach((commentElement) => {
+            const commentId = this.enhancer.domUtils.getCommentId(commentElement);
+            const indentLevel =
+              this.enhancer.domUtils.getCommentIndentLevel(commentElement) || 0;
+
+            if (!commentId) {
+              return;
+            }
+
+            const path =
+              indentLevel === 0
+                ? `${++commentIndex}`
+                : `${Math.ceil(commentIndex / 2)}.${indentLevel}`;
+
+            map.set(path, commentId);
+          });
+        } else if (contextType === "children") {
+          const topLevelComments = Array.from(
+            document.querySelectorAll("tr.athing.comtr")
+          ).filter(
+            (comment) =>
+              this.enhancer.domUtils.getCommentIndentLevel(comment) === 0
+          );
+
+          topLevelComments.forEach((commentElement, index) => {
+            const commentId =
+              this.enhancer.domUtils.getCommentId(commentElement);
+            if (commentId) {
+              map.set(`${index + 1}`, commentId);
+            }
+          });
+        }
+
+        return map;
+      }
+
+      if (!this.targetCommentElement) {
+        return map;
+      }
+
+      const targetId = this.enhancer.domUtils.getCommentId(
+        this.targetCommentElement
+      );
+
+      switch (contextType) {
+        case "parents": {
+          const parentContext =
+            this.enhancer.domUtils.getCommentContext(
+              this.targetCommentElement
+            ) || [];
+          parentContext.forEach((comment) => {
+            if (comment?.path && comment?.id) {
+              map.set(comment.path, comment.id);
+            }
+          });
+          break;
+        }
+        case "descendants": {
+          if (targetId) {
+            map.set("1", targetId);
+          }
+          const descendants =
+            this.enhancer.domUtils.getDescendantComments(
+              this.targetCommentElement
+            ) || [];
+          descendants.forEach((comment) => {
+            if (comment?.path && comment?.id) {
+              map.set(comment.path, comment.id);
+            }
+          });
+          break;
+        }
+        case "children": {
+          if (targetId) {
+            map.set("1", targetId);
+          }
+          const children =
+            this.enhancer.domUtils.getDirectChildCommentsWithMetadata(
+              this.targetCommentElement
+            ) || [];
+          children.forEach((comment) => {
+            if (comment?.path && comment?.id) {
+              map.set(comment.path, comment.id);
+            }
+          });
+          break;
+        }
+        default:
+          break;
+      }
+    } catch (error) {
+      console.error("错误：尝试重建评论路径映射时失败", error);
+    }
+
+    return map;
   }
 
   /**

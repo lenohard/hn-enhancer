@@ -89,9 +89,9 @@ class MarkdownUtils {
      * @returns {string} The text with paths replaced with links
      */
     static replacePathsWithCommentLinks(text, commentPathToIdMap) {
-        // Regular expression to match bracketed numbers with dots
-        // Matches patterns like [1], [1.1], [1.1.2], etc.
-        const pathRegex = /\[(\d+(?:\.\d+)*)]/g;
+        // Regular expression to match bracketed paths, optionally followed by descriptive text
+        // Matches patterns like [1], [1.1], [1.1.2 author], etc.
+        const pathRegex = /\[(\d+(?:\.\d+)*)(\s+[^\]]+)?]/g;
 
         // Replace each match with an HTML link
         return text.replace(pathRegex, (match, path) => {
@@ -99,11 +99,11 @@ class MarkdownUtils {
             if (!id) {
                 return match; // If no ID found, return original text
             }
-            return ` <a href="#"
+            return `<a href="#"
                        title="Go to comment #${id}"
-                       data-comment-link="true" data-comment-id="${id}"
+                       data-comment-link="true" data-comment-id="${id}" data-comment-path="${path}"
                        style="color: rgb(130, 130, 130); text-decoration: underline;"
-                    >comment #${id}</a>`;
+                    >${match}</a>`;
         });
     }
 }

@@ -69,7 +69,13 @@ class HNState {
    * @param {string} contextType - The context type ('parents', 'descendants', 'children').
    * @param {Array<object>} history - The conversation history array to save.
    */
-  static saveChatHistory(postId, commentId, contextType, history) {
+  static saveChatHistory(
+    postId,
+    commentId,
+    contextType,
+    history,
+    commentPathToIdMap = null
+  ) {
     if (!postId || !commentId || !contextType || !history) {
       console.error("saveChatHistory: Missing required arguments.", {
         postId,
@@ -80,7 +86,25 @@ class HNState {
       return;
     }
     const key = this._getChatHistoryKey(postId, commentId, contextType);
-    chrome.storage.local.set({ [key]: history }).catch((error) => {
+    const normalizedHistory = Array.isArray(history) ? history : [];
+
+    const storageEntry = {
+      history: normalizedHistory,
+      savedAt: Date.now(),
+    };
+
+    if (commentPathToIdMap instanceof Map && commentPathToIdMap.size > 0) {
+      storageEntry.commentPathToIdMap = Array.from(
+        commentPathToIdMap.entries()
+      );
+    } else if (
+      Array.isArray(commentPathToIdMap) &&
+      commentPathToIdMap.length > 0
+    ) {
+      storageEntry.commentPathToIdMap = commentPathToIdMap;
+    }
+
+    chrome.storage.local.set({ [key]: storageEntry }).catch((error) => {
       console.error(`Error saving chat history for ${key}:`, error);
     });
     // console.log(`[HNState] Saved history for ${key}`, history); // Optional debug log
@@ -106,7 +130,29 @@ class HNState {
     try {
       const data = await chrome.storage.local.get(key);
       // console.log(`[HNState] Retrieved history for ${key}`, data[key]); // Optional debug log
-      return data[key] || null; // Return the history array or null
+      if (!data[key]) {
+        return null;
+      }
+
+      // Backward compatibility: older entries stored the array directly
+      if (Array.isArray(data[key])) {
+        return {
+          history: data[key],
+          commentPathToIdMap: [],
+        };
+      }
+
+      const entry = data[key];
+      const historyArray = Array.isArray(entry.history) ? entry.history : [];
+      const pathPairs = Array.isArray(entry.commentPathToIdMap)
+        ? entry.commentPathToIdMap
+        : [];
+
+      return {
+        history: historyArray,
+        commentPathToIdMap: pathPairs,
+        savedAt: entry.savedAt,
+      };
     } catch (error) {
       console.error(`Error retrieving chat history for ${key}:`, error);
       return null;
@@ -437,7 +483,13 @@ class HNState {
         for (const contextType of contextTypes) {
           const key = this._getChatHistoryKey(postId, "post", contextType);
           const data = await chrome.storage.local.get(key);
-          if (data[key] && data[key].length > 0) {
+          const entry = data[key];
+          const historyArray = Array.isArray(entry)
+            ? entry
+            : Array.isArray(entry?.history)
+            ? entry.history
+            : [];
+          if (historyArray.length > 0) {
             return true;
           }
         }
@@ -455,7 +507,13 @@ class HNState {
       for (const contextType of contextTypes) {
         const key = this._getChatHistoryKey(postId, commentId, contextType);
         const data = await chrome.storage.local.get(key);
-        if (data[key] && data[key].length > 0) {
+        const entry = data[key];
+        const historyArray = Array.isArray(entry)
+          ? entry
+          : Array.isArray(entry?.history)
+          ? entry.history
+          : [];
+        if (historyArray.length > 0) {
           return true;
         }
       }
