@@ -1,5 +1,8 @@
 ### Hacker News Companion - Chrome Extension
 
+> [!INFO]
+> This repository is a fork of [levelup-apps/hn-enhancer](https://github.com/levelup-apps/hn-enhancer) that has been refactored and enhanced with additional features and improvements.
+
 [![Basic features video](http://img.youtube.com/vi/uPRh7UKYd8E/maxresdefault.jpg)](https://www.youtube.com/watch?v=uPRh7UKYd8E)
 
 > [!TIP]
@@ -174,7 +177,7 @@ Transform your Hacker News experience with intelligent navigation, AI-powered su
 ## 🛠️ Development Setup
 1. Clone the repository:
    ```bash
-   git clone https://github.com/levelup-apps/hn-enhancer.git
+   git clone https://github.com/lenohard/hn-enhancer.git
    cd hn-enhancer
    ```
 
@@ -237,7 +240,7 @@ cd ../..
     * Clear browser cache
 
 ### Support
-* GitHub Issues: [Report bugs](https://github.com/levelup-apps/hn-enhancer/issues)
+* GitHub Issues: [Report bugs](https://github.com/lenohard/hn-enhancer/issues)
 
 ## 📜 License
 MIT Licensed - free to use, modify, and distribute
