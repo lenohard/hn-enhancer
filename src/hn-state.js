@@ -74,7 +74,8 @@ class HNState {
     commentId,
     contextType,
     history,
-    commentPathToIdMap = null
+    commentPathToIdMap = null,
+    metadata = {}
   ) {
     if (!postId || !commentId || !contextType || !history) {
       console.error("saveChatHistory: Missing required arguments.", {
@@ -102,6 +103,15 @@ class HNState {
       commentPathToIdMap.length > 0
     ) {
       storageEntry.commentPathToIdMap = commentPathToIdMap;
+    }
+
+    if (metadata && typeof metadata === "object") {
+      if (metadata.provider) {
+        storageEntry.provider = metadata.provider;
+      }
+      if (metadata.model) {
+        storageEntry.model = metadata.model;
+      }
     }
 
     chrome.storage.local.set({ [key]: storageEntry }).catch((error) => {
@@ -152,6 +162,8 @@ class HNState {
         history: historyArray,
         commentPathToIdMap: pathPairs,
         savedAt: entry.savedAt,
+        provider: entry.provider,
+        model: entry.model,
       };
     } catch (error) {
       console.error(`Error retrieving chat history for ${key}:`, error);

@@ -293,11 +293,19 @@ class Summarization {
     summary,
     commentPathToIdMap,
     duration,
-    targetCommentId = null
+    targetCommentId = null,
+    providerInfo = {}
   ) {
     try {
       const postId = this.enhancer.domUtils.getCurrentHNItemId();
-      const { aiProvider, model, language } = await this.getAIProviderModel();
+      let { aiProvider, model, language } = providerInfo || {};
+
+      if (!aiProvider || !model || !language) {
+        const settings = await this.getAIProviderModel();
+        aiProvider = aiProvider || settings.aiProvider;
+        model = model || settings.model;
+        language = language || settings.language;
+      }
 
       if (postId && aiProvider && model && language && summary) {
         const metadata = {
@@ -679,7 +687,12 @@ class Summarization {
       cachedSummary.summary,
       commentPathToIdMap,
       cachedSummary.metadata?.duration,
-      cacheIndicator
+      {
+        cacheIndicator,
+        aiProvider: cachedSummary.provider,
+        model: cachedSummary.model,
+        language: cachedSummary.language,
+      }
     );
   }
 
@@ -696,6 +709,7 @@ class Summarization {
   ) {
     const model = settings?.[providerSelection]?.model;
     const apiKey = settings?.[providerSelection]?.apiKey;
+    const language = settings?.language || "en";
 
     this.enhancer.logInfo(
       `Summarization - AI Provider: ${providerSelection}, Model: ${
@@ -706,16 +720,20 @@ class Summarization {
     const providers = {
       openai: () =>
         this.summarizeUsingProvider(
+          providerSelection,
           "OPENAI_API_REQUEST",
           formattedComment,
           model,
           apiKey,
           commentPathToIdMap,
           streamingEnabled,
-          targetCommentId
+          targetCommentId,
+          false,
+          language
         ),
       anthropic: () =>
         this.summarizeUsingProvider(
+          providerSelection,
           "ANTHROPIC_API_REQUEST",
           formattedComment,
           model,
@@ -723,37 +741,50 @@ class Summarization {
           commentPathToIdMap,
           streamingEnabled,
           targetCommentId,
-          true
+          true,
+          language
         ),
       deepseek: () =>
         this.summarizeUsingProvider(
+          providerSelection,
           "DEEPSEEK_API_REQUEST",
           formattedComment,
           model,
           apiKey,
           commentPathToIdMap,
           false,
-          targetCommentId
+          targetCommentId,
+          false,
+          language
         ),
       gemini: () =>
         this.summarizeUsingGemini(
           formattedComment,
           model,
           commentPathToIdMap,
-          targetCommentId
+          targetCommentId,
+          language
         ),
       litellm: () =>
         this.summarizeUsingProvider(
+          providerSelection,
           "LITELLM_API_REQUEST",
           formattedComment,
           model,
           apiKey,
           commentPathToIdMap,
           streamingEnabled,
-          targetCommentId
+          targetCommentId,
+          false,
+          language,
+          true
         ),
       none: () =>
-        this.showSummaryInPanel(formattedComment, commentPathToIdMap, 0),
+        this.showSummaryInPanel(formattedComment, commentPathToIdMap, 0, {
+          aiProvider: providerSelection,
+          model,
+          language,
+        }),
     };
 
     const providerFunction = providers[providerSelection];
@@ -768,6 +799,7 @@ class Summarization {
    * Generic method for most AI providers
    */
   async summarizeUsingProvider(
+    providerName,
     messageType,
     text,
     model,
@@ -775,11 +807,13 @@ class Summarization {
     commentPathToIdMap,
     streamingEnabled = false,
     targetCommentId = null,
-    isAnthropic = false
+    isAnthropic = false,
+    language = "en",
+    isLiteLLM = false
   ) {
     // Validate required parameters
     const requiredParams =
-      isAnthropic || messageType === "LITELLM_API_REQUEST"
+      isAnthropic || isLiteLLM
         ? [text, model]
         : [text, model, apiKey];
     if (requiredParams.some((param) => !param)) {
@@ -811,7 +845,8 @@ class Summarization {
           messageType,
           requestData,
           commentPathToIdMap,
-          targetCommentId
+          targetCommentId,
+          { aiProvider: providerName, model, language }
         );
       } else {
         const response = await this.enhancer.apiClient.sendBackgroundMessage(
@@ -824,12 +859,14 @@ class Summarization {
           summary,
           commentPathToIdMap,
           response.duration,
-          targetCommentId
+          targetCommentId,
+          { aiProvider: providerName, model, language }
         );
         await this.showSummaryInPanel(
           summary,
           commentPathToIdMap,
-          response.duration
+          response.duration,
+          { aiProvider: providerName, model, language }
         );
       }
     } catch (error) {
@@ -864,9 +901,9 @@ class Summarization {
     const baseData = {
       apiKey,
       model,
-      max_tokens: maxTokens,
       temperature,
       streaming: streamingEnabled,
+      ...(messageType !== "LITELLM_API_REQUEST" && { max_tokens: maxTokens }),
     };
 
     if (isAnthropic) {
@@ -941,7 +978,8 @@ class Summarization {
     text,
     model,
     commentPathToIdMap,
-    targetCommentId = null
+    targetCommentId = null,
+    language = "en"
   ) {
     const data = await chrome.storage.sync.get("settings");
     const apiKey = data.settings?.gemini?.apiKey;
@@ -987,12 +1025,14 @@ class Summarization {
         summary,
         commentPathToIdMap,
         response.duration,
-        targetCommentId
+        targetCommentId,
+        { aiProvider: "gemini", model, language }
       );
       await this.showSummaryInPanel(
         summary,
         commentPathToIdMap,
-        response.duration
+        response.duration,
+        { aiProvider: "gemini", model, language }
       );
     } catch (error) {
       this.handleProviderError(error, "GEMINI_API_REQUEST", model);
@@ -1134,7 +1174,8 @@ ${languageInstruction}`;
     messageType,
     requestData,
     commentPathToIdMap,
-    targetCommentId = null
+    targetCommentId = null,
+    metadata = {}
   ) {
     let accumulatedText = "";
     let lastUpdateTime = 0;
@@ -1219,9 +1260,10 @@ ${languageInstruction}`;
       accumulatedText,
       commentPathToIdMap,
       0,
-      targetCommentId
+      targetCommentId,
+      metadata
     );
-    await this.showSummaryInPanel(accumulatedText, commentPathToIdMap, 0);
+    await this.showSummaryInPanel(accumulatedText, commentPathToIdMap, 0, metadata);
   }
 
   /**
@@ -1248,7 +1290,7 @@ ${languageInstruction}`;
     summary,
     commentPathToIdMap,
     duration,
-    cacheIndicator = null
+    options = {}
   ) {
     const summaryHtml =
       this.enhancer.markdownUtils.convertMarkdownToHTML(summary);
@@ -1258,11 +1300,31 @@ ${languageInstruction}`;
         commentPathToIdMap
       );
 
-    const { aiProvider, model, language } = await this.getAIProviderModel();
+    const {
+      cacheIndicator = null,
+      aiProvider: providedProvider,
+      model: providedModel,
+      language: providedLanguage,
+    } = options || {};
+
+    let aiProvider = providedProvider;
+    let model = providedModel;
+    let language = providedLanguage;
+
+    if (!aiProvider || !model || !language) {
+      const settings = await this.getAIProviderModel();
+      aiProvider = aiProvider || settings.aiProvider;
+      model = model || settings.model;
+      language = language || settings.language;
+    }
+
     if (aiProvider) {
-      let metadataText = `Summarized using <strong>${aiProvider} ${
-        model || ""
-      }</strong> in <strong>${duration ?? "0"} secs</strong>`;
+      const providerText = model
+        ? `${aiProvider} / ${model}`
+        : `${aiProvider}`;
+      let metadataText = `Summarized using <strong>${providerText}</strong> in <strong>${
+        duration ?? "0"
+      } secs</strong>`;
 
       if (language && language !== "en") {
         const languageName = this.getLanguageName(language);

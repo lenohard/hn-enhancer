@@ -22,6 +22,9 @@ class ChatModal {
     this.commentPathToIdMap = new Map(); // 存储评论路径到ID的映射，用于点击跳转
     this.isPostChat = false; // Flag to indicate if this is a post-level chat
     this.isVisible = false; // 跟踪模态框是否可见
+    this.modelIndicatorElement = null; // Displays current/history model info
+    this.historyProvider = null; // Provider used for the last saved response
+    this.historyModel = null; // Model used for the last saved response
 
     this._createModalElement();
     this._addEventListeners();
@@ -44,6 +47,9 @@ class ChatModal {
       this.contextSelectorContainer = this.modalElement.querySelector(
         ".chat-context-selector"
       ); // Get reference if exists
+      this.modelIndicatorElement = this.modalElement.querySelector(
+        ".chat-model-indicator"
+      );
       return; // Avoid creating duplicates
     }
 
@@ -80,6 +86,13 @@ class ChatModal {
     `;
 
     // Conversation Area
+    const sessionMeta = document.createElement("div");
+    sessionMeta.className = "chat-session-meta";
+    this.modelIndicatorElement = document.createElement("span");
+    this.modelIndicatorElement.className = "chat-model-indicator";
+    this.modelIndicatorElement.textContent = "Model: —";
+    sessionMeta.appendChild(this.modelIndicatorElement);
+
     this.conversationArea = document.createElement("div");
     this.conversationArea.className = "chat-conversation-area";
     this.conversationArea.textContent = "Loading context..."; // Placeholder
@@ -99,6 +112,7 @@ class ChatModal {
     // Assemble
     modalContent.appendChild(header);
     modalContent.appendChild(this.contextSelectorContainer); // Add context selector
+    modalContent.appendChild(sessionMeta);
     modalContent.appendChild(this.conversationArea);
     modalContent.appendChild(inputArea);
     this.modalElement.appendChild(modalContent);
@@ -392,88 +406,105 @@ class ChatModal {
       initialPlaceholder.remove();
     }
 
-    // If streaming and it's an LLM message, update the existing element
-    if (sender === "llm" && isStreaming && this.currentLlmMessageElement) {
+    // Streaming LLM messages render the entire accumulated markdown each time
+    if (sender === "llm" && isStreaming) {
+      let textElement = this.currentLlmMessageElement;
+
+      if (!textElement) {
+        const messageElement = document.createElement("div");
+        messageElement.classList.add("chat-message", "chat-message-llm");
+
+        const senderElement = document.createElement("strong");
+        senderElement.textContent = "LLM: ";
+
+        textElement = document.createElement("span");
+
+        messageElement.appendChild(senderElement);
+        messageElement.appendChild(textElement);
+        this.conversationArea.appendChild(messageElement);
+
+        this.currentLlmMessageElement = textElement;
+      }
+
+      const existingMarkdown = textElement.dataset.rawMarkdown || "";
+      const updatedMarkdown = existingMarkdown + text;
+      textElement.dataset.rawMarkdown = updatedMarkdown;
+
+      textElement.innerHTML =
+        this.enhancer.markdownUtils.replacePathsWithCommentLinks(
+          this.enhancer.markdownUtils.convertMarkdownToHTML(updatedMarkdown),
+          this.commentPathToIdMap
+        );
+
+      this._addCommentLinkHandlers(textElement);
+
+      // Scroll to bottom after updating the streaming content
+      this.conversationArea.scrollTop = this.conversationArea.scrollHeight;
+      return;
+    }
+
+    // Otherwise, create a new message element
+    const messageElement = document.createElement("div");
+    messageElement.classList.add("chat-message", `chat-message-${sender}`);
+
+    const senderElement = document.createElement("strong");
+    senderElement.textContent =
+      sender === "user" ? "You: " : sender === "llm" ? "LLM: " : "System: ";
+
+    const textElement = document.createElement("span");
+
+    // 根据发送者类型处理文本
+    if (sender === "llm") {
       // 处理LLM回复中的评论引用
-      const processedText =
+      textElement.innerHTML =
         this.enhancer.markdownUtils.replacePathsWithCommentLinks(
           this.enhancer.markdownUtils.convertMarkdownToHTML(text),
           this.commentPathToIdMap
         );
-
-      // Append text, rendering markdown for the new chunk
-      this.currentLlmMessageElement.innerHTML += processedText;
-
-      // 为新添加的评论链接添加点击事件
-      this._addCommentLinkHandlers(this.currentLlmMessageElement);
     } else {
-      // Otherwise, create a new message element
-      const messageElement = document.createElement("div");
-      messageElement.classList.add("chat-message", `chat-message-${sender}`);
-
-      const senderElement = document.createElement("strong");
-      senderElement.textContent =
-        sender === "user" ? "You: " : sender === "llm" ? "LLM: " : "System: ";
-
-      const textElement = document.createElement("span");
-
-      // 根据发送者类型处理文本
-      if (sender === "llm") {
-        // 处理LLM回复中的评论引用
-        textElement.innerHTML =
-          this.enhancer.markdownUtils.replacePathsWithCommentLinks(
-            this.enhancer.markdownUtils.convertMarkdownToHTML(text),
-            this.commentPathToIdMap
-          );
-      } else {
-        // 普通Markdown渲染
-        let processedText = text;
-        // 仅在 system 消息且有目标评论时，将“目标评论”或“当前评论”变成 markdown 链接
-        if (
-          sender === "system" &&
-          this.targetCommentElement &&
-          this.targetCommentElement.id
-        ) {
-          // 用特殊协议标记，后续渲染后再替换为真正的跳转链接
-          processedText = processedText.replace(
-            /(目标评论|当前评论)/,
-            "[$1](hn-enhancer://target-comment)"
-          );
-        }
-        // 先做 markdown 渲染
-        let html =
-          this.enhancer.markdownUtils.convertMarkdownToHTML(processedText);
-        // 对于 system 消息，替换 hn-enhancer://target-comment 链接为可点击跳转
-        if (
-          sender === "system" &&
-          this.targetCommentElement &&
-          this.targetCommentElement.id
-        ) {
-          const commentId = this.targetCommentElement.id;
-          // 匹配 <a href="hn-enhancer://target-comment">目标评论</a>
-          html = html.replace(
-            /<a href="hn-enhancer:\/\/target-comment">([^<]+)<\/a>/,
-            `<a href="#" data-comment-link="true" data-comment-id="${commentId}">$1</a>`
-          );
-        }
-        textElement.innerHTML = html;
+      // 普通Markdown渲染
+      let processedText = text;
+      // 仅在 system 消息且有目标评论时，将“目标评论”或“当前评论”变成 markdown 链接
+      if (
+        sender === "system" &&
+        this.targetCommentElement &&
+        this.targetCommentElement.id
+      ) {
+        // 用特殊协议标记，后续渲染后再替换为真正的跳转链接
+        processedText = processedText.replace(
+          /(目标评论|当前评论)/,
+          "[$1](hn-enhancer://target-comment)"
+        );
       }
-
-      messageElement.appendChild(senderElement);
-      messageElement.appendChild(textElement);
-      this.conversationArea.appendChild(messageElement);
-
-      // If it's the start of an LLM stream, store the text element reference
-      if (sender === "llm" && isStreaming) {
-        this.currentLlmMessageElement = textElement;
-      } else {
-        this.currentLlmMessageElement = null; // Reset if not streaming LLM
+      // 先做 markdown 渲染
+      let html = this.enhancer.markdownUtils.convertMarkdownToHTML(
+        processedText
+      );
+      // 对于 system 消息，替换 hn-enhancer://target-comment 链接为可点击跳转
+      if (
+        sender === "system" &&
+        this.targetCommentElement &&
+        this.targetCommentElement.id
+      ) {
+        const commentId = this.targetCommentElement.id;
+        // 匹配 <a href="hn-enhancer://target-comment">目标评论</a>
+        html = html.replace(
+          /<a href="hn-enhancer:\/\/target-comment">([^<]+)<\/a>/,
+          `<a href="#" data-comment-link="true" data-comment-id="${commentId}">$1</a>`
+        );
       }
+      textElement.innerHTML = html;
+    }
 
-      // 为LLM消息中的评论链接添加点击事件
-      if (sender === "llm") {
-        this._addCommentLinkHandlers(textElement);
-      }
+    messageElement.appendChild(senderElement);
+    messageElement.appendChild(textElement);
+    this.conversationArea.appendChild(messageElement);
+
+    this.currentLlmMessageElement = null; // Reset if not streaming LLM
+
+    // 为LLM消息中的评论链接添加点击事件
+    if (sender === "llm") {
+      this._addCommentLinkHandlers(textElement);
     }
 
     // Scroll to bottom
@@ -508,6 +539,79 @@ class ChatModal {
         }
       });
     });
+  }
+
+  /**
+   * Refreshes provider/model from synced settings and updates indicator state.
+   * @private
+   * @returns {Promise<{aiProvider: string|null, model: string|null, providerChanged: boolean, modelChanged: boolean}|null>}
+   */
+  async _refreshProviderAndModel() {
+    try {
+      const settings =
+        await this.enhancer.summarization.getAIProviderModel();
+      const aiProvider = settings?.aiProvider || null;
+      const model = settings?.model || null;
+
+      const providerChanged = this.currentAiProvider !== aiProvider;
+      const modelChanged = this.currentModel !== model;
+
+      if (providerChanged && this.currentAiProvider === "chrome-ai") {
+        // Drop Chrome AI session if switching away to avoid using stale session
+        this.aiSession = null;
+      }
+
+      this.currentAiProvider = aiProvider;
+      this.currentModel = model;
+      this._updateModelIndicator(aiProvider, model);
+
+      return { aiProvider, model, providerChanged, modelChanged };
+    } catch (error) {
+      console.error("Error refreshing AI provider/model:", error);
+      this.currentAiProvider = null;
+      this.currentModel = null;
+      this._updateModelIndicator(null, null);
+      return null;
+    }
+  }
+
+  /**
+   * Updates the chat header indicator with current and historical model info.
+   * @param {string|null} currentProvider
+   * @param {string|null} currentModel
+   * @private
+   */
+  _updateModelIndicator(currentProvider, currentModel) {
+    if (!this.modelIndicatorElement) {
+      return;
+    }
+
+    const formatLabel = (provider, model) => {
+      if (!provider && !model) {
+        return "Not configured";
+      }
+      if (provider && model) {
+        return `${provider} / ${model}`;
+      }
+      return provider || model || "Not configured";
+    };
+
+    const currentLabel = formatLabel(currentProvider, currentModel);
+    let indicatorText = `Model: ${currentLabel}`;
+
+    if (
+      this.historyProvider &&
+      (this.historyProvider !== currentProvider ||
+        this.historyModel !== currentModel)
+    ) {
+      const historyLabel = formatLabel(
+        this.historyProvider,
+        this.historyModel
+      );
+      indicatorText += ` • History: ${historyLabel}`;
+    }
+
+    this.modelIndicatorElement.textContent = indicatorText;
   }
 
   /**
@@ -607,6 +711,12 @@ class ChatModal {
     this.conversationHistory = []; // Clear history before loading/gathering
     this.commentPathToIdMap = new Map(); // 重置评论路径到ID的映射
     this.conversationArea.innerHTML = ""; // Clear display area FIRST
+    this.historyProvider = null;
+    this.historyModel = null;
+    this._updateModelIndicator(null, null);
+    this.historyProvider = null;
+    this.historyModel = null;
+    this._updateModelIndicator(null, null);
 
     const commentId = this.enhancer.domUtils.getCommentId(
       this.targetCommentElement
@@ -652,6 +762,8 @@ class ChatModal {
           `Loaded existing chat history for ${postId}/${commentId}/${contextType}`
         );
         this.conversationHistory = loadedHistory;
+        this.historyProvider = storedHistoryEntry?.provider || null;
+        this.historyModel = storedHistoryEntry?.model || null;
 
         if (storedPathPairs && storedPathPairs.length > 0) {
           this.commentPathToIdMap = new Map(storedPathPairs);
@@ -704,10 +816,9 @@ class ChatModal {
         });
 
         // Determine AI provider from settings (needed for sending new messages)
-        const { aiProvider, model } =
-          await this.enhancer.summarization.getAIProviderModel();
-        this.currentAiProvider = aiProvider;
-        this.currentModel = model;
+        await this._refreshProviderAndModel();
+        const aiProvider = this.currentAiProvider;
+        const model = this.currentModel;
 
         if (!aiProvider) {
           this.enhancer.logInfo(
@@ -716,6 +827,7 @@ class ChatModal {
           this.enhancer.summarization.showConfigureAIMessage(
             this.conversationArea
           );
+          this._updateModelIndicator(aiProvider, model);
           // Don't disable input, user might want to see history anyway
         } else {
           this.enhancer.logInfo(
@@ -732,6 +844,7 @@ class ChatModal {
           this.sendButton.disabled = false;
           this.inputElement.focus();
         }
+        this._updateModelIndicator(aiProvider, model);
         return; // History loaded, skip context gathering
       }
 
@@ -879,10 +992,9 @@ class ChatModal {
       );
 
       // --- Determine AI Provider ---
-      const { aiProvider, model } =
-        await this.enhancer.summarization.getAIProviderModel(); // Reuse summarization's method
-      this.currentAiProvider = aiProvider;
-      this.currentModel = model;
+      await this._refreshProviderAndModel(); // Reuse summarization's method
+      const aiProvider = this.currentAiProvider;
+      const model = this.currentModel;
 
       if (!aiProvider) {
         this.enhancer.logInfo("Chat: AI provider not configured.");
@@ -1034,6 +1146,7 @@ ${systemPromptIntro}
       this.inputElement.disabled = false;
       this.sendButton.disabled = false;
       this.inputElement.focus();
+      this._updateModelIndicator(aiProvider, model);
     } catch (error) {
       console.error("Error gathering context or initializing chat:", error);
       // Still enable input even if context loading failed, user might want to ask general questions
@@ -1052,7 +1165,8 @@ ${systemPromptIntro}
    * @private
    */
   async _sendMessageToAI(conversationHistory) {
-    // Use the stored provider for the current chat session
+    // Refresh provider/model before each exchange so changes take effect immediately
+    await this._refreshProviderAndModel();
     const aiProvider = this.currentAiProvider;
     const model = this.currentModel;
 
@@ -1066,6 +1180,10 @@ ${systemPromptIntro}
 
     // --- Chrome Built-in AI ---
     if (aiProvider === "chrome-ai") {
+      if (!this.aiSession) {
+        await this._initializeChromeAISessionIfNeeded();
+      }
+
       if (!this.aiSession) {
         this._displayMessage(
           "Error: Chrome AI session not available.",
@@ -1113,16 +1231,23 @@ ${systemPromptIntro}
 
         // --- Save History (Chrome AI) - Only save after getting a response ---
         const commentId = this.isPostChat 
-          ? "post" 
-          : this.enhancer.domUtils.getCommentId(this.targetCommentElement);
+        ? "post" 
+        : this.enhancer.domUtils.getCommentId(this.targetCommentElement);
         await this.enhancer.hnState.saveChatHistory(
           this.currentPostId,
           commentId,
           this.currentContextType,
           this.conversationHistory,
-          this.commentPathToIdMap
+          this.commentPathToIdMap,
+          {
+            provider: this.currentAiProvider,
+            model: this.currentModel,
+          }
         );
         this.enhancer.logDebug("Saved history after Chrome AI response.");
+        this.historyProvider = this.currentAiProvider;
+        this.historyModel = this.currentModel;
+        this._updateModelIndicator(this.currentAiProvider, this.currentModel);
 
         // Update cache indicators
         if (this.isPostChat) {
@@ -1228,9 +1353,16 @@ ${systemPromptIntro}
         commentId,
         this.currentContextType,
         this.conversationHistory,
-        this.commentPathToIdMap
+        this.commentPathToIdMap,
+        {
+          provider: this.currentAiProvider,
+          model: this.currentModel,
+        }
       );
       this.enhancer.logDebug(`Saved history after ${aiProvider} response.`);
+      this.historyProvider = this.currentAiProvider;
+      this.historyModel = this.currentModel;
+      this._updateModelIndicator(this.currentAiProvider, this.currentModel);
 
       // Update cache indicators
       if (this.isPostChat) {
@@ -1423,6 +1555,8 @@ ${systemPromptIntro}
           `Loaded existing post chat history for ${this.currentPostId}/${contextType}`
         );
         this.conversationHistory = loadedHistory;
+        this.historyProvider = storedHistoryEntry?.provider || null;
+        this.historyModel = storedHistoryEntry?.model || null;
 
         if (storedPathPairs && storedPathPairs.length > 0) {
           this.commentPathToIdMap = new Map(storedPathPairs);
@@ -1473,10 +1607,9 @@ ${systemPromptIntro}
         });
 
         // Determine AI provider from settings (needed for sending new messages)
-        const { aiProvider, model } =
-          await this.enhancer.summarization.getAIProviderModel();
-        this.currentAiProvider = aiProvider;
-        this.currentModel = model;
+        await this._refreshProviderAndModel();
+        const aiProvider = this.currentAiProvider;
+        const model = this.currentModel;
 
         if (!aiProvider) {
           this.enhancer.logInfo(
@@ -1500,6 +1633,7 @@ ${systemPromptIntro}
           this.sendButton.disabled = false;
           this.inputElement.focus();
         }
+        this._updateModelIndicator(aiProvider, model);
         return; // History loaded, skip context gathering
       }
 
@@ -1635,16 +1769,16 @@ ${systemPromptIntro}
       );
 
       // --- Determine AI Provider ---
-      const { aiProvider, model } =
-        await this.enhancer.summarization.getAIProviderModel();
-      this.currentAiProvider = aiProvider;
-      this.currentModel = model;
+      await this._refreshProviderAndModel();
+      const aiProvider = this.currentAiProvider;
+      const model = this.currentModel;
 
       if (!aiProvider) {
         this.enhancer.logInfo("Chat: AI provider not configured.");
         this.enhancer.summarization.showConfigureAIMessage(
           this.conversationArea
         );
+        this._updateModelIndicator(aiProvider, model);
         return;
       }
 
@@ -1761,6 +1895,7 @@ ${systemPromptIntro}
       this.inputElement.disabled = false;
       this.sendButton.disabled = false;
       this.inputElement.focus();
+      this._updateModelIndicator(aiProvider, model);
     } catch (error) {
       console.error(
         "Error gathering post context or initializing chat:",

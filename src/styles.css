@@ -623,6 +623,21 @@ tr.athing.comtr.noshow .comhead .togg {
     color: #ff6600;
 }
 
+.chat-session-meta {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    font-size: 12px;
+    color: #666;
+    margin: -5px 0 12px 0;
+    gap: 8px;
+}
+
+.chat-model-indicator {
+    font-style: italic;
+    color: #828282;
+}
+
 
 /* Conversation Area */
 .chat-conversation-area {

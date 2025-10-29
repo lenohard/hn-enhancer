@@ -772,7 +772,6 @@ async function handleLiteLLMRequest(data) {
     model,
     messages,
     streaming = false,
-    max_tokens = 2048,
     temperature = 0.7,
   } = data;
 
@@ -791,7 +790,6 @@ async function handleLiteLLMRequest(data) {
     model: model,
     messages: messages,
     temperature: temperature,
-    max_tokens: max_tokens,
     stream: streaming,
   };
 
