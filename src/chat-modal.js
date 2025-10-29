@@ -527,18 +527,173 @@ class ChatModal {
 
       newLink.addEventListener("click", (e) => {
         e.preventDefault();
-        const id = newLink.dataset.commentId;
-        const comment = document.getElementById(id);
-        if (comment) {
-          // 使用navigation模块跳转到评论
-          this.enhancer.navigation.setCurrentComment(comment);
-          // 可选：关闭聊天模态框
-          // this.close();
-        } else {
-          console.error("Failed to find DOM element for comment id:", id);
+        const path = newLink.dataset.commentPath || "";
+        let comment =
+          this._resolveCommentElementByPath(path) || null;
+
+        if (!comment) {
+          const mappedId =
+            this.commentPathToIdMap instanceof Map && path
+              ? this.commentPathToIdMap.get(path)
+              : null;
+          const fallbackId = mappedId || newLink.dataset.commentId;
+          if (fallbackId) {
+            comment = document.getElementById(fallbackId);
+          }
         }
+
+        if (!comment) {
+          console.error(
+            "Failed to resolve comment element for path/id:",
+            path,
+            newLink.dataset.commentId
+          );
+          return;
+        }
+
+        const resolvedId = this.enhancer.domUtils.getCommentId(comment);
+        if (resolvedId) {
+          newLink.dataset.commentId = resolvedId;
+          if (path) {
+            if (!(this.commentPathToIdMap instanceof Map)) {
+              this.commentPathToIdMap = new Map();
+            }
+            this.commentPathToIdMap.set(path, resolvedId);
+          }
+        }
+
+        // 使用navigation模块跳转到评论
+        this.enhancer.navigation.setCurrentComment(comment);
+        // 可选：关闭聊天模态框
+        // this.close();
       });
     });
+  }
+
+  /**
+   * Attempts to resolve a comment element based on a hierarchical path string.
+   * @param {string} path - The structured path (e.g. "1.2.3").
+   * @returns {HTMLElement|null}
+   * @private
+   */
+  _resolveCommentElementByPath(path) {
+    if (!path) {
+      return null;
+    }
+
+    const segments = path
+      .split(".")
+      .map((segment) => parseInt(segment, 10))
+      .filter((value) => !Number.isNaN(value) && value > 0);
+
+    if (segments.length === 0) {
+      return null;
+    }
+
+    if (this.isPostChat) {
+      return this._resolvePostCommentBySegments(segments);
+    }
+
+    if (!this.targetCommentElement) {
+      return null;
+    }
+
+    if (this.currentContextType === "parents") {
+      return this._resolveParentCommentByPath(path);
+    }
+
+    if (segments[0] !== 1) {
+      return null;
+    }
+
+    let currentElement = this.targetCommentElement;
+    if (segments.length === 1) {
+      return currentElement;
+    }
+
+    for (let i = 1; i < segments.length; i += 1) {
+      const childIndex = segments[i] - 1;
+      if (childIndex < 0) {
+        return null;
+      }
+      const directChildren =
+        this.enhancer.domUtils.getDirectChildComments(currentElement);
+      if (!directChildren || childIndex >= directChildren.length) {
+        return null;
+      }
+      currentElement = directChildren[childIndex];
+    }
+
+    return currentElement;
+  }
+
+  /**
+   * Resolves a comment element when viewing a comment-level parents context.
+   * @param {string} path
+   * @returns {HTMLElement|null}
+   * @private
+   */
+  _resolveParentCommentByPath(path) {
+    if (!this.targetCommentElement) {
+      return null;
+    }
+
+    const context =
+      this.enhancer.domUtils.getCommentContext(this.targetCommentElement) || [];
+    if (!Array.isArray(context) || context.length === 0) {
+      return null;
+    }
+
+    const entry = context.find((comment) => comment.path === path);
+    if (!entry?.id) {
+      return null;
+    }
+
+    return this.enhancer.domUtils.findCommentElementById(entry.id);
+  }
+
+  /**
+   * Resolves a comment element by traversing the DOM from the post root.
+   * @param {number[]} segments
+   * @returns {HTMLElement|null}
+   * @private
+   */
+  _resolvePostCommentBySegments(segments) {
+    if (segments.length === 0) {
+      return null;
+    }
+
+    const topLevelComments = Array.from(
+      document.querySelectorAll("tr.athing.comtr")
+    ).filter(
+      (comment) =>
+        this.enhancer.domUtils.getCommentIndentLevel(comment) === 0
+    );
+
+    const rootIndex = segments[0] - 1;
+    if (rootIndex < 0 || rootIndex >= topLevelComments.length) {
+      return null;
+    }
+
+    let currentElement = topLevelComments[rootIndex];
+    if (segments.length === 1) {
+      return currentElement;
+    }
+
+    for (let i = 1; i < segments.length; i += 1) {
+      const childIndex = segments[i] - 1;
+      if (childIndex < 0) {
+        return null;
+      }
+      const directChildren =
+        this.enhancer.domUtils.getDirectChildComments(currentElement);
+      if (!directChildren || childIndex >= directChildren.length) {
+        return null;
+      }
+      currentElement = directChildren[childIndex];
+    }
+
+    return currentElement;
   }
 
   /**
