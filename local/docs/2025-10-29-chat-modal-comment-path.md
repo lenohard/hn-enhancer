@@ -4,10 +4,11 @@
 ## Progress
 - [x] 复现问题并定位是评论路径解析逻辑有误导致
 - [x] 为聊天窗口的评论链接新增基于层级路径的 DOM 解析器，确保点击引用时能够找到对应评论
-- [ ] 提交包含修复说明的 commit（待确认）
+- [x] 提交包含修复说明的 commit（`d41615a Fix chat modal comment path navigation`）
 
 ## Relevant Files
 - `src/chat-modal.js`：更新链接点击处理逻辑并添加路径解析辅助方法
 
 ## Notes
 - 新增 `_resolveCommentElementByPath` 等工具函数，根据不同上下文（评论/帖子）按路径回溯 DOM，保证映射数据与实际节点同步
+- 初始修复提交：`d41615a`
