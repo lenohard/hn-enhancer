@@ -274,84 +274,104 @@ function handleStreamingMessage(
         const decoder = new TextDecoder();
         let buffer = "";
         let lastChunkTime = Date.now();
+        let hasResponded = false;
 
+        // Total timeout: 5 minutes (300000 ms) to handle large summaries
         const streamTimeout = setTimeout(() => {
-          console.error("流式传输超时");
-          sendResponse({ success: false, error: "Streaming timed out." });
-          reader.releaseLock();
-        }, 30000); // 30秒超时
+          console.error("流式传输超时（5分钟）");
+          if (!hasResponded) {
+            hasResponded = true;
+            sendResponse({ success: false, error: "Streaming timed out." });
+            reader.releaseLock();
+          }
+        }, 300000); // 5分钟超时
 
         const processStream = async () => {
-          while (true) {
-            try {
-              const { done, value } = await reader.read();
-              if (done) {
-                console.log("流处理完成");
-                sendResponse({ success: true, streaming: true, done: true });
-                break;
-              }
-
-              lastChunkTime = Date.now();
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split("\n");
-              buffer = lines.pop() || "";
-
-              for (const line of lines) {
-                if (line.startsWith("data:")) {
-                  const data = line.substring(5).trim();
-                  if (data === "[DONE]") {
-                    console.log("收到 [DONE] 信号");
-                    sendResponse({
-                      success: true,
-                      streaming: true,
-                      done: true,
-                    });
-                    return;
+          try {
+            while (true) {
+              try {
+                const { done, value } = await reader.read();
+                if (done) {
+                  console.log("流处理完成");
+                  clearTimeout(streamTimeout);
+                  if (!hasResponded) {
+                    hasResponded = true;
+                    sendResponse({ success: true, streaming: true, done: true });
                   }
-                  try {
-                    const parsed = JSON.parse(data);
-                    // Log the parsed chunk to see its structure
-                    console.log(
-                      "Parsed stream chunk:",
-                      JSON.stringify(parsed, null, 2)
-                    );
-                    if (sender.tab?.id) {
-                      chrome.tabs.sendMessage(sender.tab.id, {
-                        type: `${message.type}_STREAM_CHUNK`,
-                        data: parsed,
-                      });
+                  break;
+                }
+
+                lastChunkTime = Date.now();
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                  if (line.startsWith("data:")) {
+                    const data = line.substring(5).trim();
+                    if (data === "[DONE]") {
+                      console.log("收到 [DONE] 信号");
+                      clearTimeout(streamTimeout);
+                      if (!hasResponded) {
+                        hasResponded = true;
+                        sendResponse({
+                          success: true,
+                          streaming: true,
+                          done: true,
+                        });
+                      }
+                      return;
                     }
-                  } catch (e) {
-                    console.error(
-                      "Error parsing streaming data chunk:",
-                      data,
-                      e
-                    );
-                  }
-                } else if (line) {
-                  // For Anthropic which doesn't use 'data:' prefix
-                  try {
-                    const parsed = JSON.parse(line);
-                    if (parsed.type === "content_block_delta") {
+                    try {
+                      const parsed = JSON.parse(data);
+                      // Log the parsed chunk to see its structure
+                      console.log(
+                        "Parsed stream chunk:",
+                        JSON.stringify(parsed, null, 2)
+                      );
                       if (sender.tab?.id) {
                         chrome.tabs.sendMessage(sender.tab.id, {
                           type: `${message.type}_STREAM_CHUNK`,
                           data: parsed,
                         });
                       }
+                    } catch (e) {
+                      console.error(
+                        "Error parsing streaming data chunk:",
+                        data,
+                        e
+                      );
                     }
-                  } catch (e) {
-                    // ignore parsing errors
+                  } else if (line) {
+                    // For Anthropic which doesn't use 'data:' prefix
+                    try {
+                      const parsed = JSON.parse(line);
+                      if (parsed.type === "content_block_delta") {
+                        if (sender.tab?.id) {
+                          chrome.tabs.sendMessage(sender.tab.id, {
+                            type: `${message.type}_STREAM_CHUNK`,
+                            data: parsed,
+                          });
+                        }
+                      }
+                    } catch (e) {
+                      // ignore parsing errors
+                    }
                   }
                 }
+              } catch (error) {
+                console.error("读取流时出错:", error);
+                clearTimeout(streamTimeout);
+                if (!hasResponded) {
+                  hasResponded = true;
+                  sendResponse({ success: false, error: error.toString() });
+                }
+                break;
               }
-            } catch (error) {
-              console.error("读取流时出错:", error);
-              sendResponse({ success: false, error: error.toString() });
-              break;
             }
+          } finally {
+            clearTimeout(streamTimeout);
           }
-          clearTimeout(streamTimeout);
         };
 
         processStream();
