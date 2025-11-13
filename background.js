@@ -273,18 +273,7 @@ function handleStreamingMessage(
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let lastChunkTime = Date.now();
         let hasResponded = false;
-
-        // Total timeout: 5 minutes (300000 ms) to handle large summaries
-        const streamTimeout = setTimeout(() => {
-          console.error("流式传输超时（5分钟）");
-          if (!hasResponded) {
-            hasResponded = true;
-            sendResponse({ success: false, error: "Streaming timed out." });
-            reader.releaseLock();
-          }
-        }, 300000); // 5分钟超时
 
         const processStream = async () => {
           try {
@@ -293,7 +282,6 @@ function handleStreamingMessage(
                 const { done, value } = await reader.read();
                 if (done) {
                   console.log("流处理完成");
-                  clearTimeout(streamTimeout);
                   if (!hasResponded) {
                     hasResponded = true;
                     sendResponse({ success: true, streaming: true, done: true });
@@ -301,7 +289,6 @@ function handleStreamingMessage(
                   break;
                 }
 
-                lastChunkTime = Date.now();
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split("\n");
                 buffer = lines.pop() || "";
@@ -311,7 +298,6 @@ function handleStreamingMessage(
                     const data = line.substring(5).trim();
                     if (data === "[DONE]") {
                       console.log("收到 [DONE] 信号");
-                      clearTimeout(streamTimeout);
                       if (!hasResponded) {
                         hasResponded = true;
                         sendResponse({
@@ -361,7 +347,6 @@ function handleStreamingMessage(
                 }
               } catch (error) {
                 console.error("读取流时出错:", error);
-                clearTimeout(streamTimeout);
                 if (!hasResponded) {
                   hasResponded = true;
                   sendResponse({ success: false, error: error.toString() });
@@ -369,8 +354,12 @@ function handleStreamingMessage(
                 break;
               }
             }
-          } finally {
-            clearTimeout(streamTimeout);
+          } catch (error) {
+            console.error("流处理出错:", error);
+            if (!hasResponded) {
+              hasResponded = true;
+              sendResponse({ success: false, error: error.toString() });
+            }
           }
         };
 
