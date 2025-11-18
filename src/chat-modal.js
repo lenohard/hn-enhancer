@@ -149,16 +149,8 @@ class ChatModal {
       }
     });
 
-    // Send button (placeholder)
+    // Send button
     this.sendButton.addEventListener("click", () => this._handleSendMessage());
-
-    // Send on Enter in textarea (optional, might need Shift+Enter for newline)
-    this.inputElement.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault(); // Prevent newline
-        this._handleSendMessage();
-      }
-    });
 
     // Context selector radio buttons
     const contextRadios = this.contextSelectorContainer.querySelectorAll(
