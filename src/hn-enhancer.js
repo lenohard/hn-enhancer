@@ -187,6 +187,8 @@ window.HNEnhancer = class HNEnhancer {
       this.injectChatLink(comment); // <-- Add chat link injection
       // Insert toggle grandchildren button
       this.injectToggleGrandchildrenButton(comment);
+      // Insert focus button
+      this.injectFocusButton(comment);
       // Add cache indicators
       this.addCacheIndicators(comment);
     });
@@ -850,6 +852,33 @@ window.HNEnhancer = class HNEnhancer {
 
     // Append the link to the navs span
     navsSpan.appendChild(toggleGcLink);
+  }
+
+  /**
+   * Injects a 'focus' button into a comment's header.
+   * @param {HTMLElement} comment - The comment element.
+   */
+  injectFocusButton(comment) {
+    const navsSpan = comment.querySelector(".comhead .navs");
+    if (!navsSpan) return;
+
+    if (navsSpan.querySelector(".focus-node-link")) return;
+
+    const focusLink = document.createElement("a");
+    focusLink.href = "#";
+    focusLink.textContent = "focus";
+    focusLink.className = "hn-enhancer-link focus-node-link";
+    focusLink.title = "Set as current focused comment for keyboard navigation";
+    
+    focusLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      // Set current comment without scrolling since user is already interacting with it
+      this.navigation.setCurrentComment(comment, false); 
+    });
+
+    const separator = document.createTextNode(" | ");
+    navsSpan.appendChild(separator);
+    navsSpan.appendChild(focusLink);
   }
 
   // --- Helper Methods for Grandchildren Toggling ---

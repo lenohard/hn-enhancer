@@ -563,6 +563,16 @@ tr.athing.comtr.noshow .comhead .togg {
     text-decoration: underline;
 }
 
+/* Style for the focus node link */
+.focus-node-link {
+    cursor: pointer;
+    color: #828282; /* Standard HN link color */
+}
+.focus-node-link:hover {
+    color: #ff6600; /* HN orange on hover */
+    text-decoration: underline;
+}
+
 /* --- Chat Modal Styles --- */
 
 /* Re-use help modal backdrop and basic centering */
