@@ -21,6 +21,20 @@ class DomUtils {
   }
 
   /**
+   * Derives a permalink for the provided comment element.
+   * @param {HTMLElement} commentElement - The comment element.
+   * @returns {string|null} The permalink URL or null if it cannot be determined.
+   */
+  static getCommentPermalink(commentElement) {
+    const commentId = DomUtils.getCommentId(commentElement);
+    const postId = DomUtils.getCurrentHNItemId();
+    if (!commentId || !postId) return null;
+
+    const baseUrl = `${window.location.origin}/item?id=${postId}`;
+    return `${baseUrl}#${commentId}`;
+  }
+
+  /**
    * Gets the indentation level of a comment element.
    * HN uses a 40px width spacer image for each level of indentation.
    * @param {HTMLElement} commentElement - The comment element (usually the TR.athing.comtr).
@@ -275,11 +289,13 @@ class DomUtils {
         topDeepest: [],
         topMostDirectReplies: [], // Renamed from topMostComments
         topLongest: [],
+        authorComments: new Map(),
       };
     }
 
     const commentData = new Map(); // Store data per comment ID { id: { id, element, depth, textLength, upvotes, parentId, descendantCount } }
     const tree = {}; // Store tree structure { id: { data: {...}, children: [ids...] } }
+    const authorCommentMap = new Map();
 
     // --- Pass 1: Gather basic info and build node map ---
     allCommentRows.forEach((commentRow) => {
@@ -308,6 +324,23 @@ class DomUtils {
       };
       commentData.set(commentId, data);
       tree[commentId] = { data: data, children: [] }; // Initialize tree node
+
+      const author = DomUtils.getCommentAuthor(commentRow);
+      if (author) {
+        if (!authorCommentMap.has(author)) {
+          authorCommentMap.set(author, []);
+        }
+        const indentImg = commentRow?.querySelector?.(".ind img");
+        const width = indentImg
+          ? parseInt(indentImg.getAttribute("width") || "0", 10)
+          : 0;
+        authorCommentMap.get(author).push({
+          commentId,
+          commentRow,
+          depth,
+          isRoot: !indentImg || !Number.isFinite(width) || width <= 0,
+        });
+      }
     });
 
     // --- Pass 2: Build Tree Structure (Determine Parent/Child Relationships) ---
@@ -412,6 +445,14 @@ class DomUtils {
       topDeepest: topDeepest,
       topMostDirectReplies: topMostDirectReplies, // Use the new name
       topLongest: topLongest,
+      authorComments: authorCommentMap,
+      rootAuthorOrder: commentList
+        .filter((comment) => comment.depth === 0)
+        .map((comment) => ({
+          author: DomUtils.getCommentAuthor(comment.element),
+          commentRow: comment.element,
+        }))
+        .filter((entry) => entry.author),
     };
   }
 

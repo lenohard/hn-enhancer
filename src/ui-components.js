@@ -175,6 +175,33 @@ class UIComponents {
   }
 
   /**
+   * Injects a Toggle GC link for all root comments into the post metadata line.
+   */
+  injectToggleGrandchildrenRootLink() {
+    const navLinks = document.querySelector(".subtext .subline");
+    if (!navLinks) return;
+
+    if (navLinks.querySelector(".toggle-grandchildren-root-link")) {
+      return;
+    }
+
+    const toggleLink = document.createElement("a");
+    toggleLink.href = "#";
+    toggleLink.textContent = "toggle GC";
+    toggleLink.className = "hn-enhancer-link toggle-grandchildren-root-link";
+    toggleLink.title =
+      "Toggle collapse state of grandchildren across all root comments";
+
+    toggleLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.enhancer.toggleGrandchildrenForAllRoots();
+    });
+
+    navLinks.appendChild(document.createTextNode(" | "));
+    navLinks.appendChild(toggleLink);
+  }
+
+  /**
    * Creates the statistics panel element.
    * @returns {Element} The statistics panel element.
    */
@@ -184,7 +211,7 @@ class UIComponents {
     panel.style.display = "none"; // Initially hidden
 
     panel.innerHTML = `
-            <h3>Comment Statistics (Top 5)</h3>
+            <h3>Comment Statistics</h3>
             <div class="hn-stats-list">
                 <div class="stat-item">
                     <div class="stat-label">Deepest Comments (Depth):</div>
@@ -197,6 +224,14 @@ class UIComponents {
                 <div class="stat-item">
                     <div class="stat-label">Longest Comments (Chars):</div>
                     <div class="stat-value" data-stat-list="longest-comment"><ul><li>[...]</li></ul></div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Users with Highest Karma:</div>
+                    <div class="stat-value" data-stat-list="highest-karma-users"><ul><li>Loading…</li></ul></div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Bookmarked Users:</div>
+                    <div class="stat-value" data-stat-list="bookmarked-users"><ul><li>None</li></ul></div>
                 </div>
             </div>
         `;

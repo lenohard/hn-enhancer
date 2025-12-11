@@ -528,6 +528,26 @@
     text-decoration: underline;
 }
 
+.hn-bookmarked-comment {
+    background-color: #fff9d6;
+    box-shadow: inset 3px 0 0 #ff6600;
+}
+
+.hn-bookmark-toggle {
+    cursor: pointer;
+    color: #828282;
+}
+
+.hn-bookmark-toggle:hover {
+    color: #ff6600;
+    text-decoration: underline;
+}
+
+.hn-bookmark-toggle.is-bookmarked {
+    color: #ff6600;
+    font-weight: bold;
+}
+
 
 /* --- HN Enhancer Comment Toggle (using noshow class) --- */
 

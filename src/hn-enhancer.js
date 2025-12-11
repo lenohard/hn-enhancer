@@ -11,6 +11,12 @@ window.HNEnhancer = class HNEnhancer {
     AFTER_DOWNLOAD: "after-download",
   };
 
+  static BOOKMARK_HIGHLIGHT_CLASS = "hn-bookmarked-comment";
+  static KARMA_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  static KARMA_ERROR_CACHE_TTL_MS = 30 * 1000; // retry sooner after failures
+  static KARMA_FETCH_SCAN_LIMIT = 20; // maximum authors to inspect per run (root comments only)
+  static KARMA_FETCH_DELAY_MS = 2000; // throttle between requests
+
   /**
    * Creates a new HNEnhancer instance
    */
@@ -32,8 +38,12 @@ window.HNEnhancer = class HNEnhancer {
       this.navigation = new Navigation(this);
       this.chatModal = new ChatModal(this); // Instantiate ChatModal
 
+      this.bookmarkedAuthors = new Map();
+      this.unsubscribeFromBookmarks = null;
+
       this.uiComponents.createHelpIcon();
-      this.uiComponents.createHelpIcon();
+
+      this.initializeBookmarks();
 
       // Initialize based on page type
       if (this.isHomePage) {
@@ -47,6 +57,7 @@ window.HNEnhancer = class HNEnhancer {
         this.summarization = new Summarization(this);
 
         this.initCommentsPageNavigation(); // Now call navigation init
+        this.refreshBookmarksDisplay();
         this.navigation.navigateToFirstComment(false);
         this.initChromeBuiltinAI();
       } else {
@@ -164,9 +175,10 @@ window.HNEnhancer = class HNEnhancer {
     }
 
     // --- Step 3: Inject other UI elements ---
-    // Inject 'Summarize all comments' and 'Chat about post' links at the top of the main post
+    // Inject 'Summarize all comments', 'Chat about post', and root-level toggle links
     this.uiComponents.injectSummarizePostLink();
     this.uiComponents.injectChatPostLink();
+    this.uiComponents.injectToggleGrandchildrenRootLink();
 
     // Add cache indicators to the post title area
     this.addCacheIndicators(); // Call without comment parameter for post-level indicators
@@ -189,9 +201,13 @@ window.HNEnhancer = class HNEnhancer {
       this.injectToggleGrandchildrenButton(comment);
       // Insert focus button
       this.injectFocusButton(comment);
+      // Insert bookmark toggle
+      this.injectBookmarkToggle(comment);
       // Add cache indicators
       this.addCacheIndicators(comment);
     });
+
+    this.refreshBookmarksDisplay();
 
     // Set up the hover events on all user elements - in the main post subline and each comment
     this.authorTracking.setupUserHover();
@@ -205,7 +221,17 @@ window.HNEnhancer = class HNEnhancer {
       );
       try {
         const stats = this.domUtils.calculateCommentStatistics();
-        this.updateStatisticsPanel(stats);
+        this.updateStatisticsPanel(stats, this.bookmarkedAuthors);
+        this.buildKarmaStatistics(stats.authorComments, stats.rootAuthorOrder)
+          .then((topKarmaUsers) => {
+            this.updateStatisticsPanel(
+              { ...stats, topKarmaUsers },
+              this.bookmarkedAuthors
+            );
+          })
+          .catch((error) => {
+            console.warn("Failed to build karma statistics:", error);
+          });
       } catch (error) {
         console.error("Error calculating or displaying statistics:", error);
         if (this.statisticsPanel) {
@@ -223,6 +249,165 @@ window.HNEnhancer = class HNEnhancer {
       if (!this.statisticsPanel)
         console.warn("Reason: this.statisticsPanel not found.");
     }
+  }
+
+  async initializeBookmarks() {
+    if (this.unsubscribeFromBookmarks) {
+      try {
+        this.unsubscribeFromBookmarks();
+      } catch (error) {
+        console.error("Error removing bookmark subscription:", error);
+      }
+      this.unsubscribeFromBookmarks = null;
+    }
+
+    try {
+      this.bookmarkedAuthors = await this.hnState.getBookmarkedAuthors();
+    } catch (error) {
+      console.error("Error loading bookmarked authors:", error);
+      this.bookmarkedAuthors = new Map();
+    }
+
+    if (!(this.bookmarkedAuthors instanceof Map)) {
+      this.bookmarkedAuthors = new Map();
+    }
+
+    this.unsubscribeFromBookmarks = this.hnState.subscribeToBookmarkedAuthors(
+      (bookmarks) => {
+        this.bookmarkedAuthors =
+          bookmarks instanceof Map ? bookmarks : new Map(bookmarks);
+        this.refreshBookmarksDisplay();
+      }
+    );
+
+    if (this.isCommentsPage) {
+      this.refreshBookmarksDisplay();
+    }
+  }
+
+  isAuthorBookmarked(author) {
+    if (!author || !(this.bookmarkedAuthors instanceof Map)) {
+      return false;
+    }
+    return this.bookmarkedAuthors.has(author);
+  }
+
+  refreshBookmarksDisplay() {
+    if (this.isCommentsPage) {
+      const comments = document.querySelectorAll(".athing.comtr");
+      comments.forEach((comment) => {
+        const author = this.domUtils.getCommentAuthor(comment);
+        const isBookmarked = this.isAuthorBookmarked(author);
+        comment.classList.toggle(
+          HNEnhancer.BOOKMARK_HIGHLIGHT_CLASS,
+          isBookmarked
+        );
+
+        const bookmarkLink = comment.querySelector(".hn-bookmark-toggle");
+        if (bookmarkLink) {
+          this.updateBookmarkLinkState(comment, bookmarkLink);
+        }
+      });
+    }
+
+    if (this.isCommentsPage && this.statisticsPanel) {
+      try {
+        const stats = this.domUtils.calculateCommentStatistics();
+        this.updateStatisticsPanel(stats, this.bookmarkedAuthors);
+        this.buildKarmaStatistics(stats.authorComments, stats.rootAuthorOrder)
+          .then((topKarmaUsers) => {
+            this.updateStatisticsPanel(
+              { ...stats, topKarmaUsers },
+              this.bookmarkedAuthors
+            );
+          })
+          .catch((error) => {
+            console.warn("Failed to refresh karma statistics:", error);
+          });
+      } catch (error) {
+        console.error("Error refreshing statistics panel:", error);
+      }
+    }
+  }
+
+  updateBookmarkLinkState(comment, bookmarkLink = null) {
+    if (!comment) return;
+    const link =
+      bookmarkLink || comment.querySelector(".hn-bookmark-toggle");
+    if (!link) return;
+
+    const author = this.domUtils.getCommentAuthor(comment);
+    const isBookmarked = this.isAuthorBookmarked(author);
+
+    link.textContent = isBookmarked ? "unbookmark" : "bookmark";
+    link.classList.toggle("is-bookmarked", isBookmarked);
+    link.title = isBookmarked
+      ? "Remove this author from bookmarks"
+      : "Bookmark this author";
+  }
+
+  async toggleBookmarkForComment(comment, bookmarkLink) {
+    if (!comment) return;
+
+    const author = this.domUtils.getCommentAuthor(comment);
+    if (!author) {
+      console.warn("toggleBookmarkForComment: Could not determine author.");
+      return;
+    }
+
+    const commentId = this.domUtils.getCommentId(comment);
+    const permalink = this.domUtils.getCommentPermalink(comment);
+    const postId = this.domUtils.getCurrentHNItemId();
+
+    try {
+      this.bookmarkedAuthors = await this.hnState.toggleBookmarkedAuthor({
+        username: author,
+        commentId,
+        permalink,
+        postId,
+      });
+
+      this.updateBookmarkLinkState(comment, bookmarkLink);
+      comment.classList.toggle(
+        HNEnhancer.BOOKMARK_HIGHLIGHT_CLASS,
+        this.bookmarkedAuthors.has(author)
+      );
+
+      this.refreshBookmarksDisplay();
+    } catch (error) {
+      console.error("Error toggling bookmark:", error);
+    }
+  }
+
+  navigateToAuthorComment(username, bookmark = {}) {
+    if (!username) return;
+
+    let targetComment = null;
+
+    if (bookmark?.commentId) {
+      targetComment = document.getElementById(bookmark.commentId);
+      if (targetComment) {
+        targetComment = targetComment.closest(".athing.comtr") || targetComment;
+      }
+    }
+
+    if (!targetComment) {
+      const authorNode = Array.from(
+        document.querySelectorAll(".athing.comtr .hnuser")
+      ).find((node) => node.textContent.trim() === username);
+      if (authorNode) {
+        targetComment = authorNode.closest(".athing.comtr");
+      }
+    }
+
+    if (!targetComment) {
+      console.warn(
+        `No comment by ${username} found on this page for bookmark navigation.`
+      );
+      return;
+    }
+
+    this.navigation.setCurrentComment(targetComment, true);
   }
 
   setupKeyBoardShortcuts() {
@@ -381,6 +566,101 @@ window.HNEnhancer = class HNEnhancer {
     };
   }
 
+  async buildKarmaStatistics(authorCommentsMap = new Map(), rootAuthorOrder = []) {
+    if (!authorCommentsMap || authorCommentsMap.size === 0) {
+      return [];
+    }
+
+    const cacheKey = `${this.domUtils.getCurrentHNItemId?.() || "unknown"}`;
+    const now = Date.now();
+    this.karmaCache = this.karmaCache || new Map();
+
+    const cached = this.karmaCache.get(cacheKey);
+    if (cached && now - cached.timestamp < HNEnhancer.KARMA_CACHE_TTL_MS) {
+      return cached.results;
+    }
+    if (cached && cached.error && now - cached.timestamp < HNEnhancer.KARMA_ERROR_CACHE_TTL_MS) {
+      return cached.results || [];
+    }
+
+    const orderedAuthors =
+      rootAuthorOrder && rootAuthorOrder.length
+        ? rootAuthorOrder
+            .map((entry) => entry?.author)
+            .filter((author) => author && authorCommentsMap.has(author))
+        : Array.from(authorCommentsMap.keys());
+
+    const entries = [];
+    const seenAuthors = new Set();
+
+    for (const author of orderedAuthors) {
+      if (!author || seenAuthors.has(author)) {
+        continue;
+      }
+
+      const comments = authorCommentsMap.get(author) || [];
+      const hasRootComment = comments.some((entry) => entry?.isRoot);
+
+      if (!hasRootComment) {
+        continue;
+      }
+
+      entries.push(author);
+      seenAuthors.add(author);
+      if (entries.length >= HNEnhancer.KARMA_FETCH_SCAN_LIMIT) {
+        break;
+      }
+    }
+
+    const results = [];
+    for (let index = 0; index < entries.length; index++) {
+      const username = entries[index];
+      const comments = (authorCommentsMap.get(username) || []).filter(
+        (entry) => entry?.isRoot === true
+      );
+      if (!comments.length) {
+        continue;
+      }
+      try {
+        const info = await this.authorTracking.getCachedUserInfo(
+          username,
+          () => this.apiClient.fetchUserInfo(username)
+        );
+        if (!info || typeof info.karma !== "number") {
+          continue;
+        }
+
+        const commentElement =
+          comments?.find((entry) => entry.isRoot)?.commentRow || null;
+        this.authorTracking.cacheUserComment(username, commentElement);
+
+        results.push({
+          username,
+          karma: info.karma,
+          commentElement,
+        });
+      } catch (error) {
+        console.warn(`Failed fetching karma for ${username}:`, error);
+      }
+
+      const hasMoreAuthors = index < entries.length - 1;
+      if (hasMoreAuthors) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, HNEnhancer.KARMA_FETCH_DELAY_MS)
+        );
+      }
+    }
+
+    const sortedResults = results.sort((a, b) => b.karma - a.karma).slice(0, 5);
+    this.karmaCache.set(cacheKey, {
+      results: sortedResults,
+      timestamp: Date.now(),
+      error: sortedResults.length === 0,
+    });
+
+    return sortedResults;
+  }
+
   getCommentsPageKeyboardShortcuts() {
     return {
       j: () => {
@@ -516,7 +796,7 @@ window.HNEnhancer = class HNEnhancer {
    *                         Expected structure: { topDeepest: [], topMostDirectReplies: [], topLongest: [] }
    *                         Each array item: { value: number, link: string }
    */
-  updateStatisticsPanel(stats) {
+  updateStatisticsPanel(stats, bookmarkedAuthors = new Map()) {
     if (!this.statisticsPanel || !stats) {
       console.error(
         "Statistics panel or stats data missing in updateStatisticsPanel."
@@ -525,7 +805,7 @@ window.HNEnhancer = class HNEnhancer {
     }
 
     // Helper function to populate a list (ul) for a given statistic
-    const updateStatList = (listSelector, dataArray, unit = "") => {
+    const updateStatList = (listSelector, dataArray, renderItem) => {
       const listElement = this.statisticsPanel.querySelector(
         `[data-stat-list="${listSelector}"] ul`
       );
@@ -544,54 +824,150 @@ window.HNEnhancer = class HNEnhancer {
       }
 
       dataArray.forEach((item) => {
-        if (
-          !item ||
-          item.value === null ||
-          item.value === undefined ||
-          !item.link
-        ) {
-          console.warn("Skipping invalid stat item:", item);
+        const listItem = renderItem(item);
+        if (!listItem) {
           return;
         }
-
-        const listItem = document.createElement("li");
-        const link = document.createElement("a");
-        link.href = item.link;
-        link.textContent = `${item.value}${unit}`; // Display value with unit
-
-        link.addEventListener("click", (e) => {
-          e.preventDefault();
-          const targetId = item.link.substring(1); // Remove '#'
-          const targetElement = document.getElementById(targetId);
-          if (targetElement) {
-            targetElement.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-            });
-            // Set the clicked comment as the current comment for navigation
-            this.navigation.setCurrentComment(targetElement);
-            // Optionally highlight the target comment briefly
-            targetElement.classList.add("highlight-stat-target");
-            setTimeout(
-              () => targetElement.classList.remove("highlight-stat-target"),
-              2000
-            );
-          }
-        });
-
-        listItem.appendChild(link);
         listElement.appendChild(listItem);
       });
     };
 
+    // Helper to populate bookmarked authors list
+    const updateBookmarkedUsers = () => {
+      const listElement = this.statisticsPanel.querySelector(
+        '[data-stat-list="bookmarked-users"] ul'
+      );
+      if (!listElement) {
+        console.warn("Bookmarked users list element not found.");
+        return;
+      }
+
+      listElement.innerHTML = "";
+
+      if (!bookmarkedAuthors || bookmarkedAuthors.size === 0) {
+        listElement.innerHTML = "<li>None</li>";
+        return;
+      }
+
+      Array.from(bookmarkedAuthors.values())
+        .sort((a, b) => a.username.localeCompare(b.username))
+        .forEach((bookmark) => {
+          if (!bookmark?.username) return;
+          const listItem = document.createElement("li");
+          const link = document.createElement("a");
+          link.href = bookmark.permalink || "#";
+          link.textContent = bookmark.username;
+
+          link.addEventListener("click", (e) => {
+            e.preventDefault();
+            this.navigateToAuthorComment(bookmark.username, bookmark);
+          });
+
+          listItem.appendChild(link);
+          listElement.appendChild(listItem);
+        });
+    };
+
     // Update each statistic list in the panel
-    updateStatList("deepest-node", stats.topDeepest); // Depth has no unit
+    const renderCommentStat = (item, unit = "") => {
+      if (
+        !item ||
+        item.value === null ||
+        item.value === undefined ||
+        !item.link
+      ) {
+        console.warn("Skipping invalid stat item:", item);
+        return null;
+      }
+
+      const listItem = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = item.link;
+      link.textContent = `${item.value}${unit}`; // Display value with unit
+
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        const targetId = item.link.substring(1); // Remove '#'
+        const targetElement = document.getElementById(targetId);
+        if (targetElement) {
+          targetElement.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+          // Set the clicked comment as the current comment for navigation
+          this.navigation.setCurrentComment(targetElement, true);
+          // Optionally highlight the target comment briefly
+          targetElement.classList.add("highlight-stat-target");
+          setTimeout(
+            () => targetElement.classList.remove("highlight-stat-target"),
+            2000
+          );
+        }
+      });
+
+      listItem.appendChild(link);
+      return listItem;
+    };
+
+    updateStatList("deepest-node", stats.topDeepest, (item) =>
+      renderCommentStat(item)
+    );
     updateStatList(
       "most-direct-replies",
       stats.topMostDirectReplies,
-      " replies"
-    ); // Use updated selector and property
-    updateStatList("longest-comment", stats.topLongest, " chars");
+      (item) => renderCommentStat(item, " replies")
+    );
+    updateStatList("longest-comment", stats.topLongest, (item) =>
+      renderCommentStat(item, " chars")
+    );
+    const karmaData = stats.topKarmaUsers;
+    updateStatList(
+      "highest-karma-users",
+      karmaData,
+      (item) => {
+        if (!item?.username) {
+          return null;
+        }
+
+        const listItem = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = item.link || "#";
+        link.textContent = `${item.username} (${item.karma ?? "?"})`;
+
+        const navigateToComment = () => {
+          if (item.commentElement && item.commentElement instanceof HTMLElement) {
+            this.navigation.setCurrentComment(item.commentElement, true);
+            return true;
+          }
+          if (item.link && item.link.startsWith("#")) {
+            const targetId = item.link.substring(1);
+            const targetElement = document.getElementById(targetId);
+            if (targetElement) {
+              this.navigation.setCurrentComment(targetElement, true);
+              return true;
+            }
+          }
+          return false;
+        };
+
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          navigateToComment();
+        });
+
+        listItem.appendChild(link);
+        return listItem;
+      }
+    );
+
+    const listElement = this.statisticsPanel.querySelector(
+      '[data-stat-list="highest-karma-users"] ul'
+    );
+    if (listElement && (!karmaData || karmaData.length === 0)) {
+      listElement.innerHTML = "<li>Limited by API rate (try again later)</li>";
+    }
+
+    updateBookmarkedUsers();
 
     // Make the panel visible
     this.statisticsPanel.style.display = "block";
@@ -602,9 +978,15 @@ window.HNEnhancer = class HNEnhancer {
    * @param {HTMLElement} comment - The comment element.
    */
   injectSummarizeThreadLinks(comment) {
+    if (!comment) {
+      return;
+    }
+
     const navsSpan = comment.querySelector(".comhead .navs");
     if (!navsSpan) {
-      this.logDebug(`Could not find .navs span for comment ${comment.id}`);
+      this.logDebug(
+        `Could not find .navs span for comment ${comment.id} (summarize)`
+      );
       return; // Skip if navs span not found
     }
 
@@ -684,6 +1066,64 @@ window.HNEnhancer = class HNEnhancer {
     this.logDebug(
       `Injected chat link for comment ${chatLink.dataset.commentId}`
     );
+  }
+
+  toggleGrandchildrenForAllRoots() {
+    const allComments = document.querySelectorAll(".athing.comtr");
+    const rootComments = Array.from(allComments).filter((comment) => {
+      const indentImg = comment?.querySelector?.(".ind img");
+      if (!indentImg) {
+        return true;
+      }
+      const width = parseInt(indentImg.getAttribute("width") || "0", 10);
+      return !Number.isFinite(width) || width <= 0;
+    });
+
+    if (!rootComments.length) {
+      console.warn(
+        "toggleGrandchildrenForAllRoots: No root comments found on this page."
+      );
+      return;
+    }
+
+    const directChildren = rootComments
+      .flatMap((rootComment) => {
+        const children = this.domUtils.getDirectChildComments(rootComment);
+        this.logDebug(
+          `[HNE] Root ${rootComment.id} has ${children.length} direct children`
+        );
+        return children;
+      })
+      .filter((child) => child instanceof HTMLElement);
+
+    if (!directChildren.length) {
+      this.logDebug(
+        "toggleGrandchildrenForAllRoots: No direct child comments found to toggle."
+      );
+      return;
+    }
+
+    const referenceChild = directChildren.find((child) =>
+      child instanceof HTMLElement
+    );
+    const shouldCollapse = referenceChild
+      ? !this._isCommentCollapsed(referenceChild)
+      : true;
+
+    this.logDebug(
+      `toggleGrandchildrenForAllRoots: action=${shouldCollapse ? "collapse" : "expand"} for ${directChildren.length} direct children`
+    );
+
+    directChildren.forEach((child) => {
+      const isCollapsed = this._isCommentCollapsed(child);
+      if (shouldCollapse && !isCollapsed) {
+        this.logDebug("Collapsing child comment:", child.id);
+        this._toggleComment(child);
+      } else if (!shouldCollapse && isCollapsed) {
+        this.logDebug("Expanding child comment:", child.id);
+        this._toggleComment(child);
+      }
+    });
   }
 
   /**
@@ -782,20 +1222,28 @@ window.HNEnhancer = class HNEnhancer {
     };
 
     try {
-      // Apply the action to all grandchildren using the overridden collapse
+      // Apply the action to all descendants using the overridden collapse
       directChildren.forEach((child) => {
-        const grandchildren = this.domUtils.getDirectChildComments(child); // Use the static method
-        console.log(
-          `[HNE] Child ${child.id} has ${grandchildren.length} grandchildren`
+        const descendantIds = this.domUtils
+          .getDescendantComments(child)
+          .map((desc) => desc.id);
+
+        const descendantElements = descendantIds
+          .map((id) => this.domUtils.findCommentElementById(id))
+          .filter((element) => element instanceof HTMLElement);
+
+        this.logDebug(
+          `[HNE] Child ${child.id} has ${descendantElements.length} descendant nodes`
         );
-        grandchildren.forEach((grandchild) => {
-          const isCollapsed = this._isCommentCollapsed(grandchild);
+
+        descendantElements.forEach((descendant) => {
+          const isCollapsed = this._isCommentCollapsed(descendant);
           if (shouldCollapse && !isCollapsed) {
-            this.logDebug("Collapsing grandchild:", grandchild.id);
-            this._toggleComment(grandchild); // This will now call the temporary window.collapse via .click()
+            this.logDebug("Collapsing descendant:", descendant.id);
+            this._toggleComment(descendant); // This will now call the temporary window.collapse via .click()
           } else if (!shouldCollapse && isCollapsed) {
-            this.logDebug("Expanding grandchild:", grandchild.id);
-            this._toggleComment(grandchild); // This will now call the temporary window.collapse via .click()
+            this.logDebug("Expanding descendant:", descendant.id);
+            this._toggleComment(descendant); // This will now call the temporary window.collapse via .click()
           }
         });
       });
@@ -869,16 +1317,43 @@ window.HNEnhancer = class HNEnhancer {
     focusLink.textContent = "focus";
     focusLink.className = "hn-enhancer-link focus-node-link";
     focusLink.title = "Set as current focused comment for keyboard navigation";
-    
+
     focusLink.addEventListener("click", (e) => {
       e.preventDefault();
       // Set current comment without scrolling since user is already interacting with it
-      this.navigation.setCurrentComment(comment, false); 
+      this.navigation.setCurrentComment(comment, false);
     });
 
     const separator = document.createTextNode(" | ");
     navsSpan.appendChild(separator);
     navsSpan.appendChild(focusLink);
+  }
+
+  /**
+   * Injects a bookmark toggle into a comment header.
+   * @param {HTMLElement} comment - The comment element.
+   */
+  injectBookmarkToggle(comment) {
+    const navsSpan = comment.querySelector(".comhead .navs");
+    if (!navsSpan) return;
+
+    let bookmarkLink = navsSpan.querySelector("a.hn-bookmark-toggle[data-comment-id]");
+    if (!bookmarkLink) {
+      bookmarkLink = document.createElement("a");
+      bookmarkLink.href = "#";
+      bookmarkLink.className = "hn-enhancer-link hn-bookmark-toggle";
+      bookmarkLink.dataset.commentId = this.domUtils.getCommentId(comment);
+      bookmarkLink.title = "Bookmark this author";
+      bookmarkLink.addEventListener("click", async (e) => {
+        e.preventDefault();
+        await this.toggleBookmarkForComment(comment, bookmarkLink);
+      });
+      const separator = document.createTextNode(" | ");
+      navsSpan.appendChild(separator);
+      navsSpan.appendChild(bookmarkLink);
+    }
+
+    this.updateBookmarkLinkState(comment, bookmarkLink);
   }
 
   // --- Helper Methods for Grandchildren Toggling ---

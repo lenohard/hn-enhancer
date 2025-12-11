@@ -2,6 +2,8 @@
  * Manages state persistence for the Hacker News Companion extension
  */
 class HNState {
+  static BOOKMARKED_AUTHORS_KEY = "bookmarkedAuthors";
+
   /**
    * Saves the last seen post ID to local storage
    * @param {string} postId - The ID of the post to save
@@ -48,6 +50,153 @@ class HNState {
     chrome.storage.local.remove("lastSeenPost").catch((_) => {
       // console.error('Error clearing lastSeenPost post state:', _);
     });
+  }
+
+  /**
+   * Retrieves the current list of bookmarked authors.
+   * @returns {Promise<Map<string, object>>} Map keyed by username with bookmark metadata.
+   */
+  static async getBookmarkedAuthors() {
+    try {
+      const data = await chrome.storage.local.get(this.BOOKMARKED_AUTHORS_KEY);
+      const rawBookmarks = data[this.BOOKMARKED_AUTHORS_KEY] || {};
+      const normalized = new Map();
+      Object.entries(rawBookmarks).forEach(([username, bookmark]) => {
+        if (!username) return;
+        const safeBookmark = {
+          username,
+          commentId: bookmark?.commentId || null,
+          permalink: bookmark?.permalink || null,
+          postId: bookmark?.postId || null,
+          bookmarkedAt: bookmark?.bookmarkedAt || Date.now(),
+        };
+        normalized.set(username, safeBookmark);
+      });
+      return normalized;
+    } catch (error) {
+      console.error("Error retrieving bookmarked authors:", error);
+      return new Map();
+    }
+  }
+
+  /**
+   * Saves the provided bookmarks map back to storage.
+   * @param {Map<string, object>} bookmarksMap - Map of username to bookmark data.
+   */
+  static async saveBookmarkedAuthors(bookmarksMap) {
+    if (!(bookmarksMap instanceof Map)) {
+      console.error(
+        "saveBookmarkedAuthors: Expected a Map of bookmarks, received:",
+        bookmarksMap
+      );
+      return;
+    }
+    const serialized = {};
+    bookmarksMap.forEach((value, key) => {
+      if (!key) return;
+      serialized[key] = {
+        username: value?.username || key,
+        commentId: value?.commentId || null,
+        permalink: value?.permalink || null,
+        postId: value?.postId || null,
+        bookmarkedAt: value?.bookmarkedAt || Date.now(),
+      };
+    });
+
+    try {
+      await chrome.storage.local.set({
+        [this.BOOKMARKED_AUTHORS_KEY]: serialized,
+      });
+    } catch (error) {
+      console.error("Error saving bookmarked authors:", error);
+    }
+  }
+
+  /**
+   * Toggles bookmark state for a given author.
+   * @param {object} bookmarkData - Bookmark metadata containing username, commentId, permalink, postId.
+   * @returns {Promise<Map<string, object>>} Updated bookmarks map.
+   */
+  static async toggleBookmarkedAuthor(bookmarkData) {
+    const { username } = bookmarkData || {};
+    if (!username) {
+      console.error("toggleBookmarkedAuthor: Missing username.", bookmarkData);
+      return new Map();
+    }
+    const bookmarks = await this.getBookmarkedAuthors();
+    if (bookmarks.has(username)) {
+      bookmarks.delete(username);
+    } else {
+      bookmarks.set(username, {
+        username,
+        commentId: bookmarkData?.commentId || null,
+        permalink: bookmarkData?.permalink || null,
+        postId: bookmarkData?.postId || null,
+        bookmarkedAt: Date.now(),
+      });
+    }
+    await this.saveBookmarkedAuthors(bookmarks);
+    return bookmarks;
+  }
+
+  /**
+   * Removes a bookmarked author explicitly.
+   * @param {string} username - Username to remove.
+   * @returns {Promise<Map<string, object>>} Updated bookmarks map.
+   */
+  static async removeBookmarkedAuthor(username) {
+    if (!username) {
+      console.error("removeBookmarkedAuthor: Missing username.");
+      return new Map();
+    }
+    const bookmarks = await this.getBookmarkedAuthors();
+    if (bookmarks.has(username)) {
+      bookmarks.delete(username);
+      await this.saveBookmarkedAuthors(bookmarks);
+    }
+    return bookmarks;
+  }
+
+  /**
+   * Subscribes to changes on bookmarked authors.
+   * @param {function(Map<string, object>):void} callback - Invoked when bookmarks change.
+   * @returns {function} Cleanup function to remove the listener.
+   */
+  static subscribeToBookmarkedAuthors(callback) {
+    if (typeof callback !== "function") {
+      console.error(
+        "subscribeToBookmarkedAuthors: Expected a callback function."
+      );
+      return () => {};
+    }
+
+    const listener = (changes, areaName) => {
+      if (areaName !== "local") return;
+      if (!changes[this.BOOKMARKED_AUTHORS_KEY]) return;
+
+      if (changes[this.BOOKMARKED_AUTHORS_KEY].newValue) {
+        const raw = changes[this.BOOKMARKED_AUTHORS_KEY].newValue;
+        const map = new Map();
+        Object.entries(raw).forEach(([username, bookmark]) => {
+          map.set(username, {
+            username,
+            commentId: bookmark?.commentId || null,
+            permalink: bookmark?.permalink || null,
+            postId: bookmark?.postId || null,
+            bookmarkedAt: bookmark?.bookmarkedAt || Date.now(),
+          });
+        });
+        callback(map);
+      } else {
+        callback(new Map());
+      }
+    };
+
+    chrome.storage.onChanged.addListener(listener);
+    // Return cleanup function
+    return () => {
+      chrome.storage.onChanged.removeListener(listener);
+    };
   }
 
   /**

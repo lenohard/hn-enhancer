@@ -49,6 +49,7 @@ Hacker News Companion 是一个浏览器扩展，为 Hacker News 网站提供智
 - 在同一作者的评论之间快速跳转
 - 可折叠的评论线程
 - 按 `?` 查看所有快捷键
+- **新增**: 手动聚焦评论按钮 (`focus`)，方便快速定位
 
 ### 2. AI 驱动的线程摘要
 
@@ -110,12 +111,14 @@ hn-enhancer/
 - 初始化所有子组件
 - 设置键盘快捷键
 - 管理评论导航和交互
+- **近期更新**: 添加 `injectFocusButton` 方法，允许用户手动设置评论焦点
 
 **关键方法**:
 - `constructor()`: 初始化所有组件
 - `setupKeyBoardShortcuts()`: 设置键盘事件监听
 - `initCommentsPageNavigation()`: 初始化评论页导航
 - `initHomePageNavigation()`: 初始化首页导航
+- `injectFocusButton(comment)`: 注入聚焦按钮
 
 **依赖关系**:
 
@@ -205,6 +208,7 @@ hn-enhancer/
 - 帖子导航（首页）
 - 评论导航（评论页）
 - 当前项目高亮
+- 处理 `focus` 按钮点击事件
 
 **关键方法**:
 
@@ -497,3 +501,21 @@ The current summarization caching implementation mixes summaries for entire post
 ### Problematic Code Location
 - `src/summarization.js`: `summarizeThread` and `summarizeTextWithAI`
 - `src/hn-state.js`: `getSummary` and `saveSummary` were functioning correctly but were provided with an ambiguous `commentId`.
+
+## Recent Updates (2025-12-05)
+
+### Manual Focus for Comment Navigation
+**Feature**: Added a "focus" button to each comment header.
+**Purpose**: Allows users to manually set the current focus point for keyboard navigation (`j`/`k` keys) by clicking a button, rather than having to navigate sequentially or use the mouse to find the author element.
+**Changes**:
+- `src/hn-enhancer.js`: Added `injectFocusButton()` method and called it during comment initialization.
+- `src/styles.css`: Added styles for the `.focus-node-link` class.
+- `src/navigation.js`: `setCurrentComment` accepts a second parameter `scrollIntoView` (default `true`). The focus button calls this with `false` to avoid unnecessary scrolling when the user is already looking at the comment.
+### Root-Level Toggle Behaviour & Karma Fetch Throttling (2025-12-11)
+**Root toggle update**: The "Toggle GC" control now flips only the immediate child comments beneath each root. It inspects the first child to decide between collapse/expand and never touches deeper descendants, so root-level toggles no longer cascade unexpectedly.
+- `src/hn-enhancer.js`: `toggleGrandchildrenForAllRoots()` now flattens root comments into their direct children and calls `_toggleComment` on each child individually, logging the action for debugging.
+
+**Karma fetch throttling**: Author karma requests are capped at ~20 per page load and aggressively cached to stay gentle on Hacker News.
+- `src/hn-enhancer.js`: `buildKarmaStatistics()` scans at most `KARMA_FETCH_SCAN_LIMIT = 20` root authors and pauses `KARMA_FETCH_DELAY_MS = 2000` between uncached fetches (≈40 seconds worst case).
+- `src/author-tracking.js`: `AuthorTracking.USER_INFO_CACHE_TTL_MS` extends to 24 hours, while `HNEnhancer.KARMA_ERROR_CACHE_TTL_MS = 30000` ms softens retries after failures.
+- Karma stats are memoized per item id so refreshing the same thread reuses cached numbers without extra network traffic.

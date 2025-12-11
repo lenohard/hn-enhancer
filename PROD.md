@@ -1,4 +1,4 @@
-# 通用网页内容AI对话功能设计文档
+## 通用网页内容AI对话功能设计文档
 
 ## 功能概述
 
@@ -351,3 +351,8 @@ static detectLanguage(text) {
 - **学习路径**: 基于用户兴趣推荐相关内容
 
 这个设计文档为通用网页内容AI对话功能提供了全面的规划，确保功能的可行性、用户体验和技术实现的平衡。
+
+## 2025-12-10 Bookmarked Hacker News Authors
+- Task doc: local/docs/2025-12-10-bookmarked-users.md
+- Status: In Progress
+- Summary: Implement bookmarking of HN replies, highlight comments by bookmarked authors, and surface them in statistics with jump links.
