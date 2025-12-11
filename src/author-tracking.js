@@ -2,10 +2,13 @@
  * Handles author tracking functionality for the Hacker News Companion extension
  */
 class AuthorTracking {
+    static USER_INFO_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
     constructor(enhancer) {
         this.enhancer = enhancer;
         this.popup = this.createAuthorPopup();
         this.postAuthor = this.getPostAuthor();
+        this.userInfoCache = new Map();
         this.authorComments = this.createAuthorCommentsMap();
     }
 
@@ -30,6 +33,9 @@ class AuthorTracking {
                     authorCommentsMap.set(author, []);
                 }
                 authorCommentsMap.get(author).push(comment);
+
+                // Warm the cache with references to the comment for later statistics usage
+                this.cacheUserComment(author, comment);
             }
         });
 
@@ -149,7 +155,7 @@ class AuthorTracking {
         document.querySelectorAll('.hnuser').forEach(authorElement => {
             authorElement.addEventListener('mouseenter', async (e) => {
                 const username = e.target.textContent.replace(/[^a-zA-Z0-9_-]/g, '');
-                const userInfo = await this.enhancer.apiClient.fetchUserInfo(username);
+                const userInfo = await this.getCachedUserInfo(username, () => this.enhancer.apiClient.fetchUserInfo(username));
 
                 if (userInfo) {
                     this.popup.innerHTML = `
@@ -163,10 +169,6 @@ class AuthorTracking {
                     this.popup.style.top = `${rect.bottom + window.scrollY + 5}px`;
                     this.popup.style.display = 'block';
                 }
-            });
-
-            authorElement.addEventListener('mouseleave', () => {
-                this.popup.style.display = 'none';
             });
         });
 
@@ -183,6 +185,53 @@ class AuthorTracking {
                 this.popup.style.display = 'none';
             }
         });
+    }
+
+    cacheUserComment(username, commentElement) {
+        if (!username || !commentElement) {
+            return;
+        }
+
+        const existing = this.userInfoCache.get(username) || {};
+        const firstComment = existing.firstCommentElement || commentElement;
+        this.userInfoCache.set(username, {
+            ...existing,
+            firstCommentElement: firstComment,
+        });
+    }
+
+    async getCachedUserInfo(username, fetcher) {
+        if (!username) {
+            return null;
+        }
+
+        const cached = this.userInfoCache.get(username);
+        const now = Date.now();
+
+        if (cached && cached.userInfo && now - cached.timestamp < AuthorTracking.USER_INFO_CACHE_TTL_MS) {
+            return cached.userInfo;
+        }
+
+        try {
+            const userInfo = await fetcher();
+            const firstCommentElement = cached?.firstCommentElement || this.authorComments.get(username)?.[0] || null;
+
+            this.userInfoCache.set(username, {
+                ...cached,
+                userInfo,
+                timestamp: now,
+                firstCommentElement,
+            });
+
+            return userInfo;
+        } catch (error) {
+            this.userInfoCache.set(username, {
+                ...cached,
+                timestamp: now,
+                error,
+            });
+            throw error;
+        }
     }
 }
 
