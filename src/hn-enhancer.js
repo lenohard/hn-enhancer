@@ -12,10 +12,10 @@ window.HNEnhancer = class HNEnhancer {
   };
 
   static BOOKMARK_HIGHLIGHT_CLASS = "hn-bookmarked-comment";
-  static KARMA_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  static KARMA_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
   static KARMA_ERROR_CACHE_TTL_MS = 30 * 1000; // retry sooner after failures
   static KARMA_FETCH_SCAN_LIMIT = 20; // maximum authors to inspect per run (root comments only)
-  static KARMA_FETCH_DELAY_MS = 2000; // throttle between requests
+  static KARMA_FETCH_DELAY_MS = 500; // reduced throttle between requests
 
   /**
    * Creates a new HNEnhancer instance
@@ -384,6 +384,7 @@ window.HNEnhancer = class HNEnhancer {
 
     let targetComment = null;
 
+    // First try to find the specific bookmarked comment if we have its ID
     if (bookmark?.commentId) {
       targetComment = document.getElementById(bookmark.commentId);
       if (targetComment) {
@@ -391,6 +392,7 @@ window.HNEnhancer = class HNEnhancer {
       }
     }
 
+    // If that fails, try to find any comment by this author on the current page
     if (!targetComment) {
       const authorNode = Array.from(
         document.querySelectorAll(".athing.comtr .hnuser")
@@ -400,14 +402,47 @@ window.HNEnhancer = class HNEnhancer {
       }
     }
 
-    if (!targetComment) {
-      console.warn(
-        `No comment by ${username} found on this page for bookmark navigation.`
-      );
+    // If we found a comment on this page, navigate to it
+    if (targetComment) {
+      this.navigation.setCurrentComment(targetComment, true);
       return;
     }
 
-    this.navigation.setCurrentComment(targetComment, true);
+    // If no comment found on this page, check if we have a bookmark from another post
+    if (bookmark?.permalink) {
+      // Show a message to the user
+      const message = document.createElement("div");
+      message.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #ff6600;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 4px;
+        z-index: 10000;
+        font-family: Verdana, Geneva, sans-serif;
+        font-size: 13px;
+      `;
+      message.textContent = `No comments by ${username} on this page. Opening bookmarked comment from another post...`;
+      document.body.appendChild(message);
+
+      // Open the bookmarked comment in a new tab
+      window.open(bookmark.permalink, "_blank");
+
+      // Remove the message after 3 seconds
+      setTimeout(() => {
+        if (message.parentNode) {
+          message.parentNode.removeChild(message);
+        }
+      }, 3000);
+      return;
+    }
+
+    console.warn(
+      `No comment by ${username} found on this page for bookmark navigation.`
+    );
   }
 
   setupKeyBoardShortcuts() {
@@ -583,6 +618,11 @@ window.HNEnhancer = class HNEnhancer {
       return cached.results || [];
     }
 
+    // Create a global user karma cache that persists across posts
+    if (!this.globalKarmaCache) {
+      this.globalKarmaCache = new Map();
+    }
+
     const orderedAuthors =
       rootAuthorOrder && rootAuthorOrder.length
         ? rootAuthorOrder
@@ -621,14 +661,37 @@ window.HNEnhancer = class HNEnhancer {
       if (!comments.length) {
         continue;
       }
-      try {
-        const info = await this.authorTracking.getCachedUserInfo(
-          username,
-          () => this.apiClient.fetchUserInfo(username)
-        );
-        if (!info || typeof info.karma !== "number") {
-          continue;
+
+      let info = null;
+      let needFetch = false;
+
+      // Check global cache first
+      const globalCached = this.globalKarmaCache.get(username);
+      if (globalCached && now - globalCached.timestamp < HNEnhancer.KARMA_CACHE_TTL_MS) {
+        info = globalCached.userInfo;
+      } else {
+        needFetch = true;
+      }
+
+      // If not in global cache or expired, try the author tracking cache
+      if (!info) {
+        try {
+          info = await this.authorTracking.getCachedUserInfo(
+            username,
+            () => this.apiClient.fetchUserInfo(username)
+          );
+        } catch (error) {
+          console.warn(`Failed fetching karma for ${username}:`, error);
         }
+      }
+
+      // If we have valid info, update both caches and add to results
+      if (info && typeof info.karma === "number") {
+        // Update global cache
+        this.globalKarmaCache.set(username, {
+          userInfo: info,
+          timestamp: now,
+        });
 
         const commentElement =
           comments?.find((entry) => entry.isRoot)?.commentRow || null;
@@ -639,12 +702,11 @@ window.HNEnhancer = class HNEnhancer {
           karma: info.karma,
           commentElement,
         });
-      } catch (error) {
-        console.warn(`Failed fetching karma for ${username}:`, error);
       }
 
+      // Only delay if we need to fetch from API
       const hasMoreAuthors = index < entries.length - 1;
-      if (hasMoreAuthors) {
+      if (hasMoreAuthors && needFetch) {
         await new Promise((resolve) =>
           setTimeout(resolve, HNEnhancer.KARMA_FETCH_DELAY_MS)
         );
@@ -964,7 +1026,7 @@ window.HNEnhancer = class HNEnhancer {
       '[data-stat-list="highest-karma-users"] ul'
     );
     if (listElement && (!karmaData || karmaData.length === 0)) {
-      listElement.innerHTML = "<li>Limited by API rate (try again later)</li>";
+      listElement.innerHTML = "<li>No karma data available</li>";
     }
 
     updateBookmarkedUsers();

@@ -227,7 +227,7 @@ class UIComponents {
                 </div>
                 <div class="stat-item">
                     <div class="stat-label">Users with Highest Karma:</div>
-                    <div class="stat-value" data-stat-list="highest-karma-users"><ul><li>Loading…</li></ul></div>
+                    <div class="stat-value" data-stat-list="highest-karma-users"><ul><li>Loading from cache…</li></ul></div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-label">Bookmarked Users:</div>
