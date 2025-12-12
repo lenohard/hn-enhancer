@@ -12,10 +12,10 @@ window.HNEnhancer = class HNEnhancer {
   };
 
   static BOOKMARK_HIGHLIGHT_CLASS = "hn-bookmarked-comment";
-  static KARMA_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+  static KARMA_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
   static KARMA_ERROR_CACHE_TTL_MS = 30 * 1000; // retry sooner after failures
   static KARMA_FETCH_SCAN_LIMIT = 20; // maximum authors to inspect per run (root comments only)
-  static KARMA_FETCH_DELAY_MS = 500; // reduced throttle between requests
+  static KARMA_FETCH_DELAY_MS = 2000; // throttle between requests
 
   /**
    * Creates a new HNEnhancer instance
@@ -910,6 +910,9 @@ window.HNEnhancer = class HNEnhancer {
         listElement.innerHTML = "<li>None</li>";
         return;
       }
+
+      // Debug: Log all bookmarked authors
+      console.log("All bookmarked authors:", Array.from(bookmarkedAuthors.keys()));
 
       Array.from(bookmarkedAuthors.values())
         .sort((a, b) => a.username.localeCompare(b.username))

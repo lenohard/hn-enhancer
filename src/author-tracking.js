@@ -2,7 +2,7 @@
  * Handles author tracking functionality for the Hacker News Companion extension
  */
 class AuthorTracking {
-    static USER_INFO_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+    static USER_INFO_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
     constructor(enhancer) {
         this.enhancer = enhancer;
