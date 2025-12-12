@@ -911,9 +911,6 @@ window.HNEnhancer = class HNEnhancer {
         return;
       }
 
-      // Debug: Log all bookmarked authors
-      console.log("All bookmarked authors:", Array.from(bookmarkedAuthors.keys()));
-
       Array.from(bookmarkedAuthors.values())
         .sort((a, b) => a.username.localeCompare(b.username))
         .forEach((bookmark) => {
