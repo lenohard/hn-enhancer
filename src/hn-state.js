@@ -3,6 +3,7 @@
  */
 class HNState {
   static BOOKMARKED_AUTHORS_KEY = "bookmarkedAuthors";
+  static KARMA_STATS_KEY = "karmaStats";
 
   /**
    * Saves the last seen post ID to local storage
@@ -60,23 +61,30 @@ class HNState {
     try {
       const data = await chrome.storage.local.get(this.BOOKMARKED_AUTHORS_KEY);
       const rawBookmarks = data[this.BOOKMARKED_AUTHORS_KEY] || {};
-      const normalized = new Map();
-      Object.entries(rawBookmarks).forEach(([username, bookmark]) => {
-        if (!username) return;
-        const safeBookmark = {
-          username,
-          commentId: bookmark?.commentId || null,
-          permalink: bookmark?.permalink || null,
-          postId: bookmark?.postId || null,
-          bookmarkedAt: bookmark?.bookmarkedAt || Date.now(),
-        };
-        normalized.set(username, safeBookmark);
-      });
-      return normalized;
+      return this.deserializeBookmarks(rawBookmarks);
     } catch (error) {
       console.error("Error retrieving bookmarked authors:", error);
       return new Map();
     }
+  }
+
+  static deserializeBookmarks(rawBookmarks) {
+    const normalized = new Map();
+    if (!rawBookmarks || typeof rawBookmarks !== "object") {
+      return normalized;
+    }
+    Object.entries(rawBookmarks).forEach(([username, bookmark]) => {
+      if (!username) return;
+      const safeBookmark = {
+        username,
+        commentId: bookmark?.commentId || null,
+        permalink: bookmark?.permalink || null,
+        postId: bookmark?.postId || null,
+        bookmarkedAt: bookmark?.bookmarkedAt || Date.now(),
+      };
+      normalized.set(username, safeBookmark);
+    });
+    return normalized;
   }
 
   /**
@@ -157,6 +165,78 @@ class HNState {
     return bookmarks;
   }
 
+  static serializeKarmaStats(statsMap) {
+    if (!(statsMap instanceof Map)) {
+      return {};
+    }
+    const serialized = {};
+    statsMap.forEach((value, key) => {
+      serialized[key] = value;
+    });
+    return serialized;
+  }
+
+  static deserializeKarmaStats(rawStats) {
+    if (!rawStats || typeof rawStats !== "object") {
+      return new Map();
+    }
+    const map = new Map();
+    Object.entries(rawStats).forEach(([key, value]) => {
+      map.set(key, value);
+    });
+    return map;
+  }
+
+  static async saveKarmaStats(postId, stats = []) {
+    if (!postId) {
+      console.warn("saveKarmaStats: Missing postId.");
+      return;
+    }
+    try {
+      const data = await chrome.storage.local.get(this.KARMA_STATS_KEY);
+      const existing = data[this.KARMA_STATS_KEY] || {};
+      existing[postId] = {
+        stats,
+        savedAt: Date.now(),
+      };
+      await chrome.storage.local.set({
+        [this.KARMA_STATS_KEY]: existing,
+      });
+    } catch (error) {
+      console.error("Error saving karma stats:", error);
+    }
+  }
+
+  static async getSavedKarmaStats(postId) {
+    if (!postId) {
+      return null;
+    }
+    try {
+      const data = await chrome.storage.local.get(this.KARMA_STATS_KEY);
+      const stored = data[this.KARMA_STATS_KEY];
+      if (!stored || !stored[postId]) {
+        return null;
+      }
+      const entry = stored[postId];
+      if (
+        !entry ||
+        !entry.stats ||
+        !Array.isArray(entry.stats) ||
+        entry.stats.length === 0
+      ) {
+        return null;
+      }
+      const age = Date.now() - (entry.savedAt || 0);
+      if (age > HNEnhancer.KARMA_STORAGE_TTL_MS) {
+        return null;
+      }
+      return entry.stats;
+    } catch (error) {
+      console.error("Error retrieving saved karma stats:", error);
+      return null;
+    }
+  }
+
   /**
    * Subscribes to changes on bookmarked authors.
    * @param {function(Map<string, object>):void} callback - Invoked when bookmarks change.
@@ -176,17 +256,7 @@ class HNState {
 
       if (changes[this.BOOKMARKED_AUTHORS_KEY].newValue) {
         const raw = changes[this.BOOKMARKED_AUTHORS_KEY].newValue;
-        const map = new Map();
-        Object.entries(raw).forEach(([username, bookmark]) => {
-          map.set(username, {
-            username,
-            commentId: bookmark?.commentId || null,
-            permalink: bookmark?.permalink || null,
-            postId: bookmark?.postId || null,
-            bookmarkedAt: bookmark?.bookmarkedAt || Date.now(),
-          });
-        });
-        callback(map);
+        callback(this.deserializeBookmarks(raw));
       } else {
         callback(new Map());
       }

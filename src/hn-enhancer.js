@@ -16,6 +16,7 @@ window.HNEnhancer = class HNEnhancer {
   static KARMA_ERROR_CACHE_TTL_MS = 30 * 1000; // retry sooner after failures
   static KARMA_FETCH_SCAN_LIMIT = 20; // maximum authors to inspect per run (root comments only)
   static KARMA_FETCH_DELAY_MS = 2000; // throttle between requests
+  static KARMA_STORAGE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours for cached display
 
   /**
    * Creates a new HNEnhancer instance
@@ -314,8 +315,26 @@ window.HNEnhancer = class HNEnhancer {
       try {
         const stats = this.domUtils.calculateCommentStatistics();
         this.updateStatisticsPanel(stats, this.bookmarkedAuthors);
+        const postId = this.domUtils.getCurrentHNItemId?.();
+        this.hnState
+          .getSavedKarmaStats(postId)
+          .then((cachedStats) => {
+            if (cachedStats && cachedStats.length > 0) {
+              this.updateStatisticsPanel(
+                { ...stats, topKarmaUsers: cachedStats },
+                this.bookmarkedAuthors
+              );
+            }
+          })
+          .catch((error) => {
+            console.warn("Failed to read cached karma stats:", error);
+          });
+
         this.buildKarmaStatistics(stats.authorComments, stats.rootAuthorOrder)
           .then((topKarmaUsers) => {
+            if (topKarmaUsers && topKarmaUsers.length > 0) {
+              this.hnState.saveKarmaStats(postId, topKarmaUsers);
+            }
             this.updateStatisticsPanel(
               { ...stats, topKarmaUsers },
               this.bookmarkedAuthors
@@ -911,10 +930,37 @@ window.HNEnhancer = class HNEnhancer {
         return;
       }
 
-      Array.from(bookmarkedAuthors.values())
+      const authorsWithComments = new Set();
+      const authorCommentsMap = stats?.authorComments;
+      if (authorCommentsMap) {
+        if (authorCommentsMap instanceof Map) {
+          authorCommentsMap.forEach((_entries, author) => {
+            if (author) {
+              authorsWithComments.add(author);
+            }
+          });
+        } else if (Array.isArray(authorCommentsMap)) {
+          authorCommentsMap.forEach((entry) => {
+            const author = entry?.author || entry?.username;
+            if (author) {
+              authorsWithComments.add(author);
+            }
+          });
+        }
+      }
+
+      const bookmarksOnPage = Array.from(bookmarkedAuthors.values()).filter(
+        (bookmark) => bookmark?.username && authorsWithComments.has(bookmark.username)
+      );
+
+      if (bookmarksOnPage.length === 0) {
+        listElement.innerHTML = "<li>None on this page</li>";
+        return;
+      }
+
+      bookmarksOnPage
         .sort((a, b) => a.username.localeCompare(b.username))
         .forEach((bookmark) => {
-          if (!bookmark?.username) return;
           const listItem = document.createElement("li");
           const link = document.createElement("a");
           link.href = bookmark.permalink || "#";
