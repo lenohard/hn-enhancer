@@ -822,7 +822,7 @@ class Summarization {
     }
 
     try {
-      const { maxTokens, temperature } = await this.getAIProviderModel();
+      const { maxTokens, litellmUrl } = await this.getAIProviderModel();
       const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
       const { systemPrompt, userPrompt } = await this.preparePrompts(
         tokenLimitText
@@ -835,9 +835,10 @@ class Summarization {
         model,
         apiKey,
         maxTokens,
-        temperature,
         streamingEnabled,
-        isAnthropic
+        isAnthropic,
+        isLiteLLM,
+        litellmUrl
       );
 
       if (streamingEnabled && messageType !== "DEEPSEEK_API_REQUEST") {
@@ -894,16 +895,18 @@ class Summarization {
     model,
     apiKey,
     maxTokens,
-    temperature,
     streamingEnabled,
-    isAnthropic
+    isAnthropic,
+    isLiteLLM = false,
+    litellmUrl = "http://127.0.0.1:4000"
   ) {
     const baseData = {
       apiKey,
       model,
-      temperature,
       streaming: streamingEnabled,
       ...(messageType !== "LITELLM_API_REQUEST" && { max_tokens: maxTokens }),
+      ...(isLiteLLM && { url: litellmUrl }),
+      include_usage: true,
     };
 
     if (isAnthropic) {
@@ -990,7 +993,7 @@ class Summarization {
     }
 
     try {
-      const { maxTokens, temperature } = await this.getAIProviderModel();
+      const { maxTokens } = await this.getAIProviderModel();
       const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
       const { systemPrompt, userPrompt } = await this.preparePrompts(
         tokenLimitText
@@ -1004,7 +1007,6 @@ class Summarization {
           systemPrompt,
           userPrompt,
           max_tokens: maxTokens,
-          temperature,
         }
       );
 
@@ -1073,6 +1075,7 @@ Follow these guidelines:
 1. Discussion Structure Understanding:
    Comments are formatted as: [hierarchy_path] (score: X) <replies: Y> {downvotes: Z} Author: Comment
    - hierarchy_path: Shows the comment's position in the discussion tree
+   - You can cite multiple comments by separating paths with commas, e.g., [1.2, 1.3]
    - score: A normalized value between 1000 and 1, representing the comment's relative importance
    - replies: Number of direct responses to this comment
    - downvotes: Number of downvotes the comment received (exclude comments with 4+ downvotes)

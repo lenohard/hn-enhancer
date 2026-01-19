@@ -89,21 +89,53 @@ class MarkdownUtils {
      * @returns {string} The text with paths replaced with links
      */
     static replacePathsWithCommentLinks(text, commentPathToIdMap) {
-        // Regular expression to match bracketed paths, optionally followed by descriptive text
-        // Matches patterns like [1], [1.1], [1.1.2 author], etc.
-        const pathRegex = /\[(\d+(?:\.\d+)*)(\s+[^\]]+)?]/g;
-
-        // Replace each match with an HTML link
-        return text.replace(pathRegex, (match, path) => {
-            const id = commentPathToIdMap.get(path);
-            if (!id) {
-                return match; // If no ID found, return original text
+        // Regex to find [...] blocks
+        return text.replace(/\[([^\]]+)\]/g, (match, content) => {
+            // Check if content is a list of paths (digits, dots, commas, spaces only)
+            // And contains at least one digit (to avoid empty [] or just [,,])
+            if (/^[\d\.,\s]+$/.test(content) && /\d/.test(content)) {
+                const parts = content.split(',');
+                
+                const linkedParts = parts.map(part => {
+                    // split by comma might leave spaces, e.g. " 1.2"
+                    // we need to preserve spaces in the output if we want to be exact, 
+                    // but for [1.2, 1.3], usually we just want the link on the number.
+                    // Let's try to preserve leading/trailing spaces for the non-link parts if we can,
+                    // but split(',') consumes the comma. 
+                    // Simpler: trim the part to find the path.
+                    
+                    const trimmed = part.trim();
+                    if (/^\d+(?:\.\d+)*$/.test(trimmed)) {
+                        const id = commentPathToIdMap.get(trimmed);
+                        if (id) {
+                             return part.replace(trimmed, `<a href="#"
+                                       title="Go to comment #${id}"
+                                       data-comment-link="true" data-comment-id="${id}" data-comment-path="${trimmed}"
+                                       style="color: rgb(130, 130, 130); text-decoration: underline;"
+                                    >${trimmed}</a>`);
+                        }
+                    }
+                    return part;
+                });
+                return `[${linkedParts.join(',')}]`;
             }
-            return `<a href="#"
-                       title="Go to comment #${id}"
-                       data-comment-link="true" data-comment-id="${id}" data-comment-path="${path}"
-                       style="color: rgb(130, 130, 130); text-decoration: underline;"
-                    >${match}</a>`;
+
+            // Fallback for "path + description" -> [1.2.3 some text]
+            // We want to link the whole thing to 1.2.3
+            const pathMatch = content.match(/^(\d+(?:\.\d+)*)(\s+.*)$/);
+            if (pathMatch) {
+                const path = pathMatch[1];
+                const id = commentPathToIdMap.get(path);
+                if (id) {
+                     return `<a href="#"
+                           title="Go to comment #${id}"
+                           data-comment-link="true" data-comment-id="${id}" data-comment-path="${path}"
+                           style="color: rgb(130, 130, 130); text-decoration: underline;"
+                        >${match}</a>`;
+                }
+            }
+
+            return match;
         });
     }
 }

@@ -48,6 +48,7 @@ async function saveSettings() {
     litellm: {
       apiKey: document.getElementById("litellm-key").value,
       model: document.getElementById("litellm-model").value,
+      url: document.getElementById("litellm-url").value,
     },
   };
 
@@ -211,9 +212,11 @@ async function fetchLiteLLMModels() {
   try {
     // Get the API key from the input field (optional for LiteLLM)
     const apiKey = document.getElementById("litellm-key").value;
+    const url = document.getElementById("litellm-url").value;
 
     const data = await sendBackgroundMessage("FETCH_LITELLM_MODELS", {
       apiKey: apiKey || undefined,
+      url: url,
     });
 
     const inputElement = document.getElementById("litellm-model");
@@ -519,6 +522,8 @@ async function loadSettings() {
       if (settings.litellm) {
         document.getElementById("litellm-key").value =
           settings.litellm.apiKey || "";
+        document.getElementById("litellm-url").value =
+          settings.litellm.url || "http://127.0.0.1:4000";
         // Load LiteLLM models first, then set the selected model
         await loadLiteLLMModels();
         const litellmModelElement = document.getElementById("litellm-model");
@@ -562,6 +567,8 @@ async function testProviderConnection() {
         testData = {
           apiKey: document.getElementById("openai-key").value,
           model: document.getElementById("openai-model").value,
+          streaming: true,
+          include_usage: true,
           messages: [
             { role: "system", content: "You are a helpful assistant." },
             { role: "user", content: testMessage },
@@ -572,6 +579,8 @@ async function testProviderConnection() {
         testData = {
           apiKey: document.getElementById("anthropic-key").value,
           model: document.getElementById("anthropic-model").value,
+          streaming: true,
+          include_usage: true,
           messages: [{ role: "user", content: testMessage }],
         };
         break;
@@ -587,6 +596,8 @@ async function testProviderConnection() {
         testData = {
           apiKey: document.getElementById("deepseek-key").value,
           model: document.getElementById("deepseek-model").value,
+          streaming: true,
+          include_usage: true,
           messages: [
             { role: "system", content: "You are a helpful assistant." },
             { role: "user", content: testMessage },
@@ -596,6 +607,8 @@ async function testProviderConnection() {
       case "ollama":
         testData = {
           model: document.getElementById("ollama-model").value,
+          streaming: true,
+          include_usage: true,
           messages: [
             { role: "system", content: "You are a helpful assistant." },
             { role: "user", content: testMessage },
@@ -606,6 +619,9 @@ async function testProviderConnection() {
         testData = {
           apiKey: document.getElementById("litellm-key").value,
           model: document.getElementById("litellm-model").value,
+          url: document.getElementById("litellm-url").value,
+          streaming: true,
+          include_usage: true,
           messages: [
             { role: "system", content: "You are a helpful assistant." },
             { role: "user", content: testMessage },
@@ -623,6 +639,11 @@ async function testProviderConnection() {
     );
 
     console.log("测试响应:", response);
+
+    if (response?.streaming || response?.success) {
+      showTestResult("连接测试成功 (流式响应)", "success");
+      return;
+    }
 
     // Check if the response is valid
     if (response) {

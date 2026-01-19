@@ -1,7 +1,7 @@
 # AI Provider Integration Guide for HN Enhancer
 
 ## Overview
-This document serves as a comprehensive guide for adding new AI providers to the HN Enhancer browser extension. It documents the architecture, implementation patterns, and step-by-step process learned during the LiteLLM integration.
+This document serves as a comprehensive guide for adding new AI providers to the HN Enhancer browser extension. It documents the architecture, implementation patterns, and step-by-step process learned during the Local Router (LiteLLM) integration.
 
 ## Architecture Overview
 
@@ -304,7 +304,7 @@ const cancelButton = document.querySelector('button[type="button"]:not(#test-con
 
 ### API Key Requirements
 - **Required**: OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter
-- **Optional**: LiteLLM (depends on underlying model), Ollama (local)
+- **Optional**: Local Router (LiteLLM, depends on underlying model), Ollama (local)
 - **Not needed**: Chrome Built-in AI
 
 Update the API key validation in `handleChatRequest`:
@@ -317,7 +317,7 @@ if (!apiKey && provider !== "ollama" && provider !== "chrome-ai" && provider !==
 ### Response Format Handling
 Different providers return different response formats:
 
-- **OpenAI-compatible** (OpenAI, LiteLLM, DeepSeek, OpenRouter, Gemini): `response.choices[0].message.content`
+- **OpenAI-compatible** (OpenAI, Local Router (LiteLLM), DeepSeek, OpenRouter, Gemini): `response.choices[0].message.content`
 - **Anthropic**: `response.content[0].text`
 - **Ollama**: `response.message.content`
 - **Chrome AI**: `response.summary`
@@ -367,11 +367,13 @@ Implement provider-specific error messages:
 - [ ] Error handling displays appropriate messages
 - [ ] Settings persist across browser sessions
 
-## LiteLLM Specific Implementation
+## Local Router (LiteLLM) Specific Implementation
 
 ### Base URL
-- Chat endpoint: `http://127.0.0.1:4000/chat/completions`
-- Models endpoint: `http://127.0.0.1:4000/models`
+- Default: `http://127.0.0.1:4000`
+- Chat endpoint: `{base_url}/chat/completions`
+- Models endpoint: `{base_url}/models`
+- **Note**: The base URL is now configurable in the extension settings
 
 ### Key Features
 - OpenAI-compatible API format
@@ -381,7 +383,7 @@ Implement provider-specific error messages:
 
 ### Special Considerations
 - API key is optional for local models but may be required for cloud providers
-- Model names depend on LiteLLM configuration
+- Model names depend on Local Router (LiteLLM) configuration
 - Server must be running locally for functionality
 
 ## Common Pitfalls
@@ -404,4 +406,4 @@ Implement provider-specific error messages:
 
 ---
 
-*This document was created during the LiteLLM integration process and should be updated as the architecture evolves.*
+*This document was created during the Local Router (LiteLLM) integration process and should be updated as the architecture evolves.*

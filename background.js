@@ -157,7 +157,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const language = settingsData.settings?.language || "en";
           const maxTokens = settingsData.settings?.maxTokens || 100000;
           const temperature = settingsData.settings?.temperature || 0.7;
-          return { aiProvider, model, language, maxTokens, temperature };
+          const litellmUrl = settingsData.settings?.litellm?.url || "http://127.0.0.1:4000";
+          return { aiProvider, model, language, maxTokens, temperature, litellmUrl };
         },
         sendResponse
       );
@@ -170,20 +171,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       );
 
     case "OPENAI_API_REQUEST":
-      if (message.data.streaming) {
-        return handleStreamingMessage(
-          message,
-          sender,
-          async () => await handleOpenAIRequest(message.data),
-          sendResponse
-        );
-      } else {
-        return handleAsyncMessage(
-          message,
-          async () => await handleOpenAIRequest(message.data),
-          sendResponse
-        );
-      }
+      return handleStreamingMessage(
+        message,
+        sender,
+        async () => await handleOpenAIRequest(message.data),
+        sendResponse
+      );
 
     case "ANTHROPIC_API_REQUEST":
       if (message.data.streaming) {
@@ -405,7 +398,7 @@ async function handleOpenAIRequest(data) {
     messages,
     streaming = false,
     max_tokens = 2048,
-    temperature = 0.7,
+    include_usage = false,
   } = data;
 
   console.log("处理OpenAI API请求，模型:", model, "流式:", streaming);
@@ -422,10 +415,13 @@ async function handleOpenAIRequest(data) {
   const payload = {
     model: model,
     messages: messages,
-    temperature: temperature,
     max_tokens: max_tokens,
     stream: streaming,
   };
+
+  if (include_usage) {
+    payload.include_usage = true;
+  }
 
   // Log the payload being sent
   console.log("OpenAI 请求负载:", JSON.stringify(payload, null, 2));
@@ -661,7 +657,7 @@ async function handleDeepSeekRequest(data) {
 // Handle Chat Request (routes to specific provider handlers)
 async function handleChatRequest(data) {
   // The 'messages' received here is the full conversation history
-  const { provider, model, messages, streaming = false } = data;
+  const { provider, model, messages, streaming = false, url } = data;
   console.log(`处理聊天请求，提供者: ${provider}, 模型: ${model}`);
   console.log("收到的完整对话历史:", JSON.stringify(messages, null, 2));
 
@@ -750,11 +746,13 @@ async function handleChatRequest(data) {
 
       case "litellm":
         // Pass messages array directly (same format as OpenAI)
+        const litellmUrl = url || settingsData.settings?.litellm?.url || "http://127.0.0.1:4000";
         const litellmResponse = await handleLiteLLMRequest({
           apiKey,
           model,
           messages,
           streaming: shouldStream,
+          url: litellmUrl,
         });
         if (shouldStream) {
           return litellmResponse;
@@ -781,7 +779,7 @@ async function handleLiteLLMRequest(data) {
     model,
     messages,
     streaming = false,
-    temperature = 0.7,
+    url = "http://127.0.0.1:4000",
   } = data;
 
   console.log("处理LiteLLM API请求，模型:", model, "流式:", streaming);
@@ -791,16 +789,22 @@ async function handleLiteLLMRequest(data) {
     throw new Error("Missing required parameters for LiteLLM API request");
   }
 
-  const endpoint = "http://127.0.0.1:4000/chat/completions";
+  // Normalize URL by removing trailing slash and appending /chat/completions
+  const baseUrl = url.replace(/\/$/, '');
+  const endpoint = `${baseUrl}/chat/completions`;
 
   console.log("LiteLLM API端点:", endpoint);
 
   const payload = {
     model: model,
     messages: messages,
-    temperature: temperature,
     stream: streaming,
   };
+
+  if (data.include_usage) {
+    payload.include_usage = true;
+  }
+
 
   // API key should only be in Authorization header, not in request body for LiteLLM proxy
 
@@ -937,11 +941,13 @@ async function handleFetchGeminiModels(data) {
 
 // Handle fetching LiteLLM models
 async function handleFetchLiteLLMModels(data) {
-  const { apiKey } = data;
+  const { apiKey, url = "http://127.0.0.1:4000" } = data;
 
   console.log("处理获取LiteLLM模型列表请求");
 
-  const endpoint = "http://127.0.0.1:4000/models";
+  // Normalize URL by removing trailing slash and appending /models
+  const baseUrl = url.replace(/\/$/, '');
+  const endpoint = `${baseUrl}/models`;
 
   console.log("LiteLLM模型列表API端点:", endpoint);
 

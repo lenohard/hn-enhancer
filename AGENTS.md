@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-Hacker News Companion 是一个浏览器扩展，为 Hacker News 网站提供智能导航、AI 驱动的摘要和增强的用户交互功能。该扩展支持 Chrome 和 Firefox 浏览器，集成了多种 AI 提供商，包括 OpenAI、Anthropic、Google Gemini、DeepSeek、LiteLLM、Chrome 内置 AI 和本地 Ollama 模型。
+Hacker News Companion 是一个浏览器扩展，为 Hacker News 网站提供智能导航、AI 驱动的摘要和增强的用户交互功能。该扩展支持 Chrome 和 Firefox 浏览器，集成了多种 AI 提供商，包括 OpenAI、Anthropic、Google Gemini、DeepSeek、OpenAI Router (LiteLLM), Chrome 内置 AI 和本地 Ollama 模型。
 
 ## 开发环境
 
@@ -147,7 +147,7 @@ hn-enhancer/
 
 **关键功能**:
 
-- 支持多种 AI 提供商（OpenAI、Anthropic、Gemini、DeepSeek、LiteLLM、Chrome AI、Ollama）
+- 支持多种 AI 提供商（OpenAI、Anthropic、Gemini、DeepSeek、OpenAI Router (LiteLLM)、Chrome AI、Ollama）
 - 摘要评论线程
 - 摘要整个帖子
 - 可配置的参数（max_tokens、temperature）
@@ -312,7 +312,7 @@ hn-enhancer/
 - Anthropic (Claude 系列)
 - Google Gemini
 - DeepSeek
-- LiteLLM
+- OpenAI Router (LiteLLM)
 - Chrome 内置 AI
 - Ollama (本地模型)
 
@@ -407,7 +407,7 @@ hn-enhancer/
 
 - ✅ OpenAI: 完整的流式支持，带有增量内容
 - ✅ Anthropic: 完整的流式支持，带有内容块
-- ✅ LiteLLM: 完整的流式支持，带有增量内容 (兼容 OpenAI 格式)
+- ✅ OpenAI Router (LiteLLM): 完整的流式支持，带有增量内容 (兼容 OpenAI 格式)
 - ❌ Gemini: 未实现 (未来增强)
 - ❌ DeepSeek: 未实现 (未来增强)
 
@@ -511,6 +511,7 @@ The current summarization caching implementation mixes summaries for entire post
 - `src/hn-enhancer.js`: Added `injectFocusButton()` method and called it during comment initialization.
 - `src/styles.css`: Added styles for the `.focus-node-link` class.
 - `src/navigation.js`: `setCurrentComment` accepts a second parameter `scrollIntoView` (default `true`). The focus button calls this with `false` to avoid unnecessary scrolling when the user is already looking at the comment.
+
 ### Root-Level Toggle Behaviour & Karma Fetch Throttling (2025-12-11)
 **Root toggle update**: The "Toggle GC" control now flips only the immediate child comments beneath each root. It inspects the first child to decide between collapse/expand and never touches deeper descendants, so root-level toggles no longer cascade unexpectedly.
 - `src/hn-enhancer.js`: `toggleGrandchildrenForAllRoots()` now flattens root comments into their direct children and calls `_toggleComment` on each child individually, logging the action for debugging.
@@ -518,4 +519,29 @@ The current summarization caching implementation mixes summaries for entire post
 **Karma fetch throttling**: Author karma requests are capped at ~20 per page load and aggressively cached to stay gentle on Hacker News.
 - `src/hn-enhancer.js`: `buildKarmaStatistics()` scans at most `KARMA_FETCH_SCAN_LIMIT = 20` root authors and pauses `KARMA_FETCH_DELAY_MS = 2000` between uncached fetches (≈40 seconds worst case).
 - `src/author-tracking.js`: `AuthorTracking.USER_INFO_CACHE_TTL_MS` extends to 24 hours, while `HNEnhancer.KARMA_ERROR_CACHE_TTL_MS = 30000` ms softens retries after failures.
-- Karma stats are memoized per item id so refreshing the same thread reuses cached numbers without extra network traffic.
+
+### OpenAI Router Configuration & Streaming Test Fix (2025-12-19)
+**OpenAI Router naming**: Renamed "Local Router" to "OpenAI Router" in the UI to clarify its purpose as an OpenAI-compatible proxy.
+- `src/options/options.html`: Updated all labels, tooltips, and help text to use "OpenAI Router"
+- `AGENTS.md`: Updated documentation to reflect the new naming convention
+
+**Configurable base URL**: Added URL configuration field for the OpenAI Router.
+- `src/options/options.html`: Added input field with ID `litellm-url` for custom router URL
+- `src/options/options.js`: Added URL to settings save/load and test connection
+- `background.js`: Updated `handleLiteLLMRequest` to use configurable URL with fallback to default
+
+**Streaming test connection fix**: Fixed UI not showing success for streaming responses.
+- `src/options/options.js`: Added check for `response?.streaming || response?.success` to properly display success for streaming responses
+- `background.js`: Updated `handleOpenAIRequest` to always use streaming handler when `streaming: true`
+
+**Temperature removal**: Stopped sending temperature parameter for OpenAI Router requests.
+- `src/summarization.js`: Removed temperature from request building for LiteLLM/OpenAI Router
+- `background.js`: Removed temperature from `handleLiteLLMRequest` and `handleOpenAIRequest`
+- `src/options/options.js`: Temperature is still saved in settings but not sent in test requests
+
+**Include usage flag**: Added `include_usage: true` to all requests for token usage tracking.
+- `src/options/options.js`: Added `include_usage: true` to all provider test data
+- `src/summarization.js`: Added `include_usage: true` to request building
+- `background.js`: Added logic to include usage flag in payload when present
+
+**Important note**: The codebase still uses "litellm" in variable names and internal references, but this now refers to any OpenAI-compatible provider through the router, not specifically the LiteLLM service. This naming is kept for backward compatibility but should be considered deprecated.

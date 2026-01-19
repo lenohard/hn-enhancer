@@ -1446,6 +1446,12 @@ ${systemPromptIntro}
         messages: conversationHistory, // Send the full history
       };
 
+      // Add URL for litellm provider
+      if (aiProvider === "litellm") {
+        const settings = await this.enhancer.apiClient.sendBackgroundMessage("FETCH_AI_SETTINGS");
+        requestData.url = settings.litellmUrl || "http://127.0.0.1:4000";
+      }
+
       // Log the exact messages being sent
       this.enhancer.logDebug(
         "Sending conversation history to background:",
