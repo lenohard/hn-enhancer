@@ -47,6 +47,7 @@ class Summarization {
   constructor(enhancer) {
     this.enhancer = enhancer;
     this.SummarizeCheckStatus = SUMMARIZATION_CONFIG.STATUS;
+    this._summaryPathMap = new Map();
   }
 
   /**
@@ -125,7 +126,7 @@ class Summarization {
 
       // Show local cache by default (highest priority), with toggle if server cache exists
       if (localCache || cachedSummary) {
-        this._showCachedSummary(itemId, localCache, cachedSummary, "local");
+        await this._showCachedSummary(itemId, localCache, cachedSummary, "local");
         return;
       }
 
@@ -177,7 +178,7 @@ class Summarization {
    * @param {object|null} serverCache - Server cache data
    * @param {string} which - Which cache to show: "local" or "server"
    */
-  _showCachedSummary(itemId, localCache, serverCache, which) {
+  async _showCachedSummary(itemId, localCache, serverCache, which) {
     const hasLocal = !!localCache;
     const hasServer = !!serverCache;
 
@@ -190,30 +191,236 @@ class Summarization {
       buttons += `<button id="cache-server-btn" class="cache-toggle-btn ${serverActive}">Server</button>`;
     }
 
-    let title, text;
+    let title;
+    let summaryText;
+    let headerHtml = "";
+
     if (which === "local" && hasLocal) {
-      const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(localCache.summary || "");
+      summaryText = localCache.summary || "";
       title = "Summary (Local Cache)";
-      text = `<div class="cached-summary-header"><span class="cached-badge local-cache">LOCAL</span></div>${summaryHtml}`;
+      headerHtml = `<div class="cached-summary-header"><span class="cached-badge local-cache">LOCAL</span></div>`;
     } else if (which === "server" && hasServer) {
       const cacheSource = serverCache.source || "HN Companion";
       const cachedTime = serverCache.created_at
         ? new Date(serverCache.created_at).toLocaleString()
         : "Unknown";
-      const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(serverCache.summary || "No summary available");
+      summaryText = serverCache.summary || "No summary available";
       title = "Summary (Server Cache)";
-      text = `<div class="cached-summary-header"><span class="cached-badge server-cache">SERVER</span><span class="cached-info">From ${cacheSource} on ${cachedTime}</span></div>${summaryHtml}`;
+      headerHtml = `<div class="cached-summary-header"><span class="cached-badge server-cache">SERVER</span><span class="cached-info">From ${cacheSource} on ${cachedTime}</span></div>`;
     } else {
       // Fallback: show whichever exists
       which = hasLocal ? "local" : "server";
       return this._showCachedSummary(itemId, localCache, serverCache, which);
     }
 
-    this.enhancer.summaryPanel.updateContent({ title, metadata: buttons, text });
+    const cacheMetadata =
+      which === "local" && hasLocal ? localCache.metadata : null;
+    const commentPathToIdMap = await this._getCommentPathToIdMap(
+      itemId,
+      cacheMetadata
+    );
+    const formattedSummary = this._formatSummaryHtml(
+      summaryText,
+      commentPathToIdMap
+    );
+
+    this.enhancer.summaryPanel.updateContent({
+      title,
+      metadata: buttons,
+      text: `${headerHtml}${formattedSummary}`,
+    });
+
+    this._bindSummaryCommentLinks();
 
     document.getElementById("regenerate-btn")?.addEventListener("click", () => this._forceGenerateSummary(itemId));
     document.getElementById("cache-local-btn")?.addEventListener("click", () => this._showCachedSummary(itemId, localCache, serverCache, "local"));
     document.getElementById("cache-server-btn")?.addEventListener("click", () => this._showCachedSummary(itemId, localCache, serverCache, "server"));
+  }
+
+  /**
+   * Builds a comment path to ID map for the current post.
+   * @param {string} itemId - The HN post ID
+   * @param {object|null} cacheMetadata - Optional cached metadata with saved path map
+   * @returns {Promise<Map<string, string>>}
+   */
+  async _getCommentPathToIdMap(itemId, cacheMetadata = null) {
+    const cachedPairs = cacheMetadata?.commentPathToIdMap;
+    if (Array.isArray(cachedPairs) && cachedPairs.length > 0) {
+      // Use the snapshot captured at summary generation time. Tree paths drift
+      // when comments are added or removed, but HN comment IDs stay stable.
+      return new Map(
+        cachedPairs.map(([path, id]) => [path, String(id)])
+      );
+    }
+
+    try {
+      const { commentPathToIdMap } = await this.getHNThread(itemId);
+      return commentPathToIdMap;
+    } catch (error) {
+      console.warn("Could not build comment path map from API:", error);
+      return new Map();
+    }
+  }
+
+  /**
+   * Converts summary markdown to HTML and replaces comment path references with links.
+   * @param {string} summary - Raw summary text
+   * @param {Map<string, string>} commentPathToIdMap - Map of comment paths to IDs
+   * @returns {string}
+   */
+  _formatSummaryHtml(summary, commentPathToIdMap) {
+    this._summaryPathMap =
+      commentPathToIdMap instanceof Map
+        ? commentPathToIdMap
+        : new Map(commentPathToIdMap || []);
+
+    const summaryHtml =
+      this.enhancer.markdownUtils.convertMarkdownToHTML(summary);
+    let formattedSummary =
+      this.enhancer.markdownUtils.replacePathsWithCommentLinks(
+        summaryHtml,
+        this._summaryPathMap
+      );
+
+    formattedSummary = this._normalizeCommentAnchors(formattedSummary);
+
+    return formattedSummary;
+  }
+
+  /**
+   * Converts markdown/server comment anchors into summary panel jump links.
+   * @param {string} html
+   * @returns {string}
+   */
+  _normalizeCommentAnchors(html) {
+    return html.replace(
+      /<a\b([^>]*?)href=['"]([^'"]+)['"]([^>]*?)>([\s\S]*?)<\/a>/gi,
+      (match, beforeHref, href, afterHref, linkText) => {
+        if (/data-comment-link\s*=/.test(match)) {
+          return match;
+        }
+
+        const commentId = this._extractCommentIdFromHref(href);
+        if (!commentId) {
+          return match;
+        }
+
+        const path = linkText.trim();
+        const pathAttr = /^\d+(?:\.\d+)*$/.test(path)
+          ? ` data-comment-path="${path}"`
+          : "";
+        const displayText = /^\d+(?:\.\d+)*$/.test(path) ? `[${path}]` : linkText;
+
+        return `<a href="#" class="summary-comment-link" data-comment-link="true" data-comment-id="${commentId}"${pathAttr}>${displayText}</a>`;
+      }
+    );
+  }
+
+  /**
+   * @param {string} href
+   * @returns {string|null}
+   */
+  _extractCommentIdFromHref(href) {
+    if (!href) {
+      return null;
+    }
+
+    const hashMatch = href.match(/#(\d+)$/);
+    if (hashMatch) {
+      return hashMatch[1];
+    }
+
+    if (/^\d+$/.test(href)) {
+      return href;
+    }
+
+    return null;
+  }
+
+  /**
+   * Resolves a comment element from a summary panel link.
+   * @param {HTMLAnchorElement} link
+   * @returns {HTMLElement|null}
+   */
+  _resolveCommentFromLink(link) {
+    const directId = link.dataset.commentId;
+    if (directId) {
+      const byId = document.getElementById(directId);
+      if (byId) {
+        return byId;
+      }
+    }
+
+    const path = link.dataset.commentPath || "";
+    if (path && this._summaryPathMap instanceof Map) {
+      const mappedId = this._summaryPathMap.get(path);
+      if (mappedId) {
+        const byMappedId = document.getElementById(String(mappedId));
+        if (byMappedId) {
+          return byMappedId;
+        }
+      }
+    }
+
+    const href = link.getAttribute("href");
+    if (href) {
+      const commentId = this._extractCommentIdFromHref(href);
+      if (commentId) {
+        return document.getElementById(commentId);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Binds click handlers to comment links after each summary render.
+   */
+  _bindSummaryCommentLinks() {
+    const textElement =
+      this.enhancer.summaryPanel.panel?.querySelector(".summary-text");
+    if (!textElement) {
+      return;
+    }
+
+    const bindLink = (link) => {
+      const newLink = link.cloneNode(true);
+      link.parentNode.replaceChild(newLink, link);
+      newLink.addEventListener("click", (event) => {
+        event.preventDefault();
+        const comment = this._resolveCommentFromLink(newLink);
+        if (comment) {
+          this.enhancer.navigation.setCurrentComment(comment);
+        } else {
+          console.error(
+            "Failed to resolve comment for link:",
+            newLink.dataset.commentPath,
+            newLink.dataset.commentId
+          );
+        }
+      });
+    };
+
+    textElement.querySelectorAll('[data-comment-link="true"]').forEach(bindLink);
+
+    textElement.querySelectorAll("a[href]").forEach((link) => {
+      if (link.dataset.commentLink === "true") {
+        return;
+      }
+      if (link.id === "options-page-link" || link.target === "_blank") {
+        return;
+      }
+
+      const href = link.getAttribute("href") || "";
+      const hashMatch = href.match(/^#(\d+)$/);
+      if (!hashMatch) {
+        return;
+      }
+
+      link.dataset.commentLink = "true";
+      link.dataset.commentId = hashMatch[1];
+      bindLink(link);
+    });
   }
 
   /**
@@ -389,6 +596,10 @@ class Summarization {
           duration,
           commentCount: commentPathToIdMap?.size || 0,
           timestamp: Date.now(),
+          commentPathToIdMap:
+            commentPathToIdMap instanceof Map
+              ? Array.from(commentPathToIdMap.entries())
+              : [],
         };
 
         HNState.saveSummary(
@@ -789,9 +1000,15 @@ class Summarization {
     );
     const cacheIndicator = `<span class="cache-indicator">📋 Cached (${cacheAge}m ago)</span>`;
 
+    const postId = this.enhancer.domUtils.getCurrentHNItemId();
+    const pathMap = await this._getCommentPathToIdMap(
+      postId,
+      cachedSummary.metadata
+    );
+
     await this.showSummaryInPanel(
       cachedSummary.summary,
-      commentPathToIdMap,
+      pathMap,
       cachedSummary.metadata?.duration,
       {
         cacheIndicator,
@@ -1379,17 +1596,16 @@ ${languageInstruction}`;
    * Updates the UI with streaming content
    */
   updateStreamingUI(text, commentPathToIdMap, isFinal = false) {
-    const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(text);
-    const formattedSummary =
-      this.enhancer.markdownUtils.replacePathsWithCommentLinks(
-        summaryHtml,
-        commentPathToIdMap
-      );
+    const formattedSummary = this._formatSummaryHtml(text, commentPathToIdMap);
 
     this.enhancer.summaryPanel.updateContent({
       title: "Thread Summary",
       text: formattedSummary + (isFinal ? "" : "..."),
     });
+
+    if (isFinal) {
+      this._bindSummaryCommentLinks();
+    }
   }
 
   /**
@@ -1401,13 +1617,10 @@ ${languageInstruction}`;
     duration,
     options = {}
   ) {
-    const summaryHtml =
-      this.enhancer.markdownUtils.convertMarkdownToHTML(summary);
-    const formattedSummary =
-      this.enhancer.markdownUtils.replacePathsWithCommentLinks(
-        summaryHtml,
-        commentPathToIdMap
-      );
+    const formattedSummary = this._formatSummaryHtml(
+      summary,
+      commentPathToIdMap
+    );
 
     const {
       cacheIndicator = null,
@@ -1454,19 +1667,7 @@ ${languageInstruction}`;
       });
     }
 
-    // Attach listeners to comment links
-    document.querySelectorAll('[data-comment-link="true"]').forEach((link) => {
-      link.addEventListener("click", (e) => {
-        e.preventDefault();
-        const id = link.dataset.commentId;
-        const comment = document.getElementById(id);
-        if (comment) {
-          this.enhancer.navigation.setCurrentComment(comment);
-        } else {
-          console.error("Failed to find DOM element for comment id:", id);
-        }
-      });
-    });
+    this._bindSummaryCommentLinks();
   }
 
   /**

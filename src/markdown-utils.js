@@ -106,18 +106,13 @@ class MarkdownUtils {
                     
                     const trimmed = part.trim();
                     if (/^\d+(?:\.\d+)*$/.test(trimmed)) {
-                        const id = commentPathToIdMap.get(trimmed);
-                        if (id) {
-                             return part.replace(trimmed, `<a href="#"
-                                       title="Go to comment #${id}"
-                                       data-comment-link="true" data-comment-id="${id}" data-comment-path="${trimmed}"
-                                       style="color: rgb(130, 130, 130); text-decoration: underline;"
-                                    >${trimmed}</a>`);
-                        }
+                        const id = commentPathToIdMap?.get(trimmed);
+                        const idAttr = id ? ` data-comment-id="${id}"` : "";
+                        return `<a href="#" class="summary-comment-link" title="Go to comment ${trimmed}" data-comment-link="true"${idAttr} data-comment-path="${trimmed}">[${trimmed}]</a>`;
                     }
                     return part;
                 });
-                return `[${linkedParts.join(',')}]`;
+                return linkedParts.join(", ");
             }
 
             // Fallback for "path + description" -> [1.2.3 some text]
@@ -125,14 +120,13 @@ class MarkdownUtils {
             const pathMatch = content.match(/^(\d+(?:\.\d+)*)(\s+.*)$/);
             if (pathMatch) {
                 const path = pathMatch[1];
-                const id = commentPathToIdMap.get(path);
-                if (id) {
-                     return `<a href="#"
-                           title="Go to comment #${id}"
-                           data-comment-link="true" data-comment-id="${id}" data-comment-path="${path}"
+                const id = commentPathToIdMap?.get(path);
+                const idAttr = id ? ` data-comment-id="${id}"` : "";
+                return `<a href="#"
+                           title="Go to comment ${path}"
+                           data-comment-link="true"${idAttr} data-comment-path="${path}"
                            style="color: rgb(130, 130, 130); text-decoration: underline;"
                         >${match}</a>`;
-                }
             }
 
             return match;

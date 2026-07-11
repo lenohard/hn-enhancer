@@ -416,6 +416,7 @@
 .summary-text a:active {
     color: #828282;
     text-decoration: underline !important;
+    cursor: pointer;
 }
 
 .summary-text #options-page-link {

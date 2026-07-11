@@ -781,6 +781,56 @@ class DomUtils {
     
     return children;
   }
+
+  /**
+   * Resolves a comment element from a hierarchical path string.
+   * @param {string} path - The structured path (e.g. "3.2.2").
+   * @returns {HTMLElement|null}
+   */
+  static resolveCommentElementByPath(path) {
+    if (!path) {
+      return null;
+    }
+
+    const segments = path
+      .split(".")
+      .map((segment) => parseInt(segment, 10))
+      .filter((value) => !Number.isNaN(value) && value > 0);
+
+    if (segments.length === 0) {
+      return null;
+    }
+
+    const topLevelComments = Array.from(
+      document.querySelectorAll("tr.athing.comtr")
+    ).filter((comment) => DomUtils.getCommentIndentLevel(comment) === 0);
+
+    const rootIndex = segments[0] - 1;
+    if (rootIndex < 0 || rootIndex >= topLevelComments.length) {
+      return null;
+    }
+
+    let currentElement = topLevelComments[rootIndex];
+    if (segments.length === 1) {
+      return currentElement;
+    }
+
+    for (let i = 1; i < segments.length; i += 1) {
+      const childIndex = segments[i] - 1;
+      if (childIndex < 0) {
+        return null;
+      }
+
+      const directChildren = DomUtils.getDirectChildComments(currentElement);
+      if (!directChildren || childIndex >= directChildren.length) {
+        return null;
+      }
+
+      currentElement = directChildren[childIndex];
+    }
+
+    return currentElement;
+  }
     
 }
     
