@@ -870,3 +870,32 @@ tr.athing.comtr.noshow .comhead .togg {
 .regenerate-btn:hover {
     background-color: #e55b00;
 }
+
+.cache-toggle-btn {
+    background-color: #e0e0e0;
+    color: #333;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-left: 4px;
+    transition: background-color 0.2s;
+}
+
+.cache-toggle-btn:hover {
+    background-color: #d0d0d0;
+}
+
+.cache-toggle-btn.active {
+    background-color: #ff6600;
+    color: white;
+}
+
+.cached-badge.local-cache {
+    background-color: #2196f3;
+}
+
+.cached-badge.server-cache {
+    background-color: #4caf50;
+}

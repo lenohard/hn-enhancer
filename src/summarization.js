@@ -117,41 +117,15 @@ class Summarization {
         this.enhancer.summaryPanel.toggle();
       }
 
-      // Check LOCAL cache first (highest priority)
-      const localCache = await this.checkLocalCache(itemId);
-      if (localCache) {
-        const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(localCache.summary || "");
-        this.enhancer.summaryPanel.updateContent({
-          title: "Summary (Local Cache)",
-          metadata: `<button id="regenerate-btn" class="regenerate-btn">🔄 Regenerate</button>`,
-          text: `<div class="cached-summary-header"><span class="cached-badge">LOCAL CACHE</span></div>${summaryHtml}`,
-        });
-        document.getElementById("regenerate-btn")?.addEventListener("click", () => this._forceGenerateSummary(itemId));
-        return;
-      }
+      // Fetch both caches in parallel
+      const [localCache, cachedSummary] = await Promise.all([
+        this.checkLocalCache(itemId),
+        this.enhancer.getCachedSummary(itemId),
+      ]);
 
-      // Then check server cache
-      const cachedSummary = await this.enhancer.getCachedSummary(itemId);
-      if (cachedSummary) {
-        const cacheSource = cachedSummary.source || "HN Companion";
-        const cachedTime = cachedSummary.created_at
-          ? new Date(cachedSummary.created_at).toLocaleString()
-          : "Unknown";
-        
-        const headerHtml = `
-          <div class="cached-summary-header">
-            <span class="cached-badge">CACHED</span>
-            <span class="cached-info">From ${cacheSource} on ${cachedTime}</span>
-          </div>
-        `;
-        
-        const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(cachedSummary.summary || "No summary available");
-        this.enhancer.summaryPanel.updateContent({
-          title: "Summary (Server Cache)",
-          metadata: `<button id="regenerate-btn" class="regenerate-btn">🔄 Regenerate</button>`,
-          text: headerHtml + summaryHtml,
-        });
-        document.getElementById("regenerate-btn")?.addEventListener("click", () => this._forceGenerateSummary(itemId));
+      // Show local cache by default (highest priority), with toggle if server cache exists
+      if (localCache || cachedSummary) {
+        this._showCachedSummary(itemId, localCache, cachedSummary, "local");
         return;
       }
 
@@ -194,6 +168,52 @@ class Summarization {
     } catch (error) {
       this.handleError("Error regenerating summary", error);
     }
+  }
+
+  /**
+   * Show a cached summary with toggle buttons to switch between local/server cache.
+   * @param {string} itemId - The HN post ID
+   * @param {object|null} localCache - Local cache data
+   * @param {object|null} serverCache - Server cache data
+   * @param {string} which - Which cache to show: "local" or "server"
+   */
+  _showCachedSummary(itemId, localCache, serverCache, which) {
+    const hasLocal = !!localCache;
+    const hasServer = !!serverCache;
+
+    // Build toggle buttons
+    let buttons = `<button id="regenerate-btn" class="regenerate-btn">🔄 Regenerate</button>`;
+    if (hasLocal && hasServer) {
+      const localActive = which === "local" ? "active" : "";
+      const serverActive = which === "server" ? "active" : "";
+      buttons += `<button id="cache-local-btn" class="cache-toggle-btn ${localActive}">Local</button>`;
+      buttons += `<button id="cache-server-btn" class="cache-toggle-btn ${serverActive}">Server</button>`;
+    }
+
+    let title, text;
+    if (which === "local" && hasLocal) {
+      const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(localCache.summary || "");
+      title = "Summary (Local Cache)";
+      text = `<div class="cached-summary-header"><span class="cached-badge local-cache">LOCAL</span></div>${summaryHtml}`;
+    } else if (which === "server" && hasServer) {
+      const cacheSource = serverCache.source || "HN Companion";
+      const cachedTime = serverCache.created_at
+        ? new Date(serverCache.created_at).toLocaleString()
+        : "Unknown";
+      const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(serverCache.summary || "No summary available");
+      title = "Summary (Server Cache)";
+      text = `<div class="cached-summary-header"><span class="cached-badge server-cache">SERVER</span><span class="cached-info">From ${cacheSource} on ${cachedTime}</span></div>${summaryHtml}`;
+    } else {
+      // Fallback: show whichever exists
+      which = hasLocal ? "local" : "server";
+      return this._showCachedSummary(itemId, localCache, serverCache, which);
+    }
+
+    this.enhancer.summaryPanel.updateContent({ title, metadata: buttons, text });
+
+    document.getElementById("regenerate-btn")?.addEventListener("click", () => this._forceGenerateSummary(itemId));
+    document.getElementById("cache-local-btn")?.addEventListener("click", () => this._showCachedSummary(itemId, localCache, serverCache, "local"));
+    document.getElementById("cache-server-btn")?.addEventListener("click", () => this._showCachedSummary(itemId, localCache, serverCache, "server"));
   }
 
   /**
