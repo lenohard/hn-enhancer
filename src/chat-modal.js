@@ -783,7 +783,7 @@ class ChatModal {
    * @returns {boolean}
    */
   _providerSupportsStreaming(provider) {
-    return ["openai", "anthropic", "litellm"].includes(provider);
+    return ["openai", "anthropic", "openai-router"].includes(provider);
   }
 
   /**
@@ -1446,10 +1446,10 @@ ${systemPromptIntro}
         messages: conversationHistory, // Send the full history
       };
 
-      // Add URL for litellm provider
-      if (aiProvider === "litellm") {
+      // Add URL for openai-router provider
+      if (aiProvider === "openai-router") {
         const settings = await this.enhancer.apiClient.sendBackgroundMessage("FETCH_AI_SETTINGS");
-        requestData.url = settings.litellmUrl || "http://127.0.0.1:4000";
+        requestData.url = settings.routerUrl || "http://127.0.0.1:4000";
       }
 
       // Log the exact messages being sent

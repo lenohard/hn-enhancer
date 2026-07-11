@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-Hacker News Companion 是一个浏览器扩展，为 Hacker News 网站提供智能导航、AI 驱动的摘要和增强的用户交互功能。该扩展支持 Chrome 和 Firefox 浏览器，集成了多种 AI 提供商，包括 OpenAI、Anthropic、Google Gemini、DeepSeek、OpenAI Router (LiteLLM), Chrome 内置 AI 和本地 Ollama 模型。
+Hacker News Companion 是一个浏览器扩展，为 Hacker News 网站提供智能导航、AI 驱动的摘要和增强的用户交互功能。该扩展支持 Chrome 和 Firefox 浏览器，集成了多种 AI 提供商，包括 OpenAI、Anthropic、Google Gemini、DeepSeek 和 OpenAI Router（OpenAI 兼容代理）。
 
 ## 开发环境
 
@@ -147,7 +147,7 @@ hn-enhancer/
 
 **关键功能**:
 
-- 支持多种 AI 提供商（OpenAI、Anthropic、Gemini、DeepSeek、OpenAI Router (LiteLLM)、Chrome AI、Ollama）
+- 支持多种 AI 提供商（OpenAI、Anthropic、Gemini、DeepSeek、OpenAI Router）
 - 摘要评论线程
 - 摘要整个帖子
 - 可配置的参数（max_tokens、temperature）
@@ -312,7 +312,7 @@ hn-enhancer/
 - Anthropic (Claude 系列)
 - Google Gemini
 - DeepSeek
-- OpenAI Router (LiteLLM)
+- OpenAI Router（OpenAI 兼容代理）
 - Chrome 内置 AI
 - Ollama (本地模型)
 
@@ -407,7 +407,7 @@ hn-enhancer/
 
 - ✅ OpenAI: 完整的流式支持，带有增量内容
 - ✅ Anthropic: 完整的流式支持，带有内容块
-- ✅ OpenAI Router (LiteLLM): 完整的流式支持，带有增量内容 (兼容 OpenAI 格式)
+- ✅ OpenAI Router: 完整的流式支持，带有增量内容 (兼容 OpenAI 格式)
 - ❌ Gemini: 未实现 (未来增强)
 - ❌ DeepSeek: 未实现 (未来增强)
 
@@ -526,17 +526,17 @@ The current summarization caching implementation mixes summaries for entire post
 - `AGENTS.md`: Updated documentation to reflect the new naming convention
 
 **Configurable base URL**: Added URL configuration field for the OpenAI Router.
-- `src/options/options.html`: Added input field with ID `litellm-url` for custom router URL
+- `src/options/options.html`: Added input field with ID `router-url` for custom router URL (default: `https://opencode.ai/zen/go`)
 - `src/options/options.js`: Added URL to settings save/load and test connection
-- `background.js`: Updated `handleLiteLLMRequest` to use configurable URL with fallback to default
+- `background.js`: Updated `handleOpenAIRouterRequest` to use configurable URL with fallback to default
 
 **Streaming test connection fix**: Fixed UI not showing success for streaming responses.
 - `src/options/options.js`: Added check for `response?.streaming || response?.success` to properly display success for streaming responses
 - `background.js`: Updated `handleOpenAIRequest` to always use streaming handler when `streaming: true`
 
 **Temperature removal**: Stopped sending temperature parameter for OpenAI Router requests.
-- `src/summarization.js`: Removed temperature from request building for LiteLLM/OpenAI Router
-- `background.js`: Removed temperature from `handleLiteLLMRequest` and `handleOpenAIRequest`
+- `src/summarization.js`: Removed temperature from request building for OpenAI Router
+- `background.js`: Removed temperature from `handleOpenAIRouterRequest` and `handleOpenAIRequest`
 - `src/options/options.js`: Temperature is still saved in settings but not sent in test requests
 
 **Include usage flag**: Added `include_usage: true` to all requests for token usage tracking.
@@ -544,4 +544,4 @@ The current summarization caching implementation mixes summaries for entire post
 - `src/summarization.js`: Added `include_usage: true` to request building
 - `background.js`: Added logic to include usage flag in payload when present
 
-**Important note**: The codebase still uses "litellm" in variable names and internal references, but this now refers to any OpenAI-compatible provider through the router, not specifically the LiteLLM service. This naming is kept for backward compatibility but should be considered deprecated.
+**Important note**: The codebase has been fully renamed from "litellm" to "openai-router" in variable names, message types, and internal references. The provider ID is now `openai-router` (previously `litellm`), message types are `OPENAI_ROUTER_API_REQUEST` / `FETCH_OPENAI_ROUTER_MODELS`, and handler functions are `handleOpenAIRouterRequest` / `handleFetchOpenAIRouterModels`.

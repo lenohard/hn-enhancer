@@ -157,8 +157,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const language = settingsData.settings?.language || "en";
           const maxTokens = settingsData.settings?.maxTokens || 100000;
           const temperature = settingsData.settings?.temperature || 0.7;
-          const litellmUrl = settingsData.settings?.litellm?.url || "http://127.0.0.1:4000";
-          return { aiProvider, model, language, maxTokens, temperature, litellmUrl };
+          const routerUrl = settingsData.settings?.["openai-router"]?.url || "http://127.0.0.1:4000";
+          return { aiProvider, model, language, maxTokens, temperature, routerUrl };
         },
         sendResponse
       );
@@ -201,18 +201,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse
       );
 
-    case "LITELLM_API_REQUEST":
+    case "OPENAI_ROUTER_API_REQUEST":
       if (message.data.streaming) {
         return handleStreamingMessage(
           message,
           sender,
-          async () => await handleLiteLLMRequest(message.data),
+          async () => await handleOpenAIRouterRequest(message.data),
           sendResponse
         );
       } else {
         return handleAsyncMessage(
           message,
-          async () => await handleLiteLLMRequest(message.data),
+          async () => await handleOpenAIRouterRequest(message.data),
           sendResponse
         );
       }
@@ -238,10 +238,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse
       );
 
-    case "FETCH_LITELLM_MODELS":
+    case "FETCH_OPENAI_ROUTER_MODELS":
       return handleAsyncMessage(
         message,
-        async () => await handleFetchLiteLLMModels(message.data),
+        async () => await handleFetchOpenAIRouterModels(message.data),
         sendResponse
       );
 
@@ -672,13 +672,13 @@ async function handleChatRequest(data) {
   const settingsData = await chrome.storage.sync.get("settings");
   const apiKey = settingsData.settings?.[provider]?.apiKey;
 
-  // Handle cases where API key might not be needed (LiteLLM local models) or is missing
-  if (!apiKey && provider !== "litellm") {
+  // Handle cases where API key might not be needed (OpenAI Router local models) or is missing
+  if (!apiKey && provider !== "openai-router") {
     console.error(`缺少 ${provider} 的 API 密钥`);
     throw new Error(`Missing API key for ${provider}`);
   }
 
-  const streamingCapableProviders = ["openai", "anthropic", "litellm"];
+  const streamingCapableProviders = ["openai", "anthropic", "openai-router"];
   const shouldStream =
     streaming && streamingCapableProviders.includes(provider);
 
@@ -744,22 +744,22 @@ async function handleChatRequest(data) {
           geminiResponse.choices[0]?.message?.content || "No response content"
         );
 
-      case "litellm":
+      case "openai-router":
         // Pass messages array directly (same format as OpenAI)
-        const litellmUrl = url || settingsData.settings?.litellm?.url || "http://127.0.0.1:4000";
-        const litellmResponse = await handleLiteLLMRequest({
+        const routerUrl = url || settingsData.settings?.["openai-router"]?.url || "http://127.0.0.1:4000";
+        const routerResponse = await handleOpenAIRouterRequest({
           apiKey,
           model,
           messages,
           streaming: shouldStream,
-          url: litellmUrl,
+          url: routerUrl,
         });
         if (shouldStream) {
-          return litellmResponse;
+          return routerResponse;
         }
         // Directly return the text content on success
         return (
-          litellmResponse.choices[0]?.message?.content || "No response content"
+          routerResponse.choices[0]?.message?.content || "No response content"
         );
 
       default:
@@ -772,8 +772,8 @@ async function handleChatRequest(data) {
   }
 }
 
-// Handle LiteLLM API requests
-async function handleLiteLLMRequest(data) {
+// Handle OpenAI Router API requests
+async function handleOpenAIRouterRequest(data) {
   const {
     apiKey,
     model,
@@ -782,18 +782,18 @@ async function handleLiteLLMRequest(data) {
     url = "http://127.0.0.1:4000",
   } = data;
 
-  console.log("处理LiteLLM API请求，模型:", model, "流式:", streaming);
+  console.log("Processing OpenAI Router API request，模型:", model, "流式:", streaming);
 
   if (!model || !messages) {
-    console.error("LiteLLM API请求缺少必要参数");
-    throw new Error("Missing required parameters for LiteLLM API request");
+    console.error("OpenAI Router API request missing required parameters");
+    throw new Error("Missing required parameters for OpenAI Router API request");
   }
 
   // Normalize URL by removing trailing slash and appending /v1/chat/completions
   const baseUrl = url.replace(/\/$/, '');
   const endpoint = `${baseUrl}/v1/chat/completions`;
 
-  console.log("LiteLLM API端点:", endpoint);
+  console.log("OpenAI Router API endpoint:", endpoint);
 
   const payload = {
     model: model,
@@ -806,13 +806,13 @@ async function handleLiteLLMRequest(data) {
   }
 
 
-  // API key should only be in Authorization header, not in request body for LiteLLM proxy
+  // API key should only be in Authorization header, not in request body for OpenAI Router proxy
 
   // Log the payload being sent
-  console.log("LiteLLM 请求负载:", JSON.stringify(payload, null, 2));
+  console.log("OpenAI Router request payload:", JSON.stringify(payload, null, 2));
 
   try {
-    console.log("发送LiteLLM API请求...");
+    console.log("Sending OpenAI Router API request...");
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -822,17 +822,17 @@ async function handleLiteLLMRequest(data) {
       body: JSON.stringify(payload),
     });
 
-    console.log("收到LiteLLM API响应, 状态码:", response.status);
+    console.log("Received OpenAI Router API response, 状态码:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("LiteLLM API错误:", {
+      console.error("OpenAI Router API error:", {
         status: response.status,
         statusText: response.statusText,
         errorBody: errorText,
       });
       throw new Error(
-        `LiteLLM API Error: HTTP error code: ${response.status} \nBody: ${errorText}`
+        `OpenAI Router API Error: HTTP error code: ${response.status} \nBody: ${errorText}`
       );
     }
 
@@ -842,7 +842,7 @@ async function handleLiteLLMRequest(data) {
     } else {
       const responseData = await response.json();
       console.log(
-        "LiteLLM API响应数据结构:",
+        "OpenAI Router API response structure:",
         JSON.stringify(
           {
             hasData: !!responseData,
@@ -860,7 +860,7 @@ async function handleLiteLLMRequest(data) {
       return responseData;
     }
   } catch (error) {
-    console.error("LiteLLM API请求失败:", error);
+    console.error("OpenAI Router API request failed:", error);
     console.error("错误详情:", error.stack);
     throw error;
   }
@@ -939,20 +939,20 @@ async function handleFetchGeminiModels(data) {
   }
 }
 
-// Handle fetching LiteLLM models
-async function handleFetchLiteLLMModels(data) {
+// Handle fetching OpenAI Router models
+async function handleFetchOpenAIRouterModels(data) {
   const { apiKey, url = "http://127.0.0.1:4000" } = data;
 
-  console.log("处理获取LiteLLM模型列表请求");
+  console.log("Processing fetch OpenAI Router models request");
 
   // Normalize URL by removing trailing slash and appending /v1/models
   const baseUrl = url.replace(/\/$/, '');
   const endpoint = `${baseUrl}/v1/models`;
 
-  console.log("LiteLLM模型列表API端点:", endpoint);
+  console.log("OpenAI Router models API endpoint:", endpoint);
 
   try {
-    console.log("发送LiteLLM模型列表API请求...");
+    console.log("Sending OpenAI Router models API request...");
     console.log("请求配置:", {
       method: "GET",
       headers: {
@@ -969,38 +969,38 @@ async function handleFetchLiteLLMModels(data) {
       },
     });
 
-    console.log("收到LiteLLM模型列表API响应, 状态码:", response.status);
+    console.log("Received OpenAI Router models API response, 状态码:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("LiteLLM模型列表API错误:", {
+      console.error("OpenAI Router models API error:", {
         status: response.status,
         statusText: response.statusText,
         errorBody: errorText,
       });
       throw new Error(
-        `LiteLLM Models API Error: HTTP error code: ${response.status} \nBody: ${errorText}`
+        `OpenAI Router Models API Error: HTTP error code: ${response.status} \nBody: ${errorText}`
       );
     }
 
     const responseData = await response.json();
-    console.log("LiteLLM模型列表响应数据:", responseData);
+    console.log("OpenAI Router models API response data:", responseData);
 
     // Transform the response to match expected format
-    // LiteLLM returns OpenAI-compatible format: { data: [{ id: "model-name", object: "model", ... }] }
+    // OpenAI Router returns OpenAI-compatible format: { data: [{ id: "model-name", object: "model", ... }] }
     const models = responseData.data || [];
 
     return {
       models: models.map((model) => ({
         name: model.id || model.name,
         displayName: model.id || model.name,
-        description: `LiteLLM model: ${model.id || model.name}`,
+        description: `OpenAI Router model: ${model.id || model.name}`,
         inputTokenLimit: 0,
         outputTokenLimit: 0,
       })),
     };
   } catch (error) {
-    console.error("LiteLLM模型列表API请求失败:", error);
+    console.error("OpenAI Router models API request failed:", error);
     throw error;
   }
 }

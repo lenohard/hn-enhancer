@@ -45,10 +45,10 @@ async function saveSettings() {
       apiKey: document.getElementById("deepseek-key").value,
       model: document.getElementById("deepseek-model").value,
     },
-    litellm: {
-      apiKey: document.getElementById("litellm-key").value,
-      model: document.getElementById("litellm-model").value,
-      url: document.getElementById("litellm-url").value,
+    "openai-router": {
+      apiKey: document.getElementById("router-key").value,
+      model: document.getElementById("router-model").value,
+      url: document.getElementById("router-url").value,
     },
   };
 
@@ -154,8 +154,8 @@ async function fetchGeminiModels() {
   }
 }
 
-// Function to filter LiteLLM models based on search term
-function filterLiteLLMModels(searchTerm, allModels) {
+// Function to filter OpenAI Router models based on search term
+function filterOpenAIRouterModels(searchTerm, allModels) {
   if (!searchTerm) {
     return allModels;
   }
@@ -170,8 +170,8 @@ function filterLiteLLMModels(searchTerm, allModels) {
   });
 }
 
-// Function to update LiteLLM model dropdown options
-function updateLiteLLMModelOptions(models, selectElement, currentValue) {
+// Function to update OpenAI Router model dropdown options
+function updateOpenAIRouterModelOptions(models, selectElement, currentValue) {
   selectElement.innerHTML = "";
 
   // Sort models alphabetically by display name
@@ -207,19 +207,19 @@ function updateLiteLLMModelOptions(models, selectElement, currentValue) {
   }
 }
 
-// Function to fetch available LiteLLM models
-async function fetchLiteLLMModels() {
+// Function to fetch available OpenAI Router models
+async function fetchOpenAIRouterModels() {
   try {
-    // Get the API key from the input field (optional for LiteLLM)
-    const apiKey = document.getElementById("litellm-key").value;
-    const url = document.getElementById("litellm-url").value;
+    // Get the API key from the input field (optional for OpenAI Router)
+    const apiKey = document.getElementById("router-key").value;
+    const url = document.getElementById("router-url").value;
 
-    const data = await sendBackgroundMessage("FETCH_LITELLM_MODELS", {
+    const data = await sendBackgroundMessage("FETCH_OPENAI_ROUTER_MODELS", {
       apiKey: apiKey || undefined,
       url: url,
     });
 
-    const inputElement = document.getElementById("litellm-model");
+    const inputElement = document.getElementById("router-model");
 
     // If models are returned, show them in a select dropdown instead of text input
     if (data.models && data.models.length > 0) {
@@ -229,8 +229,8 @@ async function fetchLiteLLMModels() {
         const currentValue = inputElement.value;
 
         const selectElement = document.createElement("select");
-        selectElement.id = "litellm-model";
-        selectElement.name = "litellm-model";
+        selectElement.id = "router-model";
+        selectElement.name = "router-model";
         selectElement.className = inputElement.className;
 
         // Replace input with select
@@ -238,7 +238,7 @@ async function fetchLiteLLMModels() {
 
         // Show search container
         const searchContainer = document.getElementById(
-          "litellm-search-container"
+          "router-search-container"
         );
         if (searchContainer) {
           searchContainer.classList.remove("hidden");
@@ -248,7 +248,7 @@ async function fetchLiteLLMModels() {
         selectElement.allModels = data.models;
 
         // Update options with all models
-        updateLiteLLMModelOptions(data.models, selectElement, currentValue);
+        updateOpenAIRouterModelOptions(data.models, selectElement, currentValue);
 
         // Add the dropdown arrow
         const container = selectElement.parentNode;
@@ -261,12 +261,12 @@ async function fetchLiteLLMModels() {
         }
 
         // Setup search functionality
-        const searchInput = document.getElementById("litellm-model-search");
+        const searchInput = document.getElementById("router-model-search");
         if (searchInput) {
           searchInput.addEventListener("input", (e) => {
             const searchTerm = e.target.value;
-            const filteredModels = filterLiteLLMModels(searchTerm, data.models);
-            updateLiteLLMModelOptions(
+            const filteredModels = filterOpenAIRouterModels(searchTerm, data.models);
+            updateOpenAIRouterModelOptions(
               filteredModels,
               selectElement,
               selectElement.value
@@ -279,7 +279,7 @@ async function fetchLiteLLMModels() {
 
         // Show search container
         const searchContainer = document.getElementById(
-          "litellm-search-container"
+          "router-search-container"
         );
         if (searchContainer) {
           searchContainer.classList.remove("hidden");
@@ -289,16 +289,16 @@ async function fetchLiteLLMModels() {
         inputElement.allModels = data.models;
 
         // Update options with all models
-        updateLiteLLMModelOptions(data.models, inputElement, currentValue);
+        updateOpenAIRouterModelOptions(data.models, inputElement, currentValue);
 
         // Setup search functionality if not already setup
-        const searchInput = document.getElementById("litellm-model-search");
+        const searchInput = document.getElementById("router-model-search");
         if (searchInput && !searchInput.hasAttribute("data-setup")) {
           searchInput.setAttribute("data-setup", "true");
           searchInput.addEventListener("input", (e) => {
             const searchTerm = e.target.value;
-            const filteredModels = filterLiteLLMModels(searchTerm, data.models);
-            updateLiteLLMModelOptions(
+            const filteredModels = filterOpenAIRouterModels(searchTerm, data.models);
+            updateOpenAIRouterModelOptions(
               filteredModels,
               inputElement,
               inputElement.value
@@ -307,9 +307,9 @@ async function fetchLiteLLMModels() {
         }
       }
 
-      console.log(`加载了 ${data.models.length} 个LiteLLM模型`);
+      console.log(`加载了 ${data.models.length}  OpenAI Router models`);
     } else {
-      console.log("未找到LiteLLM模型");
+      console.log("No OpenAI Router models found");
     }
 
     // Cache the models data
@@ -317,10 +317,10 @@ async function fetchLiteLLMModels() {
       models: data.models,
       timestamp: Date.now(),
     };
-    chrome.storage.local.set({ "litellm-models-cache": modelsToCache });
+    chrome.storage.local.set({ "openai-router-models-cache": modelsToCache });
   } catch (error) {
-    console.error("获取LiteLLM模型时出错:", error);
-    alert(`获取LiteLLM模型失败: ${error.message}`);
+    console.error("Error fetching OpenAI Router models:", error);
+    alert(`Failed to fetch OpenAI Router models: ${error.message}`);
   }
 }
 
@@ -362,33 +362,33 @@ async function loadGeminiModels() {
   }
 }
 
-// Load LiteLLM models from storage or keep as input
-async function loadLiteLLMModels() {
+// Load OpenAI Router models from storage or keep as input
+async function loadOpenAIRouterModels() {
   try {
     // Try to load cached models from storage
-    const cachedData = await chrome.storage.local.get("litellm-models-cache");
-    const litellmModels = cachedData["litellm-models-cache"];
+    const cachedData = await chrome.storage.local.get("openai-router-models-cache");
+    const routerModels = cachedData["openai-router-models-cache"];
 
-    const inputElement = document.getElementById("litellm-model");
+    const inputElement = document.getElementById("router-model");
 
     // Check if we have cached models and they're not too old (24 hours)
     const isDataFresh =
-      litellmModels &&
-      litellmModels.timestamp &&
-      Date.now() - litellmModels.timestamp < 24 * 60 * 60 * 1000;
+      routerModels &&
+      routerModels.timestamp &&
+      Date.now() - routerModels.timestamp < 24 * 60 * 60 * 1000;
 
     if (
       isDataFresh &&
-      litellmModels.models &&
-      litellmModels.models.length > 0
+      routerModels.models &&
+      routerModels.models.length > 0
     ) {
       // Replace input with select if we have cached models
       if (inputElement.tagName.toLowerCase() === "input") {
         const currentValue = inputElement.value;
 
         const selectElement = document.createElement("select");
-        selectElement.id = "litellm-model";
-        selectElement.name = "litellm-model";
+        selectElement.id = "router-model";
+        selectElement.name = "router-model";
         selectElement.className = inputElement.className;
 
         // Replace input with select
@@ -396,18 +396,18 @@ async function loadLiteLLMModels() {
 
         // Show search container
         const searchContainer = document.getElementById(
-          "litellm-search-container"
+          "router-search-container"
         );
         if (searchContainer) {
           searchContainer.classList.remove("hidden");
         }
 
         // Store all models for filtering
-        selectElement.allModels = litellmModels.models;
+        selectElement.allModels = routerModels.models;
 
         // Update options with all models
-        updateLiteLLMModelOptions(
-          litellmModels.models,
+        updateOpenAIRouterModelOptions(
+          routerModels.models,
           selectElement,
           currentValue
         );
@@ -423,15 +423,15 @@ async function loadLiteLLMModels() {
         }
 
         // Setup search functionality
-        const searchInput = document.getElementById("litellm-model-search");
+        const searchInput = document.getElementById("router-model-search");
         if (searchInput) {
           searchInput.addEventListener("input", (e) => {
             const searchTerm = e.target.value;
-            const filteredModels = filterLiteLLMModels(
+            const filteredModels = filterOpenAIRouterModels(
               searchTerm,
-              litellmModels.models
+              routerModels.models
             );
-            updateLiteLLMModelOptions(
+            updateOpenAIRouterModelOptions(
               filteredModels,
               selectElement,
               selectElement.value
@@ -439,13 +439,13 @@ async function loadLiteLLMModels() {
           });
         }
       }
-      console.log(`加载了 ${litellmModels.models.length} 个缓存的LiteLLM模型`);
+      console.log(`加载了 ${routerModels.models.length}  cached OpenAI Router models`);
     } else {
       // Keep as input field if no cached data or data is stale
-      console.log("使用LiteLLM输入框");
+      console.log("Using OpenAI Router text input");
     }
   } catch (error) {
-    console.error("加载LiteLLM模型时出错:", error);
+    console.error("Error loading OpenAI Router models:", error);
     // Keep as input field in case of error
   }
 }
@@ -518,21 +518,21 @@ async function loadSettings() {
           settings.deepseek.model || "deepseek-chat";
       }
 
-      // Set LiteLLM settings
-      if (settings.litellm) {
-        document.getElementById("litellm-key").value =
-          settings.litellm.apiKey || "";
-        document.getElementById("litellm-url").value =
-          settings.litellm.url || "http://127.0.0.1:4000";
-        // Load LiteLLM models first, then set the selected model
-        await loadLiteLLMModels();
-        const litellmModelElement = document.getElementById("litellm-model");
-        if (litellmModelElement) {
-          litellmModelElement.value = settings.litellm.model || "gpt-3.5-turbo";
+      // Set OpenAI Router settings
+      if (settings["openai-router"]) {
+        document.getElementById("router-key").value =
+          settings["openai-router"].apiKey || "";
+        document.getElementById("router-url").value =
+          settings["openai-router"].url || "http://127.0.0.1:4000";
+        // Load OpenAI Router models first, then set the selected model
+        await loadOpenAIRouterModels();
+        const routerModelElement = document.getElementById("router-model");
+        if (routerModelElement) {
+          routerModelElement.value = settings["openai-router"].model || "gpt-3.5-turbo";
         }
       } else {
         // Even if no settings exist, try to load cached models
-        await loadLiteLLMModels();
+        await loadOpenAIRouterModels();
       }
     }
   } catch (error) {
@@ -615,11 +615,11 @@ async function testProviderConnection() {
           ],
         };
         break;
-      case "litellm":
+      case "openai-router":
         testData = {
-          apiKey: document.getElementById("litellm-key").value,
-          model: document.getElementById("litellm-model").value,
-          url: document.getElementById("litellm-url").value,
+          apiKey: document.getElementById("router-key").value,
+          model: document.getElementById("router-model").value,
+          url: document.getElementById("router-url").value,
           streaming: true,
           include_usage: true,
           messages: [
@@ -666,7 +666,7 @@ async function testProviderConnection() {
           break;
         case "openai":
         case "deepseek":
-        case "litellm":
+        case "openai-router":
           if (response.choices && response.choices[0]?.message?.content) {
             responseText = response.choices[0].message.content;
           }
@@ -788,38 +788,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Add litellm URL preview update
-  const litellmUrlInput = document.getElementById("litellm-url");
+  // Update OpenAI Router URL preview update
+  const routerUrlInput = document.getElementById("router-url");
   const fullUrlPreview = document.getElementById("full-url-preview");
   function updateUrlPreview() {
-    const baseUrl = litellmUrlInput.value.replace(/\/$/, "");
+    const baseUrl = routerUrlInput.value.replace(/\/$/, "");
     fullUrlPreview.textContent = `Actual request: ${baseUrl}/v1/chat/completions`;
   }
-  litellmUrlInput.addEventListener("input", updateUrlPreview);
+  routerUrlInput.addEventListener("input", updateUrlPreview);
   updateUrlPreview(); // Initialize
 
-  // Add refresh LiteLLM models button event listener
-  const refreshLiteLLMButton = document.getElementById(
-    "refresh-litellm-models"
+  // Add refresh OpenAI Router models button event listener
+  const refreshRouterButton = document.getElementById(
+    "refresh-router-models"
   );
-  refreshLiteLLMButton.addEventListener("click", async () => {
-    const originalText = refreshLiteLLMButton.textContent;
-    refreshLiteLLMButton.textContent = "刷新中...";
-    refreshLiteLLMButton.disabled = true;
+  refreshRouterButton.addEventListener("click", async () => {
+    const originalText = refreshRouterButton.textContent;
+    refreshRouterButton.textContent = "刷新中...";
+    refreshRouterButton.disabled = true;
 
     try {
-      await fetchLiteLLMModels();
-      refreshLiteLLMButton.textContent = "已刷新";
+      await fetchOpenAIRouterModels();
+      refreshRouterButton.textContent = "已刷新";
       setTimeout(() => {
-        refreshLiteLLMButton.textContent = originalText;
+        refreshRouterButton.textContent = originalText;
       }, 2000);
     } catch (error) {
-      refreshLiteLLMButton.textContent = "刷新失败";
+      refreshRouterButton.textContent = "刷新失败";
       setTimeout(() => {
-        refreshLiteLLMButton.textContent = originalText;
+        refreshRouterButton.textContent = originalText;
       }, 3000);
     } finally {
-      refreshLiteLLMButton.disabled = false;
+      refreshRouterButton.disabled = false;
     }
   });
 
@@ -869,7 +869,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Add cancel button event listener
   const cancelButton = document.querySelector(
-    'button[type="button"]:not(#test-connection):not(#refresh-gemini-models):not(#refresh-litellm-models):not(#view-cache-stats):not(#clear-cache)'
+    'button[type="button"]:not(#test-connection):not(#refresh-gemini-models):not(#refresh-router-models):not(#view-cache-stats):not(#clear-cache)'
   );
   cancelButton.addEventListener("click", () => {
     window.close();
@@ -894,8 +894,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const deepseekInputs = document.querySelectorAll(
         "#deepseek-key, #deepseek-model"
       );
-      const litellmInputs = document.querySelectorAll(
-        "#litellm-key, #litellm-model"
+      const routerInputs = document.querySelectorAll(
+        "#router-key, #router-model"
       );
 
       openaiInputs.forEach((input) => (input.disabled = radio.id !== "openai"));
@@ -906,8 +906,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       deepseekInputs.forEach(
         (input) => (input.disabled = radio.id !== "deepseek")
       );
-      litellmInputs.forEach(
-        (input) => (input.disabled = radio.id !== "litellm")
+      routerInputs.forEach(
+        (input) => (input.disabled = radio.id !== "openai-router")
       );
     });
   });

@@ -851,10 +851,10 @@ class Summarization {
           targetCommentId,
           language
         ),
-      litellm: () =>
+      "openai-router": () =>
         this.summarizeUsingProvider(
           providerSelection,
-          "LITELLM_API_REQUEST",
+          "OPENAI_ROUTER_API_REQUEST",
           formattedComment,
           model,
           apiKey,
@@ -895,11 +895,11 @@ class Summarization {
     targetCommentId = null,
     isAnthropic = false,
     language = "en",
-    isLiteLLM = false
+    isRouter = false
   ) {
     // Validate required parameters
     const requiredParams =
-      isAnthropic || isLiteLLM
+      isAnthropic || isRouter
         ? [text, model]
         : [text, model, apiKey];
     if (requiredParams.some((param) => !param)) {
@@ -908,7 +908,7 @@ class Summarization {
     }
 
     try {
-      const { maxTokens, litellmUrl } = await this.getAIProviderModel();
+      const { maxTokens, routerUrl } = await this.getAIProviderModel();
       const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
       const { systemPrompt, userPrompt } = await this.preparePrompts(
         tokenLimitText
@@ -923,8 +923,8 @@ class Summarization {
         maxTokens,
         streamingEnabled,
         isAnthropic,
-        isLiteLLM,
-        litellmUrl
+        isRouter,
+        routerUrl
       );
 
       if (streamingEnabled && messageType !== "DEEPSEEK_API_REQUEST") {
@@ -983,15 +983,15 @@ class Summarization {
     maxTokens,
     streamingEnabled,
     isAnthropic,
-    isLiteLLM = false,
-    litellmUrl = "http://127.0.0.1:4000"
+    isRouter = false,
+    routerUrl = "http://127.0.0.1:4000"
   ) {
     const baseData = {
       apiKey,
       model,
       streaming: streamingEnabled,
-      ...(messageType !== "LITELLM_API_REQUEST" && { max_tokens: maxTokens }),
-      ...(isLiteLLM && { url: litellmUrl }),
+      ...(messageType !== "OPENAI_ROUTER_API_REQUEST" && { max_tokens: maxTokens }),
+      ...(isRouter && { url: routerUrl }),
       include_usage: true,
     };
 
@@ -1283,7 +1283,7 @@ ${languageInstruction}`;
 
           if (
             messageType === "OPENAI_API_REQUEST" ||
-            messageType === "LITELLM_API_REQUEST"
+            messageType === "OPENAI_ROUTER_API_REQUEST"
           ) {
             content = chunk.choices?.[0]?.delta?.content || "";
           } else if (messageType === "ANTHROPIC_API_REQUEST") {
