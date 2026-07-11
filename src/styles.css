@@ -831,3 +831,42 @@ tr.athing.comtr.noshow .comhead .togg {
     border: 1px solid #ddd;
     margin-left: 8px;
 }
+
+/* ===== Cached Summary Badge ===== */
+.cached-summary-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.cached-badge {
+    background-color: #4caf50;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.cached-info {
+    color: #666;
+    font-size: 12px;
+}
+
+.regenerate-btn {
+    background-color: #ff6600;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.regenerate-btn:hover {
+    background-color: #e55b00;
+}

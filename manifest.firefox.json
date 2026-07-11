@@ -20,23 +20,14 @@
     "storage"
   ],
   "host_permissions": [
-    "https://news.ycombinator.com/*",
-    "https://hn.algolia.com/*"
-  ],
-  "optional_host_permissions": [
-    "https://api.openai.com/v1/chat/completions/*",
-    "https://api.anthropic.com/v1/messages/*",
-    "https://api.deepseek.com/v1/chat/completions/*",
-    "https://generativelanguage.googleapis.com/*",
-    "http://127.0.0.1:4000/*"
+    "https://*/*",
+    "http://*/*"
   ],
   "options_ui": {
     "page": "options.html",
     "open_in_tab": false
   },
-  "action": {
-    "default_popup": "options.html"
-  },
+  "action": {},
   "background": {
     "scripts": ["background.js"]
   },

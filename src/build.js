@@ -28,6 +28,8 @@ const FILES_TO_COPY = [
   "src/summary-panel.js",
 ];
 
+
+
 // Image files with their directory
 const IMAGE_FILES = [
   "icon-16.png",

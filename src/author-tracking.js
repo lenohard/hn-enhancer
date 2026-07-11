@@ -208,8 +208,22 @@ class AuthorTracking {
         const cached = this.userInfoCache.get(username);
         const now = Date.now();
 
+        // Check in-memory cache first (includes DOM refs)
         if (cached && cached.userInfo && now - cached.timestamp < AuthorTracking.USER_INFO_CACHE_TTL_MS) {
             return cached.userInfo;
+        }
+
+        // Check persistent storage (survives page refresh)
+        const storedInfo = await HNState.getUserInfo(username);
+        if (storedInfo) {
+            const firstCommentElement = cached?.firstCommentElement || this.authorComments.get(username)?.[0] || null;
+            this.userInfoCache.set(username, {
+                ...cached,
+                userInfo: storedInfo,
+                timestamp: now,
+                firstCommentElement,
+            });
+            return storedInfo;
         }
 
         try {
@@ -222,6 +236,8 @@ class AuthorTracking {
                 timestamp: now,
                 firstCommentElement,
             });
+            // Persist to storage for future page loads
+            HNState.saveUserInfo(username, userInfo);
 
             return userInfo;
         } catch (error) {

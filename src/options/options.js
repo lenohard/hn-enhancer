@@ -788,6 +788,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // Add litellm URL preview update
+  const litellmUrlInput = document.getElementById("litellm-url");
+  const fullUrlPreview = document.getElementById("full-url-preview");
+  function updateUrlPreview() {
+    const baseUrl = litellmUrlInput.value.replace(/\/$/, "");
+    fullUrlPreview.textContent = `Actual request: ${baseUrl}/v1/chat/completions`;
+  }
+  litellmUrlInput.addEventListener("input", updateUrlPreview);
+  updateUrlPreview(); // Initialize
+
   // Add refresh LiteLLM models button event listener
   const refreshLiteLLMButton = document.getElementById(
     "refresh-litellm-models"

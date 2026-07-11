@@ -394,11 +394,12 @@
                                 <label for="litellm-url" class="block text-sm font-medium text-gray-900">Router URL</label>
                                 <div class="mt-2 grid grid-cols-1">
                                     <input type="text" id="litellm-url" name="litellm-url"
-                                        placeholder="http://127.0.0.1:4000"
-                                        value="http://127.0.0.1:4000"
+                                        placeholder="https://opencode.ai/zen/go"
+                                        value="https://opencode.ai/zen/go"
                                         class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6">
                                 </div>
-                                <p class="mt-1 text-sm text-gray-600">The base URL of your OpenAI Router server (default: http://127.0.0.1:4000)</p>
+                                <p class="mt-1 text-sm text-gray-600">The base URL of your OpenAI Router server</p>
+                                <p id="full-url-preview" class="mt-1 text-xs text-gray-500 font-mono">Actual request: https://opencode.ai/zen/go/v1/chat/completions</p>
                             </div>
                             <div class="mt-2 grid grid-cols-1">
                                 <label for="litellm-key" class="sr-only">Enter OpenAI Router API Key (Optional)</label>

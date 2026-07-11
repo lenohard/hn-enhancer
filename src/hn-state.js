@@ -4,6 +4,44 @@
 class HNState {
   static BOOKMARKED_AUTHORS_KEY = "bookmarkedAuthors";
   static KARMA_STATS_KEY = "karmaStats";
+  static USER_INFO_KEY = "userInfoCache";
+  static USER_INFO_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+  /**
+   * Saves user info to persistent storage.
+   * @param {string} username - The HN username.
+   * @param {object} userInfo - The user info object from API.
+   */
+  static async saveUserInfo(username, userInfo) {
+    if (!username || !userInfo) return;
+    try {
+      const data = await chrome.storage.local.get(this.USER_INFO_KEY);
+      const cache = data[this.USER_INFO_KEY] || {};
+      cache[username] = { userInfo, timestamp: Date.now() };
+      await chrome.storage.local.set({ [this.USER_INFO_KEY]: cache });
+    } catch (error) {
+      console.error("Error saving user info:", error);
+    }
+  }
+
+  /**
+   * Retrieves user info from persistent storage.
+   * @param {string} username - The HN username.
+   * @returns {Promise<object|null>} The user info or null if not found/expired.
+   */
+  static async getUserInfo(username) {
+    if (!username) return null;
+    try {
+      const data = await chrome.storage.local.get(this.USER_INFO_KEY);
+      const entry = data[this.USER_INFO_KEY]?.[username];
+      if (!entry || !entry.userInfo) return null;
+      if (Date.now() - entry.timestamp > this.USER_INFO_TTL_MS) return null;
+      return entry.userInfo;
+    } catch (error) {
+      console.error("Error retrieving user info:", error);
+      return null;
+    }
+  }
 
   /**
    * Saves the last seen post ID to local storage

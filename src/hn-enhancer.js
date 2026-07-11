@@ -1512,6 +1512,34 @@ window.HNEnhancer = class HNEnhancer {
   } // <-- Added semicolon here
 
   /**
+   * Gets cached summary from hncompanion.com server
+   * @param {string} postId - The HN post ID
+   * @returns {Promise<object|null>} - The cached summary data or null
+   */
+  async getCachedSummary(postId) {
+    if (!postId) return null;
+    
+    const cacheUrl = `https://app.hncompanion.com/api/posts/${postId}`;
+    this.logDebug(`Checking server cache for post ${postId}`);
+    
+    try {
+      const data = await this.apiClient.sendBackgroundMessage(
+        "FETCH_API_REQUEST",
+        { url: cacheUrl }
+      );
+      
+      if (data) {
+        this.logDebug(`Found cached summary for post ${postId}`);
+        return data;
+      }
+    } catch (error) {
+      this.logDebug(`No cached summary for post ${postId}:`, error);
+    }
+    
+    return null;
+  }
+
+  /**
    * Opens the chat modal for a specific comment.
    * @param {HTMLElement} commentElement - The comment element to chat about.
    */

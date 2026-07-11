@@ -789,9 +789,9 @@ async function handleLiteLLMRequest(data) {
     throw new Error("Missing required parameters for LiteLLM API request");
   }
 
-  // Normalize URL by removing trailing slash and appending /chat/completions
+  // Normalize URL by removing trailing slash and appending /v1/chat/completions
   const baseUrl = url.replace(/\/$/, '');
-  const endpoint = `${baseUrl}/chat/completions`;
+  const endpoint = `${baseUrl}/v1/chat/completions`;
 
   console.log("LiteLLM API端点:", endpoint);
 
@@ -945,9 +945,9 @@ async function handleFetchLiteLLMModels(data) {
 
   console.log("处理获取LiteLLM模型列表请求");
 
-  // Normalize URL by removing trailing slash and appending /models
+  // Normalize URL by removing trailing slash and appending /v1/models
   const baseUrl = url.replace(/\/$/, '');
-  const endpoint = `${baseUrl}/models`;
+  const endpoint = `${baseUrl}/v1/models`;
 
   console.log("LiteLLM模型列表API端点:", endpoint);
 
@@ -1050,3 +1050,8 @@ async function fetchWithTimeout(url, options = {}) {
 }
 
 // chrome.runtime.onInstalled.addListener(onInstalled);
+
+// Open options page when extension icon is clicked
+chrome.action.onClicked.addListener(() => {
+  chrome.runtime.openOptionsPage();
+});

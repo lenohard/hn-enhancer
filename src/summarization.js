@@ -117,6 +117,45 @@ class Summarization {
         this.enhancer.summaryPanel.toggle();
       }
 
+      // Check LOCAL cache first (highest priority)
+      const localCache = await this.checkLocalCache(itemId);
+      if (localCache) {
+        const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(localCache.summary || "");
+        this.enhancer.summaryPanel.updateContent({
+          title: "Summary (Local Cache)",
+          metadata: `<button id="regenerate-btn" class="regenerate-btn">🔄 Regenerate</button>`,
+          text: `<div class="cached-summary-header"><span class="cached-badge">LOCAL CACHE</span></div>${summaryHtml}`,
+        });
+        document.getElementById("regenerate-btn")?.addEventListener("click", () => this._forceGenerateSummary(itemId));
+        return;
+      }
+
+      // Then check server cache
+      const cachedSummary = await this.enhancer.getCachedSummary(itemId);
+      if (cachedSummary) {
+        const cacheSource = cachedSummary.source || "HN Companion";
+        const cachedTime = cachedSummary.created_at
+          ? new Date(cachedSummary.created_at).toLocaleString()
+          : "Unknown";
+        
+        const headerHtml = `
+          <div class="cached-summary-header">
+            <span class="cached-badge">CACHED</span>
+            <span class="cached-info">From ${cacheSource} on ${cachedTime}</span>
+          </div>
+        `;
+        
+        const summaryHtml = this.enhancer.markdownUtils.convertMarkdownToHTML(cachedSummary.summary || "No summary available");
+        this.enhancer.summaryPanel.updateContent({
+          title: "Summary (Server Cache)",
+          metadata: `<button id="regenerate-btn" class="regenerate-btn">🔄 Regenerate</button>`,
+          text: headerHtml + summaryHtml,
+        });
+        document.getElementById("regenerate-btn")?.addEventListener("click", () => this._forceGenerateSummary(itemId));
+        return;
+      }
+
+      // No cache, generate new summary
       const { aiProvider, model } = await this.getAIProviderModel();
       if (!aiProvider) {
         this.showConfigureAIMessage();
@@ -136,6 +175,24 @@ class Summarization {
       await this.summarizeTextWithAI(formattedComment, commentPathToIdMap);
     } catch (error) {
       this.handleError("Error preparing for summarization", error);
+    }
+  }
+
+  /**
+   * Force generate a new summary, skipping both local and server cache
+   */
+  async _forceGenerateSummary(itemId) {
+    try {
+      const { aiProvider, model } = await this.getAIProviderModel();
+      if (!aiProvider) {
+        this.showConfigureAIMessage();
+        return;
+      }
+      this.showLoadingMessage("Post Summary", "Regenerating summary...", aiProvider, model);
+      const { formattedComment, commentPathToIdMap } = await this.getHNThread(itemId);
+      await this.summarizeTextWithAI(formattedComment, commentPathToIdMap);
+    } catch (error) {
+      this.handleError("Error regenerating summary", error);
     }
   }
 
@@ -340,6 +397,35 @@ class Summarization {
     } catch (error) {
       console.error("Error saving summary to cache:", error);
     }
+  }
+
+  /**
+   * Check local cache for summary
+   * @param {string} postId - The HN post ID
+   * @param {string|null} commentId - Optional comment ID for thread cache
+   * @returns {Promise<object|null>} - Cached summary or null
+   */
+  async checkLocalCache(postId, commentId = null) {
+    try {
+      const { aiProvider, model, language } = await this.getAIProviderModel();
+      if (!aiProvider || !model || !language) return null;
+      
+      const cached = await HNState.getSummary(
+        postId,
+        commentId,
+        aiProvider,
+        model,
+        language
+      );
+      
+      if (cached) {
+        this.enhancer.logDebug(`Found local cache for post ${postId}`);
+        return cached;
+      }
+    } catch (error) {
+      this.enhancer.logDebug(`No local cache for post ${postId}`);
+    }
+    return null;
   }
 
   /**
