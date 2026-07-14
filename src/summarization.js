@@ -640,7 +640,7 @@ class Summarization {
     try {
       const { aiProvider, model, language } = await this.getAIProviderModel();
       if (!aiProvider || !model || !language) return null;
-      
+
       const cached = await HNState.getSummary(
         postId,
         commentId,
@@ -648,7 +648,7 @@ class Summarization {
         model,
         language
       );
-      
+
       if (cached) {
         this.enhancer.logDebug(`Found local cache for post ${postId}`);
         return cached;
@@ -1414,10 +1414,12 @@ Follow these guidelines:
    -
 
 Track how each theme develops through reply chains
+   - Track recommended resources (books, papers, tools, sites, media) mentioned in comments
 
 4. Quality Assessment:
    - Prioritize comments that exhibit a combination of high score, low downvotes, substantial replies, and depth of content
    - Actively identify and highlight expert explanations or in-depth analyses
+   - Capture all recommended resources, especially those praised or endorsed by multiple users
 
 Based on the above instructions, you should summarize the discussion. Your output should be well-structured, informative, and easily digestible for someone who hasn't read the original thread.
 
@@ -1436,7 +1438,11 @@ Brief summary of the overall discussion in 2-3 sentences.
 [Present contrasting perspectives with hierarchy_paths and author attribution]
 
 # Notable Side Discussions
-[Interesting tangents that added value with hierarchy_paths]`;
+[Interesting tangents that added value with hierarchy_paths]
+
+# Recommendations
+[Extract recommended resources mentioned in comments with hierarchy_paths and author attribution. Include books, papers, tools, github repos, sites, media, etc. Do NOT list everything — select only the most praised and well-received resources (high score, multiple endorsements, or strong praise from credible sources). Max 8-10 items.]
+`
   }
 
   /**
