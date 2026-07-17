@@ -166,7 +166,8 @@ function copySrcDirectory(targetDir) {
     "summarization.js",
     "author-tracking.js",
     "ui-components.js",
-    "chat-modal.js", // <-- Add chat-modal.js here
+    "chat-modal.js",
+    "hub-panel.js",
     "hn-enhancer.js",
   ];
 

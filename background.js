@@ -137,7 +137,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle the message
   switch (message.type) {
     case "HN_SHOW_OPTIONS":
-      chrome.runtime.openOptionsPage();
+      chrome.tabs.create({ url: chrome.runtime.getURL("options.html") });
       break;
 
     case "FETCH_API_REQUEST":

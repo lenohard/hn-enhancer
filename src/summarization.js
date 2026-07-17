@@ -48,6 +48,216 @@ class Summarization {
     this.enhancer = enhancer;
     this.SummarizeCheckStatus = SUMMARIZATION_CONFIG.STATUS;
     this._summaryPathMap = new Map();
+    this._summaryViewState = null;
+  }
+
+  /**
+   * Ensures per-post summary view state for Local / Server tabs.
+   * Streaming/generation lives under Local (no separate Generating tab).
+   * @param {string} itemId
+   * @returns {object}
+   */
+  _ensureSummaryViewState(itemId) {
+    if (!itemId) {
+      itemId = this.enhancer.domUtils.getCurrentHNItemId();
+    }
+    if (!this._summaryViewState || this._summaryViewState.itemId !== itemId) {
+      this._summaryViewState = {
+        itemId,
+        localCache: null,
+        serverCache: null,
+        generating: null,
+        activeView: "local",
+        pathMap: new Map(),
+        lastMeta: null,
+      };
+    }
+    // Migrate leftover "generating" view from older sessions in-memory
+    if (this._summaryViewState.activeView === "generating") {
+      this._summaryViewState.activeView = "local";
+    }
+    return this._summaryViewState;
+  }
+
+  /**
+   * Builds Local / Server tab bar. Local also reflects generating state.
+   * @param {object} state
+   * @returns {string}
+   */
+  _buildSourceTabsHtml(state) {
+    const hasServer = !!state.serverCache;
+    const isStreaming = !!(state.generating && state.generating.isStreaming);
+    const active = state.activeView === "server" ? "server" : "local";
+
+    const tab = (id, view, label, enabled, extraClass = "") => {
+      const activeClass = active === view ? "active" : "";
+      const disabledAttr = enabled ? "" : "disabled";
+      const disabledClass = enabled ? "" : "disabled";
+      return `<button type="button" id="${id}" class="cache-toggle-btn source-tab-btn ${activeClass} ${disabledClass} ${extraClass}" data-source-view="${view}" ${disabledAttr}>${label}</button>`;
+    };
+
+    // Local always enabled: empty prompt, cache, or live stream (status via label/pulse)
+    const localLabel = isStreaming ? "Local…" : "Local";
+    const localClass = isStreaming ? "is-generating" : "";
+
+    return `<div class="summary-source-tabs">
+      ${tab("source-tab-local", "local", localLabel, true, localClass)}
+      ${tab("source-tab-server", "server", "Server", hasServer)}
+    </div>`;
+  }
+
+  /**
+   * Renders the active Local / Server view into the summary panel.
+   */
+  async _renderSummaryView() {
+    const state = this._summaryViewState;
+    if (!state) return;
+
+    const hasLocal = !!state.localCache;
+    const hasServer = !!state.serverCache;
+    const hasGenerating = !!state.generating;
+    const isStreaming = !!(hasGenerating && state.generating.isStreaming);
+
+    if (state.activeView !== "local" && state.activeView !== "server") {
+      state.activeView = "local";
+    }
+
+    // Server tab only valid when cache exists; Local may be empty / streaming / cached
+    if (state.activeView === "server" && !hasServer) {
+      state.activeView = "local";
+    }
+
+    const tabsHtml = this._buildSourceTabsHtml(state);
+    let title = "Summary";
+    let headerHtml = "";
+    let bodyHtml = "";
+    let pathMap = state.pathMap || new Map();
+
+    if (state.activeView === "server" && hasServer) {
+      const server = state.serverCache;
+      const cacheSource = server.source || "HN Companion";
+      const cachedTime = server.created_at
+        ? new Date(server.created_at).toLocaleString()
+        : "Unknown";
+      title = "Summary (Server)";
+      headerHtml = `<div class="cached-summary-header"><span class="cached-badge server-cache">SERVER</span><span class="cached-info">From ${cacheSource} on ${cachedTime}</span></div>`;
+      pathMap = await this._getCommentPathToIdMap(state.itemId, null);
+      bodyHtml = this._formatSummaryHtml(
+        server.summary || "No summary available",
+        pathMap
+      );
+    } else if (state.activeView === "local") {
+      // Streaming (or error/loading with no finished local yet) shows under Local
+      if (isStreaming || (hasGenerating && !hasLocal)) {
+        const gen = state.generating;
+        title = gen.title || "Summary";
+        headerHtml = `<div class="cached-summary-header"><span class="cached-badge local-cache">LOCAL</span><span class="cached-info">${isStreaming ? "Generating…" : ""}</span></div>`;
+        if (gen.rawText) {
+          pathMap = gen.pathMap || pathMap;
+          bodyHtml =
+            this._formatSummaryHtml(gen.rawText, pathMap) +
+            (gen.isStreaming ? "..." : "");
+        } else {
+          bodyHtml =
+            gen.loadingHtml ||
+            `<div>Generating summary...<span class="loading-spinner"></span></div>`;
+        }
+      } else if (hasLocal) {
+        const local = state.localCache;
+        title = "Summary (Local)";
+        headerHtml = `<div class="cached-summary-header"><span class="cached-badge local-cache">LOCAL</span></div>`;
+        if (state.lastMeta) {
+          headerHtml += this._buildGenerateMetaHtml(state.lastMeta);
+        }
+        pathMap = await this._getCommentPathToIdMap(
+          state.itemId,
+          local.metadata
+        );
+        bodyHtml = this._formatSummaryHtml(local.summary || "", pathMap);
+      } else {
+        title = "Summary";
+        bodyHtml =
+          "<div>No local summary yet. Click <strong>Summarize</strong> on the post to generate one. Click Summarize again anytime to regenerate.</div>";
+      }
+    } else {
+      bodyHtml = "<div>No summary available for this source.</div>";
+    }
+
+    this.enhancer.summaryPanel.updateContent({
+      title,
+      metadata: tabsHtml,
+      text: `${headerHtml}${bodyHtml}`,
+    });
+
+    this._bindSourceTabHandlers();
+    this._bindSummaryCommentLinks();
+  }
+
+  /**
+   * @param {object} meta
+   * @returns {string}
+   */
+  _buildGenerateMetaHtml(meta) {
+    if (!meta) return "";
+    const { aiProvider, model, language, duration, cacheIndicator } = meta;
+    if (!aiProvider) return "";
+    const providerText = model
+      ? `${aiProvider} / ${model}`
+      : `${aiProvider}`;
+    let html = `<div class="cached-summary-header"><span class="cached-info">Summarized using <strong>${providerText}</strong>`;
+    if (duration != null) {
+      html += ` in <strong>${duration}</strong> secs`;
+    }
+    if (language && language !== "en") {
+      html += ` in <strong>${this.getLanguageName(language)}</strong>`;
+    }
+    if (cacheIndicator) {
+      html += ` ${cacheIndicator}`;
+    }
+    html += `</span></div>`;
+    return html;
+  }
+
+  _bindSourceTabHandlers() {
+    const state = this._summaryViewState;
+    if (!state) return;
+
+    document.querySelectorAll(".source-tab-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const view = btn.dataset.sourceView;
+        if (!view || btn.disabled) return;
+        this._switchSummaryView(view);
+      });
+    });
+  }
+
+  /**
+   * Switch visible source without interrupting generation.
+   * @param {"local"|"server"} view
+   */
+  _switchSummaryView(view) {
+    const state = this._summaryViewState;
+    if (!state) return;
+    // Local always switchable (empty / cache / stream). Server needs cache.
+    if (view === "server" && !state.serverCache) return;
+    if (state.activeView === view) return;
+    state.activeView = view;
+    this._renderSummaryView();
+  }
+
+  /**
+   * Refresh only the source tab bar (e.g. while user views Server during stream).
+   */
+  _refreshSourceTabsOnly() {
+    const state = this._summaryViewState;
+    if (!state) return;
+    const metadataElement = this.enhancer.summaryPanel.panel?.querySelector(
+      ".summary-metadata"
+    );
+    if (!metadataElement) return;
+    metadataElement.innerHTML = this._buildSourceTabsHtml(state);
+    this._bindSourceTabHandlers();
   }
 
   /**
@@ -118,28 +328,46 @@ class Summarization {
         this.enhancer.summaryPanel.toggle();
       }
 
-      // Fetch both caches in parallel
+      // Fetch both caches so Local/Server tabs work while generating
       const [localCache, cachedSummary] = await Promise.all([
         this.checkLocalCache(itemId),
         this.enhancer.getCachedSummary(itemId),
       ]);
 
-      // Show local cache by default (highest priority), with toggle if server cache exists
-      if (localCache || cachedSummary) {
-        await this._showCachedSummary(itemId, localCache, cachedSummary, "local");
+      const state = this._ensureSummaryViewState(itemId);
+      state.localCache = localCache;
+      state.serverCache = cachedSummary;
+
+      // Avoid stacking parallel generations; jump to Local stream instead
+      if (state.generating?.isStreaming) {
+        state.activeView = "local";
+        await this._renderSummaryView();
         return;
       }
 
-      // No cache, generate new summary
+      // "summarize all comments" always generates (re-click = regenerate).
+      // Server/Local tabs stay available for viewing cached copies mid-stream.
       const { aiProvider, model } = await this.getAIProviderModel();
       if (!aiProvider) {
-        this.showConfigureAIMessage();
+        // No AI configured: still show any cached summary
+        if (localCache || cachedSummary) {
+          await this._showCachedSummary(
+            itemId,
+            localCache,
+            cachedSummary,
+            localCache ? "local" : "server"
+          );
+        } else {
+          this.showConfigureAIMessage();
+        }
         return;
       }
 
       this.showLoadingMessage(
         "Post Summary",
-        "Analyzing all threads in this post...",
+        localCache || cachedSummary
+          ? "Regenerating summary..."
+          : "Analyzing all threads in this post...",
         aiProvider,
         model
       );
@@ -154,87 +382,68 @@ class Summarization {
   }
 
   /**
-   * Force generate a new summary, skipping both local and server cache
+   * Auto-open summary panel on comments page load when useful:
+   * - no server summary → open (empty Local prompt, or Local if cached)
+   * - local summary exists → open (even if server also exists)
+   * - both exist → default view is Local
+   * - server-only → do not auto-open (user can open manually)
+   * @param {string} itemId
    */
-  async _forceGenerateSummary(itemId) {
+  async autoOpenSummaryPanel(itemId) {
+    if (!itemId || !this.enhancer.summaryPanel) return;
     try {
-      const { aiProvider, model } = await this.getAIProviderModel();
-      if (!aiProvider) {
-        this.showConfigureAIMessage();
-        return;
+      const [localCache, serverCache] = await Promise.all([
+        this.checkLocalCache(itemId),
+        this.enhancer.getCachedSummary(itemId),
+      ]);
+
+      // Open when missing server, or when local cache exists
+      const shouldOpen = !serverCache || !!localCache;
+      if (!shouldOpen) return;
+
+      if (!this.enhancer.summaryPanel.isVisible) {
+        this.enhancer.summaryPanel.toggle();
       }
-      this.showLoadingMessage("Post Summary", "Regenerating summary...", aiProvider, model);
-      const { formattedComment, commentPathToIdMap } = await this.getHNThread(itemId);
-      await this.summarizeTextWithAI(formattedComment, commentPathToIdMap);
+
+      if (localCache || serverCache) {
+        // Prefer Local whenever it exists; otherwise Server
+        await this._showCachedSummary(
+          itemId,
+          localCache,
+          serverCache,
+          localCache ? "local" : "server"
+        );
+      } else {
+        // No caches — open empty Local so user can Summarize
+        const state = this._ensureSummaryViewState(itemId);
+        state.localCache = null;
+        state.serverCache = null;
+        state.generating = null;
+        state.activeView = "local";
+        await this._renderSummaryView();
+      }
     } catch (error) {
-      this.handleError("Error regenerating summary", error);
+      console.warn("Could not auto-open summary panel:", error);
     }
   }
 
   /**
-   * Show a cached summary with toggle buttons to switch between local/server cache.
+   * Show a cached summary with persistent Local / Server tabs.
    * @param {string} itemId - The HN post ID
    * @param {object|null} localCache - Local cache data
    * @param {object|null} serverCache - Server cache data
    * @param {string} which - Which cache to show: "local" or "server"
    */
   async _showCachedSummary(itemId, localCache, serverCache, which) {
-    const hasLocal = !!localCache;
-    const hasServer = !!serverCache;
-
-    // Build toggle buttons
-    let buttons = `<button id="regenerate-btn" class="regenerate-btn">🔄 Regenerate</button>`;
-    if (hasLocal && hasServer) {
-      const localActive = which === "local" ? "active" : "";
-      const serverActive = which === "server" ? "active" : "";
-      buttons += `<button id="cache-local-btn" class="cache-toggle-btn ${localActive}">Local</button>`;
-      buttons += `<button id="cache-server-btn" class="cache-toggle-btn ${serverActive}">Server</button>`;
-    }
-
-    let title;
-    let summaryText;
-    let headerHtml = "";
-
-    if (which === "local" && hasLocal) {
-      summaryText = localCache.summary || "";
-      title = "Summary (Local Cache)";
-      headerHtml = `<div class="cached-summary-header"><span class="cached-badge local-cache">LOCAL</span></div>`;
-    } else if (which === "server" && hasServer) {
-      const cacheSource = serverCache.source || "HN Companion";
-      const cachedTime = serverCache.created_at
-        ? new Date(serverCache.created_at).toLocaleString()
-        : "Unknown";
-      summaryText = serverCache.summary || "No summary available";
-      title = "Summary (Server Cache)";
-      headerHtml = `<div class="cached-summary-header"><span class="cached-badge server-cache">SERVER</span><span class="cached-info">From ${cacheSource} on ${cachedTime}</span></div>`;
+    const state = this._ensureSummaryViewState(itemId);
+    state.localCache = localCache;
+    state.serverCache = serverCache;
+    if (which === "local" || which === "server") {
+      state.activeView = which;
     } else {
-      // Fallback: show whichever exists
-      which = hasLocal ? "local" : "server";
-      return this._showCachedSummary(itemId, localCache, serverCache, which);
+      state.activeView = localCache ? "local" : "server";
     }
-
-    const cacheMetadata =
-      which === "local" && hasLocal ? localCache.metadata : null;
-    const commentPathToIdMap = await this._getCommentPathToIdMap(
-      itemId,
-      cacheMetadata
-    );
-    const formattedSummary = this._formatSummaryHtml(
-      summaryText,
-      commentPathToIdMap
-    );
-
-    this.enhancer.summaryPanel.updateContent({
-      title,
-      metadata: buttons,
-      text: `${headerHtml}${formattedSummary}`,
-    });
-
-    this._bindSummaryCommentLinks();
-
-    document.getElementById("regenerate-btn")?.addEventListener("click", () => this._forceGenerateSummary(itemId));
-    document.getElementById("cache-local-btn")?.addEventListener("click", () => this._showCachedSummary(itemId, localCache, serverCache, "local"));
-    document.getElementById("cache-server-btn")?.addEventListener("click", () => this._showCachedSummary(itemId, localCache, serverCache, "server"));
+    await this._renderSummaryView();
   }
 
   /**
@@ -483,17 +692,61 @@ class Summarization {
   }
 
   /**
-   * Show loading message
+   * Show loading under Local tab; Server tab stays clickable if cache exists.
    */
   showLoadingMessage(title, metadata, aiProvider, model) {
+    const itemId = this.enhancer.domUtils.getCurrentHNItemId();
+    const state = this._ensureSummaryViewState(itemId);
     const modelInfo = aiProvider
       ? ` using <strong>${aiProvider} ${model || ""}</strong>`
       : "";
-    this.enhancer.summaryPanel.updateContent({
-      title,
-      metadata,
-      text: `<div>Generating summary${modelInfo}... This may take a few moments.<span class="loading-spinner"></span></div>`,
-    });
+    const statusLine = metadata
+      ? `<div class="cached-info" style="margin-bottom:8px;">${metadata}</div>`
+      : "";
+    state.generating = {
+      rawText: "",
+      isStreaming: true,
+      title: title || "Summary",
+      loadingHtml: `${statusLine}<div>Generating summary${modelInfo}... This may take a few moments.<span class="loading-spinner"></span></div>`,
+      pathMap: state.pathMap || new Map(),
+    };
+    // Generation always surfaces under Local (no separate Generating tab)
+    state.activeView = "local";
+    state.lastMeta = null;
+    this._renderSummaryView();
+
+    // Best-effort: fill Local/Server so tabs become clickable mid-generation
+    this._seedCachesForTabs(itemId);
+  }
+
+  /**
+   * Lazily load local/server caches into view state without blocking generation.
+   * @param {string} itemId
+   */
+  async _seedCachesForTabs(itemId) {
+    const state = this._ensureSummaryViewState(itemId);
+    try {
+      const tasks = [];
+      if (!state.localCache) {
+        tasks.push(
+          this.checkLocalCache(itemId).then((cache) => {
+            if (cache) state.localCache = cache;
+          })
+        );
+      }
+      if (!state.serverCache) {
+        tasks.push(
+          this.enhancer.getCachedSummary(itemId).then((cache) => {
+            if (cache) state.serverCache = cache;
+          })
+        );
+      }
+      if (tasks.length === 0) return;
+      await Promise.all(tasks);
+      this._refreshSourceTabsOnly();
+    } catch (error) {
+      console.warn("Could not seed summary caches for tabs:", error);
+    }
   }
 
   /**
@@ -1512,11 +1765,23 @@ ${languageInstruction}`;
     let accumulatedText = "";
     let lastUpdateTime = 0;
 
-    this.enhancer.summaryPanel.updateContent({
-      title: "Thread Summary",
-      text: `<div>Generating summary... <span class="loading-spinner"></span></div>`,
-      metadata: "",
-    });
+    // Stream into Local; keep Server tab available if cache exists
+    const itemId = this.enhancer.domUtils.getCurrentHNItemId();
+    const state = this._ensureSummaryViewState(itemId);
+    state.generating = {
+      rawText: "",
+      isStreaming: true,
+      title: state.generating?.title || "Thread Summary",
+      loadingHtml: `<div>Generating summary... <span class="loading-spinner"></span></div>`,
+      pathMap: commentPathToIdMap,
+    };
+    // Stay on Server if user is viewing it; otherwise show Local stream
+    if (state.activeView === "server" && state.serverCache) {
+      this._refreshSourceTabsOnly();
+    } else {
+      state.activeView = "local";
+      this._renderSummaryView();
+    }
 
     const streamingPromise = new Promise((resolve, reject) => {
       const messageListener = (message) => {
@@ -1580,10 +1845,16 @@ ${languageInstruction}`;
       await streamingPromise;
     } catch (error) {
       console.error("Error during streaming:", error);
-      this.enhancer.summaryPanel.updateContent({
+      const errState = this._ensureSummaryViewState(itemId);
+      errState.generating = {
+        rawText: "",
+        isStreaming: false,
         title: "Error",
-        text: `Error generating streaming summary: ${error.message}`,
-      });
+        loadingHtml: `<div>Error generating streaming summary: ${error.message}</div>`,
+        pathMap: commentPathToIdMap,
+      };
+      errState.activeView = "local";
+      await this._renderSummaryView();
       return;
     }
 
@@ -1599,23 +1870,44 @@ ${languageInstruction}`;
   }
 
   /**
-   * Updates the UI with streaming content
+   * Updates the UI with streaming content under Local.
+   * If user is on Server, keep streaming in state only and refresh tab labels.
    */
   updateStreamingUI(text, commentPathToIdMap, isFinal = false) {
-    const formattedSummary = this._formatSummaryHtml(text, commentPathToIdMap);
+    const itemId = this.enhancer.domUtils.getCurrentHNItemId();
+    const state = this._ensureSummaryViewState(itemId);
+    state.generating = {
+      rawText: text,
+      isStreaming: !isFinal,
+      title: state.generating?.title || "Thread Summary",
+      loadingHtml: null,
+      pathMap: commentPathToIdMap,
+    };
+    state.pathMap = commentPathToIdMap;
 
-    this.enhancer.summaryPanel.updateContent({
-      title: "Thread Summary",
-      text: formattedSummary + (isFinal ? "" : "..."),
-    });
+    if (state.activeView !== "local") {
+      this._refreshSourceTabsOnly();
+      return;
+    }
+
+    const formattedSummary = this._formatSummaryHtml(text, commentPathToIdMap);
+    const textElement =
+      this.enhancer.summaryPanel.panel?.querySelector(".summary-text");
+    if (textElement) {
+      textElement.innerHTML = formattedSummary + (isFinal ? "" : "...");
+    } else {
+      this._renderSummaryView();
+    }
 
     if (isFinal) {
       this._bindSummaryCommentLinks();
+    } else {
+      this._refreshSourceTabsOnly();
     }
   }
 
   /**
-   * Shows the summary in the summary panel
+   * Shows the summary in the summary panel (keeps source tabs).
    */
   async showSummaryInPanel(
     summary,
@@ -1623,11 +1915,6 @@ ${languageInstruction}`;
     duration,
     options = {}
   ) {
-    const formattedSummary = this._formatSummaryHtml(
-      summary,
-      commentPathToIdMap
-    );
-
     const {
       cacheIndicator = null,
       aiProvider: providedProvider,
@@ -1646,34 +1933,51 @@ ${languageInstruction}`;
       language = language || settings.language;
     }
 
-    if (aiProvider) {
-      const providerText = model
-        ? `${aiProvider} / ${model}`
-        : `${aiProvider}`;
-      let metadataText = `Summarized using <strong>${providerText}</strong> in <strong>${
-        duration ?? "0"
-      } secs</strong>`;
+    const itemId = this.enhancer.domUtils.getCurrentHNItemId();
+    const state = this._ensureSummaryViewState(itemId);
 
-      if (language && language !== "en") {
-        const languageName = this.getLanguageName(language);
-        metadataText += ` in <strong>${languageName}</strong>`;
-      }
+    state.generating = {
+      rawText: summary,
+      isStreaming: false,
+      title: state.generating?.title || "Thread Summary",
+      loadingHtml: null,
+      pathMap: commentPathToIdMap,
+    };
+    state.pathMap = commentPathToIdMap;
+    state.lastMeta = {
+      aiProvider,
+      model,
+      language,
+      duration: duration ?? "0",
+      cacheIndicator,
+    };
 
-      if (cacheIndicator) {
-        metadataText += ` ${cacheIndicator}`;
-      }
+    // Update Local immediately (saveSummary may still be flushing async)
+    state.localCache = {
+      summary,
+      metadata: {
+        duration: duration ?? 0,
+        commentCount: commentPathToIdMap?.size || 0,
+        timestamp: Date.now(),
+        commentPathToIdMap:
+          commentPathToIdMap instanceof Map
+            ? Array.from(commentPathToIdMap.entries())
+            : [],
+      },
+      timestamp: Date.now(),
+      provider: aiProvider,
+      model,
+      language,
+    };
 
-      this.enhancer.summaryPanel.updateContent({
-        metadata: metadataText,
-        text: formattedSummary,
-      });
-    } else {
-      this.enhancer.summaryPanel.updateContent({
-        text: formattedSummary,
-      });
+    // Stay on whatever tab user was viewing; default to Local for new result
+    if (state.activeView !== "server") {
+      state.activeView = "local";
     }
+    // Finished stream: clear generating flag so Local shows saved cache
+    state.generating = null;
 
-    this._bindSummaryCommentLinks();
+    await this._renderSummaryView();
   }
 
   /**

@@ -867,9 +867,177 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // Saved comments list (post title + open/focus + unsave)
+  const savedCommentsList = document.getElementById("saved-comments-list");
+  const refreshSavedCommentsButton = document.getElementById(
+    "refresh-saved-comments"
+  );
+
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const truncateText = (value, max = 160) => {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    if (text.length <= max) return text;
+    return `${text.slice(0, max)}…`;
+  };
+
+  const renderSavedCommentsList = async () => {
+    if (!savedCommentsList) return;
+    if (typeof HNState === "undefined") {
+      savedCommentsList.innerHTML =
+        `<div class="text-red-600 px-1 py-2">HNState is not available.</div>`;
+      return;
+    }
+
+    try {
+      const savedMap = await HNState.getSavedComments();
+      const entries = Array.from(savedMap.values()).sort(
+        (a, b) => (b.savedAt || 0) - (a.savedAt || 0)
+      );
+
+      if (entries.length === 0) {
+        savedCommentsList.innerHTML =
+          `<div class="text-gray-500 px-1 py-2">No saved comments yet. On HN, click <strong>save</strong> on a comment.</div>`;
+        return;
+      }
+
+      savedCommentsList.innerHTML = entries
+        .map((entry) => {
+          const openUrl = HNState.getSavedCommentOpenUrl(entry);
+          const title = entry.postTitle || `Post ${entry.postId || "?"}`;
+          const author = entry.author || "unknown";
+          const snippet = truncateText(entry.text, 180);
+          const savedAt = entry.savedAt
+            ? new Date(entry.savedAt).toLocaleString()
+            : "";
+          const openAttr = openUrl
+            ? `href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer"`
+            : `href="#" aria-disabled="true"`;
+          return `<div class="saved-comment-item mb-2 rounded-md border border-gray-200 bg-white p-3" data-comment-id="${escapeHtml(entry.commentId)}">
+            <div class="font-medium text-gray-900"><a class="text-indigo-700 hover:underline" ${openAttr}>${escapeHtml(title)}</a></div>
+            <div class="mt-1 text-xs text-gray-500">by ${escapeHtml(author)}${savedAt ? ` · ${escapeHtml(savedAt)}` : ""}</div>
+            <div class="mt-2 text-gray-700">${escapeHtml(snippet) || "(no text stored)"}</div>
+            <div class="mt-3 flex flex-wrap items-center gap-3">
+              <a class="text-indigo-600 hover:text-indigo-500 font-medium" ${openAttr}>Open &amp; focus</a>
+              <button type="button" class="unsave-comment-btn text-red-600 hover:text-red-500 font-medium" data-comment-id="${escapeHtml(entry.commentId)}">Unsave</button>
+            </div>
+          </div>`;
+        })
+        .join("");
+    } catch (error) {
+      savedCommentsList.innerHTML = `<div class="text-red-600 px-1 py-2">Failed to load saved comments: ${escapeHtml(error.message)}</div>`;
+    }
+  };
+
+  refreshSavedCommentsButton?.addEventListener("click", () => {
+    renderSavedCommentsList();
+  });
+
+  savedCommentsList?.addEventListener("click", async (event) => {
+    const unsaveBtn = event.target.closest(".unsave-comment-btn");
+    if (!unsaveBtn) return;
+    event.preventDefault();
+    const commentId = unsaveBtn.getAttribute("data-comment-id");
+    if (!commentId || typeof HNState === "undefined") return;
+    try {
+      await HNState.removeSavedComment(commentId);
+      await renderSavedCommentsList();
+    } catch (error) {
+      console.error("Failed to unsave comment:", error);
+    }
+  });
+
+  await renderSavedCommentsList();
+
+  // Backup export / import (authors + saved comments + AI settings)
+  const exportBookmarksButton = document.getElementById("export-bookmarks");
+  const importBookmarksButton = document.getElementById("import-bookmarks");
+  const importBookmarksFile = document.getElementById("import-bookmarks-file");
+  const bookmarksIoStatus = document.getElementById("bookmarks-io-status");
+
+  const showBookmarksIoStatus = (html, isError = false) => {
+    if (!bookmarksIoStatus) return;
+    bookmarksIoStatus.innerHTML = html;
+    bookmarksIoStatus.classList.toggle("text-red-600", isError);
+    bookmarksIoStatus.classList.remove("hidden");
+  };
+
+  exportBookmarksButton?.addEventListener("click", async () => {
+    try {
+      if (typeof HNState === "undefined") {
+        throw new Error("HNState is not available on the options page.");
+      }
+      const data = await HNState.exportBookmarksData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 10);
+      anchor.href = url;
+      anchor.download = `hn-companion-backup-${stamp}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+
+      const authorCount = Object.keys(data.bookmarkedAuthors || {}).length;
+      const commentCount = Object.keys(data.savedComments || {}).length;
+      const hasSettings = !!data.settings;
+      showBookmarksIoStatus(
+        `<div class="text-green-600">Exported ${authorCount} authors, ${commentCount} saved comments${hasSettings ? ", and AI settings (incl. API keys)" : ""}.</div>`
+      );
+    } catch (error) {
+      showBookmarksIoStatus(
+        `<div class="text-red-600">Export failed: ${error.message}</div>`,
+        true
+      );
+    }
+  });
+
+  importBookmarksButton?.addEventListener("click", () => {
+    importBookmarksFile?.click();
+  });
+
+  importBookmarksFile?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      if (typeof HNState === "undefined") {
+        throw new Error("HNState is not available on the options page.");
+      }
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const result = await HNState.importBookmarksData(data);
+      if (result.settings) {
+        await loadSettings();
+      }
+      const settingsPart = result.settings
+        ? ", AI settings merged"
+        : "";
+      showBookmarksIoStatus(
+        `<div class="text-green-600">Merged import: ${result.authors} authors, ${result.comments} comments${settingsPart} (same IDs/keys overwritten).</div>`
+      );
+      await renderSavedCommentsList();
+    } catch (error) {
+      showBookmarksIoStatus(
+        `<div class="text-red-600">Import failed: ${error.message}</div>`,
+        true
+      );
+    }
+  });
+
   // Add cancel button event listener
   const cancelButton = document.querySelector(
-    'button[type="button"]:not(#test-connection):not(#refresh-gemini-models):not(#refresh-router-models):not(#view-cache-stats):not(#clear-cache)'
+    'button[type="button"]:not(#test-connection):not(#refresh-gemini-models):not(#refresh-router-models):not(#view-cache-stats):not(#clear-cache):not(#export-bookmarks):not(#import-bookmarks):not(#refresh-saved-comments):not(.unsave-comment-btn)'
   );
   cancelButton.addEventListener("click", () => {
     window.close();

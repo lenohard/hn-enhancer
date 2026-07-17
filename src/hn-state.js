@@ -3,9 +3,13 @@
  */
 class HNState {
   static BOOKMARKED_AUTHORS_KEY = "bookmarkedAuthors";
+  static SAVED_COMMENTS_KEY = "savedComments";
+  static HUB_PANEL_POSITION_KEY = "hubPanelPosition";
+  static BOOKMARKS_EXPORT_VERSION = 2;
   static KARMA_STATS_KEY = "karmaStats";
   static USER_INFO_KEY = "userInfoCache";
   static USER_INFO_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+  static SAVED_COMMENT_TEXT_MAX = 10000;
 
   /**
    * Saves user info to persistent storage.
@@ -304,6 +308,303 @@ class HNState {
     // Return cleanup function
     return () => {
       chrome.storage.onChanged.removeListener(listener);
+    };
+  }
+
+  /**
+   * Retrieves saved (favorite) comments.
+   * @returns {Promise<Map<string, object>>} Map keyed by commentId.
+   */
+  static async getSavedComments() {
+    try {
+      const data = await chrome.storage.local.get(this.SAVED_COMMENTS_KEY);
+      return this.deserializeSavedComments(data[this.SAVED_COMMENTS_KEY] || {});
+    } catch (error) {
+      console.error("Error retrieving saved comments:", error);
+      return new Map();
+    }
+  }
+
+  static deserializeSavedComments(raw) {
+    const normalized = new Map();
+    if (!raw || typeof raw !== "object") {
+      return normalized;
+    }
+    Object.entries(raw).forEach(([commentId, entry]) => {
+      const id = String(entry?.commentId || commentId || "");
+      if (!id) return;
+      let text = entry?.text || "";
+      if (text.length > this.SAVED_COMMENT_TEXT_MAX) {
+        text = text.slice(0, this.SAVED_COMMENT_TEXT_MAX);
+      }
+      normalized.set(id, {
+        commentId: id,
+        author: entry?.author || entry?.username || null,
+        text,
+        permalink: entry?.permalink || null,
+        postId: entry?.postId || null,
+        postTitle: entry?.postTitle || null,
+        savedAt: entry?.savedAt || Date.now(),
+      });
+    });
+    return normalized;
+  }
+
+  /**
+   * @param {Map<string, object>} savedMap
+   */
+  static async saveSavedComments(savedMap) {
+    if (!(savedMap instanceof Map)) {
+      console.error(
+        "saveSavedComments: Expected a Map of saved comments, received:",
+        savedMap
+      );
+      return;
+    }
+    const serialized = {};
+    savedMap.forEach((value, key) => {
+      const id = String(value?.commentId || key || "");
+      if (!id) return;
+      let text = value?.text || "";
+      if (text.length > this.SAVED_COMMENT_TEXT_MAX) {
+        text = text.slice(0, this.SAVED_COMMENT_TEXT_MAX);
+      }
+      serialized[id] = {
+        commentId: id,
+        author: value?.author || null,
+        text,
+        permalink: value?.permalink || null,
+        postId: value?.postId || null,
+        postTitle: value?.postTitle || null,
+        savedAt: value?.savedAt || Date.now(),
+      };
+    });
+    try {
+      await chrome.storage.local.set({
+        [this.SAVED_COMMENTS_KEY]: serialized,
+      });
+    } catch (error) {
+      console.error("Error saving saved comments:", error);
+    }
+  }
+
+  /**
+   * Toggle save state for a comment.
+   * @param {object} commentData
+   * @returns {Promise<Map<string, object>>}
+   */
+  static async toggleSavedComment(commentData) {
+    const commentId = String(commentData?.commentId || "");
+    if (!commentId) {
+      console.error("toggleSavedComment: Missing commentId.", commentData);
+      return new Map();
+    }
+    const saved = await this.getSavedComments();
+    if (saved.has(commentId)) {
+      saved.delete(commentId);
+    } else {
+      let text = commentData?.text || "";
+      if (text.length > this.SAVED_COMMENT_TEXT_MAX) {
+        text = text.slice(0, this.SAVED_COMMENT_TEXT_MAX);
+      }
+      saved.set(commentId, {
+        commentId,
+        author: commentData?.author || null,
+        text,
+        permalink: commentData?.permalink || null,
+        postId: commentData?.postId || null,
+        postTitle: commentData?.postTitle || null,
+        savedAt: Date.now(),
+      });
+    }
+    await this.saveSavedComments(saved);
+    return saved;
+  }
+
+  /**
+   * Remove a saved comment by id.
+   * @param {string} commentId
+   * @returns {Promise<Map<string, object>>}
+   */
+  static async removeSavedComment(commentId) {
+    const id = String(commentId || "");
+    if (!id) {
+      return this.getSavedComments();
+    }
+    const saved = await this.getSavedComments();
+    if (saved.has(id)) {
+      saved.delete(id);
+      await this.saveSavedComments(saved);
+    }
+    return saved;
+  }
+
+  /**
+   * Build a permalink that opens the post and focuses the comment via hash.
+   * @param {object} entry
+   * @returns {string|null}
+   */
+  static getSavedCommentOpenUrl(entry) {
+    if (!entry) return null;
+    if (entry.permalink) return entry.permalink;
+    const postId = entry.postId;
+    const commentId = entry.commentId;
+    if (postId && commentId) {
+      return `https://news.ycombinator.com/item?id=${postId}#${commentId}`;
+    }
+    if (commentId) {
+      return `https://news.ycombinator.com/item?id=${commentId}`;
+    }
+    return null;
+  }
+
+  static subscribeToSavedComments(callback) {
+    if (typeof callback !== "function") {
+      console.error("subscribeToSavedComments: Expected a callback function.");
+      return () => {};
+    }
+    const listener = (changes, areaName) => {
+      if (areaName !== "local") return;
+      if (!changes[this.SAVED_COMMENTS_KEY]) return;
+      if (changes[this.SAVED_COMMENTS_KEY].newValue) {
+        callback(
+          this.deserializeSavedComments(
+            changes[this.SAVED_COMMENTS_KEY].newValue
+          )
+        );
+      } else {
+        callback(new Map());
+      }
+    };
+    chrome.storage.onChanged.addListener(listener);
+    return () => {
+      chrome.storage.onChanged.removeListener(listener);
+    };
+  }
+
+  /**
+   * Deep-merge settings objects. Same keys overwrite; nested provider objects merge.
+   * @param {object} current
+   * @param {object} imported
+   * @returns {object}
+   */
+  static mergeSettings(current, imported) {
+    const base =
+      current && typeof current === "object" ? { ...current } : {};
+    if (!imported || typeof imported !== "object") {
+      return base;
+    }
+
+    const providerKeys = [
+      "openai",
+      "anthropic",
+      "gemini",
+      "deepseek",
+      "openai-router",
+    ];
+
+    for (const [key, value] of Object.entries(imported)) {
+      if (providerKeys.includes(key) && value && typeof value === "object") {
+        base[key] = {
+          ...(base[key] && typeof base[key] === "object" ? base[key] : {}),
+          ...value,
+        };
+      } else {
+        base[key] = value;
+      }
+    }
+    return base;
+  }
+
+  /**
+   * Export authors, saved comments, and AI settings as JSON-serializable object.
+   * Includes API keys for full machine restore — keep the file private.
+   * @returns {Promise<object>}
+   */
+  static async exportBookmarksData() {
+    const [authorsMap, commentsMap, settingsData] = await Promise.all([
+      this.getBookmarkedAuthors(),
+      this.getSavedComments(),
+      chrome.storage.sync.get("settings"),
+    ]);
+    const bookmarkedAuthors = {};
+    authorsMap.forEach((value, key) => {
+      bookmarkedAuthors[key] = value;
+    });
+    const savedComments = {};
+    commentsMap.forEach((value, key) => {
+      savedComments[key] = value;
+    });
+    return {
+      version: this.BOOKMARKS_EXPORT_VERSION,
+      exportedAt: new Date().toISOString(),
+      bookmarkedAuthors,
+      savedComments,
+      settings: settingsData.settings || null,
+    };
+  }
+
+  /**
+   * Merge-import backup JSON (bookmarks + optional AI settings).
+   * Same author/comment ID or settings key overwrites with imported value.
+   * @param {object} data
+   * @returns {Promise<{authors: number, comments: number, settings: boolean}>}
+   */
+  static async importBookmarksData(data) {
+    if (!data || typeof data !== "object") {
+      throw new Error("Invalid import data: expected a JSON object.");
+    }
+
+    const hasAuthors =
+      data.bookmarkedAuthors && typeof data.bookmarkedAuthors === "object";
+    const hasComments =
+      data.savedComments && typeof data.savedComments === "object";
+    const hasSettings =
+      data.settings !== undefined &&
+      data.settings !== null &&
+      typeof data.settings === "object";
+
+    if (!hasAuthors && !hasComments && !hasSettings) {
+      throw new Error(
+        "Import file has no bookmarkedAuthors, savedComments, or settings to merge."
+      );
+    }
+
+    let authorsCount = 0;
+    let commentsCount = 0;
+    let settingsImported = false;
+
+    if (hasAuthors) {
+      const authors = await this.getBookmarkedAuthors();
+      const importedAuthors = this.deserializeBookmarks(data.bookmarkedAuthors);
+      importedAuthors.forEach((value, key) => {
+        authors.set(key, value);
+      });
+      await this.saveBookmarkedAuthors(authors);
+      authorsCount = importedAuthors.size;
+    }
+
+    if (hasComments) {
+      const comments = await this.getSavedComments();
+      const importedComments = this.deserializeSavedComments(data.savedComments);
+      importedComments.forEach((value, key) => {
+        comments.set(key, value);
+      });
+      await this.saveSavedComments(comments);
+      commentsCount = importedComments.size;
+    }
+
+    if (hasSettings) {
+      const currentData = await chrome.storage.sync.get("settings");
+      const merged = this.mergeSettings(currentData.settings, data.settings);
+      await chrome.storage.sync.set({ settings: merged });
+      settingsImported = true;
+    }
+
+    return {
+      authors: authorsCount,
+      comments: commentsCount,
+      settings: settingsImported,
     };
   }
 
@@ -793,6 +1094,45 @@ class HNState {
         error
       );
       return false;
+    }
+  }
+
+  /**
+   * Retrieves persisted hub panel position and collapse state.
+   * @returns {Promise<{left?: number, top?: number, collapsed?: boolean}|null>}
+   */
+  static async getHubPanelPosition() {
+    try {
+      const data = await chrome.storage.local.get(this.HUB_PANEL_POSITION_KEY);
+      const position = data[this.HUB_PANEL_POSITION_KEY];
+      if (!position || typeof position !== "object") {
+        return null;
+      }
+      return position;
+    } catch (error) {
+      console.error("Error retrieving hub panel position:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Saves hub panel position and collapse state.
+   * @param {{left: number, top: number, collapsed?: boolean}} position
+   */
+  static async saveHubPanelPosition(position) {
+    if (!position || typeof position !== "object") {
+      return;
+    }
+    try {
+      await chrome.storage.local.set({
+        [this.HUB_PANEL_POSITION_KEY]: {
+          left: position.left,
+          top: position.top,
+          collapsed: Boolean(position.collapsed),
+        },
+      });
+    } catch (error) {
+      console.error("Error saving hub panel position:", error);
     }
   }
 }

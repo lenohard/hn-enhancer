@@ -12,6 +12,7 @@ window.HNEnhancer = class HNEnhancer {
   };
 
   static BOOKMARK_HIGHLIGHT_CLASS = "hn-bookmarked-comment";
+  static SAVED_COMMENT_HIGHLIGHT_CLASS = "hn-saved-comment";
   static KARMA_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
   static KARMA_ERROR_CACHE_TTL_MS = 30 * 1000; // retry sooner after failures
   static KARMA_FETCH_SCAN_LIMIT = 20; // maximum authors to inspect per run (root comments only)
@@ -41,8 +42,13 @@ window.HNEnhancer = class HNEnhancer {
 
       this.bookmarkedAuthors = new Map();
       this.unsubscribeFromBookmarks = null;
+      this.savedComments = new Map();
+      this.unsubscribeFromSavedComments = null;
 
       this.uiComponents.createHelpIcon();
+
+      this.hubPanel = new HubPanel(this);
+      this.hubPanel.mount();
 
       this.initializeBookmarks();
 
@@ -202,13 +208,16 @@ window.HNEnhancer = class HNEnhancer {
       this.injectToggleGrandchildrenButton(comment);
       // Insert focus button
       this.injectFocusButton(comment);
-      // Insert bookmark toggle
+      // Insert bookmark toggle (author)
       this.injectBookmarkToggle(comment);
+      // Insert save toggle (comment text)
+      this.injectSaveCommentToggle(comment);
       // Add cache indicators
       this.addCacheIndicators(comment);
     });
 
     this.refreshBookmarksDisplay();
+    this.refreshSavedCommentsDisplay();
 
     // Set up the hover events on all user elements - in the main post subline and each comment
     this.authorTracking.setupUserHover();
@@ -250,6 +259,52 @@ window.HNEnhancer = class HNEnhancer {
       if (!this.statisticsPanel)
         console.warn("Reason: this.statisticsPanel not found.");
     }
+
+    // Auto-open summary panel: show cache if present, else empty Local prompt
+    const postId = this.domUtils.getCurrentHNItemId();
+    if (postId && this.summarization) {
+      this.summarization.autoOpenSummaryPanel(postId).catch((error) => {
+        console.warn("Auto-open summary panel failed:", error);
+      });
+    }
+
+    // Deep-link: item?id=POST#COMMENT_ID → scroll + keyboard focus
+    this.focusCommentFromHash();
+  }
+
+  /**
+   * If URL has #commentId, scroll to that comment and set navigation focus.
+   * Used by Saved Comments "Open & focus" links from the options page.
+   */
+  focusCommentFromHash() {
+    const rawHash = (window.location.hash || "").replace(/^#/, "").trim();
+    if (!rawHash || !/^\d+$/.test(rawHash)) {
+      return;
+    }
+
+    const tryFocus = () => {
+      const comment =
+        document.getElementById(rawHash) ||
+        document.querySelector(`tr.athing.comtr[id="${rawHash}"]`);
+      if (!comment || !this.navigation) {
+        return false;
+      }
+      this.navigation.setCurrentComment(comment, true);
+      return true;
+    };
+
+    if (tryFocus()) {
+      return;
+    }
+
+    // Comments can settle slightly after init; retry briefly
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      if (tryFocus() || attempts >= 10) {
+        clearInterval(timer);
+      }
+    }, 100);
   }
 
   async initializeBookmarks() {
@@ -260,6 +315,14 @@ window.HNEnhancer = class HNEnhancer {
         console.error("Error removing bookmark subscription:", error);
       }
       this.unsubscribeFromBookmarks = null;
+    }
+    if (this.unsubscribeFromSavedComments) {
+      try {
+        this.unsubscribeFromSavedComments();
+      } catch (error) {
+        console.error("Error removing saved-comment subscription:", error);
+      }
+      this.unsubscribeFromSavedComments = null;
     }
 
     try {
@@ -273,17 +336,40 @@ window.HNEnhancer = class HNEnhancer {
       this.bookmarkedAuthors = new Map();
     }
 
+    try {
+      this.savedComments = await this.hnState.getSavedComments();
+    } catch (error) {
+      console.error("Error loading saved comments:", error);
+      this.savedComments = new Map();
+    }
+
+    if (!(this.savedComments instanceof Map)) {
+      this.savedComments = new Map();
+    }
+
     this.unsubscribeFromBookmarks = this.hnState.subscribeToBookmarkedAuthors(
       (bookmarks) => {
         this.bookmarkedAuthors =
           bookmarks instanceof Map ? bookmarks : new Map(bookmarks);
         this.refreshBookmarksDisplay();
+        this.hubPanel?.updateStats();
+      }
+    );
+
+    this.unsubscribeFromSavedComments = this.hnState.subscribeToSavedComments(
+      (saved) => {
+        this.savedComments = saved instanceof Map ? saved : new Map(saved);
+        this.refreshSavedCommentsDisplay();
+        this.hubPanel?.updateStats();
       }
     );
 
     if (this.isCommentsPage) {
       this.refreshBookmarksDisplay();
+      this.refreshSavedCommentsDisplay();
     }
+
+    this.hubPanel?.updateStats();
   }
 
   isAuthorBookmarked(author) {
@@ -1462,6 +1548,106 @@ window.HNEnhancer = class HNEnhancer {
     }
 
     this.updateBookmarkLinkState(comment, bookmarkLink);
+  }
+
+  /**
+   * Injects a save/unsave toggle for the comment text itself.
+   * @param {HTMLElement} comment
+   */
+  injectSaveCommentToggle(comment) {
+    const navsSpan = comment.querySelector(".comhead .navs");
+    if (!navsSpan) return;
+
+    let saveLink = navsSpan.querySelector("a.hn-save-comment-toggle");
+    if (!saveLink) {
+      saveLink = document.createElement("a");
+      saveLink.href = "#";
+      saveLink.className = "hn-enhancer-link hn-save-comment-toggle";
+      saveLink.dataset.commentId = this.domUtils.getCommentId(comment);
+      saveLink.title = "Save this comment";
+      saveLink.addEventListener("click", async (e) => {
+        e.preventDefault();
+        await this.toggleSaveComment(comment, saveLink);
+      });
+      const separator = document.createTextNode(" | ");
+      navsSpan.appendChild(separator);
+      navsSpan.appendChild(saveLink);
+    }
+
+    this.updateSaveCommentLinkState(comment, saveLink);
+  }
+
+  isCommentSaved(commentId) {
+    if (!commentId || !(this.savedComments instanceof Map)) {
+      return false;
+    }
+    return this.savedComments.has(String(commentId));
+  }
+
+  refreshSavedCommentsDisplay() {
+    if (!this.isCommentsPage) return;
+
+    const comments = document.querySelectorAll(".athing.comtr");
+    comments.forEach((comment) => {
+      const commentId = this.domUtils.getCommentId(comment);
+      const isSaved = this.isCommentSaved(commentId);
+      comment.classList.toggle(
+        HNEnhancer.SAVED_COMMENT_HIGHLIGHT_CLASS,
+        isSaved
+      );
+
+      const saveLink = comment.querySelector(".hn-save-comment-toggle");
+      if (saveLink) {
+        this.updateSaveCommentLinkState(comment, saveLink);
+      }
+    });
+  }
+
+  updateSaveCommentLinkState(comment, saveLink = null) {
+    if (!comment) return;
+    const link =
+      saveLink || comment.querySelector(".hn-save-comment-toggle");
+    if (!link) return;
+
+    const commentId = this.domUtils.getCommentId(comment);
+    const isSaved = this.isCommentSaved(commentId);
+
+    link.textContent = isSaved ? "unsave" : "save";
+    link.classList.toggle("is-saved", isSaved);
+    link.title = isSaved
+      ? "Remove this comment from saved comments"
+      : "Save this comment";
+  }
+
+  async toggleSaveComment(comment, saveLink) {
+    if (!comment) return;
+
+    const commentId = this.domUtils.getCommentId(comment);
+    if (!commentId) {
+      console.warn("toggleSaveComment: Could not determine comment ID.");
+      return;
+    }
+
+    try {
+      this.savedComments = await this.hnState.toggleSavedComment({
+        commentId,
+        author: this.domUtils.getCommentAuthor(comment),
+        text: this.domUtils.getCommentText(comment),
+        permalink: this.domUtils.getCommentPermalink(comment),
+        postId: this.domUtils.getCurrentHNItemId(),
+        postTitle: this.domUtils.getHNPostTitle(),
+      });
+
+      this.updateSaveCommentLinkState(comment, saveLink);
+      comment.classList.toggle(
+        HNEnhancer.SAVED_COMMENT_HIGHLIGHT_CLASS,
+        this.savedComments.has(String(commentId))
+      );
+      this.refreshSavedCommentsDisplay();
+      this.hubPanel?.updateStats();
+    } catch (error) {
+      console.error("Error toggling saved comment:", error);
+    }
   }
 
   // --- Helper Methods for Grandchildren Toggling ---

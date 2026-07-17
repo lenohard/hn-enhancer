@@ -17,7 +17,8 @@
     }
   },
   "permissions": [
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://*/*",
@@ -49,6 +50,7 @@
         "src/summarization.js",
         "src/author-tracking.js",
         "src/ui-components.js",
+        "src/hub-panel.js",
         "src/hn-enhancer.js",
         "content.js"
       ],
@@ -69,6 +71,7 @@
       "src/summarization.js",
       "src/author-tracking.js",
       "src/ui-components.js",
+      "src/hub-panel.js",
       "src/hn-enhancer.js"
     ],
     "matches": ["https://news.ycombinator.com/*"]

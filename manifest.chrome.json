@@ -11,7 +11,8 @@
     "128": "images/icon-128.png"
   },
   "permissions": [
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://*/*",
@@ -44,6 +45,7 @@
         "src/author-tracking.js",
         "src/ui-components.js",
         "src/chat-modal.js",
+        "src/hub-panel.js",
         "src/hn-enhancer.js",
         "content.js"
       ],
@@ -65,6 +67,7 @@
         "src/summarization.js",
         "src/author-tracking.js",
         "src/ui-components.js",
+        "src/hub-panel.js",
         "src/hn-enhancer.js"
       ],
       "matches": [

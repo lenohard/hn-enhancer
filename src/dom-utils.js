@@ -21,6 +21,32 @@ class DomUtils {
   }
 
   /**
+   * Returns the logged-in HN username from the top navigation, if present.
+   * @returns {string|null}
+   */
+  static getLoggedInUsername() {
+    const favoritesLink = document.querySelector('a[href*="favorites?id="]');
+    if (favoritesLink) {
+      const href = favoritesLink.getAttribute("href") || "";
+      const match = href.match(/favorites\?id=([^&]+)/);
+      if (match?.[1]) {
+        return decodeURIComponent(match[1]);
+      }
+    }
+
+    const userLink = document.querySelector('a[href^="user?id="]');
+    if (userLink) {
+      const href = userLink.getAttribute("href") || "";
+      const match = href.match(/user\?id=([^&]+)/);
+      if (match?.[1]) {
+        return decodeURIComponent(match[1]);
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Derives a permalink for the provided comment element.
    * @param {HTMLElement} commentElement - The comment element.
    * @returns {string|null} The permalink URL or null if it cannot be determined.
