@@ -210,6 +210,8 @@ window.HNEnhancer = class HNEnhancer {
       this.injectFocusButton(comment);
       // Insert bookmark toggle (author)
       this.injectBookmarkToggle(comment);
+      // Insert "n/m next" link if the author is bookmarked
+      this.injectBookmarkedCommentNav(comment);
       // Insert save toggle (comment text)
       this.injectSaveCommentToggle(comment);
       // Add cache indicators
@@ -394,6 +396,22 @@ window.HNEnhancer = class HNEnhancer {
         if (bookmarkLink) {
           this.updateBookmarkLinkState(comment, bookmarkLink);
         }
+
+        // Remove any prior bookmarked-next link so we can re-render with
+        // the current bookmark state and an accurate n/m position.
+        const existingNext = comment.querySelector(".bookmarked-next");
+        if (existingNext) {
+          const prev = existingNext.previousSibling;
+          if (
+            prev &&
+            prev.nodeType === Node.TEXT_NODE &&
+            prev.textContent === " | "
+          ) {
+            prev.remove();
+          }
+          existingNext.remove();
+        }
+        this.injectBookmarkedCommentNav(comment);
       });
     }
 
@@ -489,15 +507,16 @@ window.HNEnhancer = class HNEnhancer {
 
     let targetComment = null;
 
-    // First try to find the specific bookmarked comment if we have its ID
-    if (bookmark?.commentId) {
-      targetComment = document.getElementById(bookmark.commentId);
-      if (targetComment) {
-        targetComment = targetComment.closest(".athing.comtr") || targetComment;
-      }
+    // Prefer the FIRST comment by this author on the current page
+    // (not the specific comment the user originally bookmarked — that
+    // may live on a different post and no longer be meaningful here).
+    const authorComments =
+      this.authorTracking?.authorComments?.get(username) || [];
+    if (authorComments.length > 0 && authorComments[0].commentRow) {
+      targetComment = authorComments[0].commentRow;
     }
 
-    // If that fails, try to find any comment by this author on the current page
+    // Fall back: scan the DOM for any .hnuser with matching text
     if (!targetComment) {
       const authorNode = Array.from(
         document.querySelectorAll(".athing.comtr .hnuser")
@@ -510,6 +529,11 @@ window.HNEnhancer = class HNEnhancer {
     // If we found a comment on this page, navigate to it
     if (targetComment) {
       this.navigation.setCurrentComment(targetComment, true);
+      targetComment.classList.add("highlight-stat-target");
+      setTimeout(
+        () => targetComment.classList.remove("highlight-stat-target"),
+        2000
+      );
       return;
     }
 
@@ -1050,7 +1074,19 @@ window.HNEnhancer = class HNEnhancer {
           const listItem = document.createElement("li");
           const link = document.createElement("a");
           link.href = bookmark.permalink || "#";
-          link.textContent = bookmark.username;
+
+          // Count how many comments by this author are on the current page
+          let count = 0;
+          if (authorCommentsMap instanceof Map) {
+            const entries = authorCommentsMap.get(bookmark.username);
+            if (Array.isArray(entries)) {
+              count = entries.length;
+            }
+          }
+          link.textContent =
+            count > 0
+              ? `${bookmark.username} (${count})`
+              : bookmark.username;
 
           link.addEventListener("click", (e) => {
             e.preventDefault();
@@ -1127,26 +1163,44 @@ window.HNEnhancer = class HNEnhancer {
         const link = document.createElement("a");
         link.href = item.link || "#";
         link.textContent = `${item.username} (${item.karma ?? "?"})`;
-
-        const navigateToComment = () => {
-          if (item.commentElement && item.commentElement instanceof HTMLElement) {
-            this.navigation.setCurrentComment(item.commentElement, true);
-            return true;
-          }
-          if (item.link && item.link.startsWith("#")) {
-            const targetId = item.link.substring(1);
-            const targetElement = document.getElementById(targetId);
-            if (targetElement) {
-              this.navigation.setCurrentComment(targetElement, true);
-              return true;
-            }
-          }
-          return false;
-        };
+        link.title = `Jump to ${item.username}'s first comment`;
 
         link.addEventListener("click", (e) => {
           e.preventDefault();
-          navigateToComment();
+
+          // Resolve target robustly: commentElement → id hash → first
+          // comment row whose hnuser text matches the username.
+          let target = null;
+          if (item.commentElement instanceof HTMLElement) {
+            target = item.commentElement;
+          } else if (item.link && item.link.startsWith("#")) {
+            target = document.getElementById(item.link.substring(1));
+          }
+          if (!target) {
+            const escaped = item.username.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              "\\$&"
+            );
+            const match = document.querySelector(
+              `tr.athing.comtr .hnuser[href="user?id=${escaped}"]`
+            );
+            if (match) target = match.closest("tr.athing.comtr");
+          }
+
+          if (!target) {
+            console.warn(
+              "[HN Enhancer] No comment found for karma user:",
+              item.username
+            );
+            return;
+          }
+
+          this.navigation.setCurrentComment(target, true);
+          target.classList.add("highlight-stat-target");
+          setTimeout(
+            () => target.classList.remove("highlight-stat-target"),
+            2000
+          );
         });
 
         listItem.appendChild(link);
@@ -1159,6 +1213,32 @@ window.HNEnhancer = class HNEnhancer {
     );
     if (listElement && (!karmaData || karmaData.length === 0)) {
       listElement.innerHTML = "<li>No karma data available</li>";
+    }
+
+    // Wire the "Users with Highest Karma:" label so clicking it jumps to the
+    // top karma user's first comment. Attach the handler only once.
+    const karmaLabel = this.statisticsPanel.querySelector(
+      '[data-stat-label-action="jump-to-top-karma"]'
+    );
+    if (karmaLabel && !karmaLabel.dataset.handlerAttached) {
+      karmaLabel.addEventListener("click", () => {
+        const top = (stats.topKarmaUsers || [])[0];
+        if (!top) return;
+        const target =
+          top.commentElement instanceof HTMLElement
+            ? top.commentElement
+            : top.link?.startsWith("#")
+            ? document.getElementById(top.link.substring(1))
+            : null;
+        if (!target) return;
+        this.navigation.setCurrentComment(target, true);
+        target.classList.add("highlight-stat-target");
+        setTimeout(
+          () => target.classList.remove("highlight-stat-target"),
+          2000
+        );
+      });
+      karmaLabel.dataset.handlerAttached = "1";
     }
 
     updateBookmarkedUsers();
@@ -1548,6 +1628,43 @@ window.HNEnhancer = class HNEnhancer {
     }
 
     this.updateBookmarkLinkState(comment, bookmarkLink);
+  }
+
+  /**
+   * Injects an "n/m next" link into a comment header when its author is
+   * bookmarked. Clicking the link navigates to the next comment by the
+   * same author (wraps around at the end). Hidden when the author has
+   * only one comment on the page.
+   * @param {HTMLElement} comment
+   */
+  injectBookmarkedCommentNav(comment) {
+    if (!comment) return;
+    const author = this.domUtils.getCommentAuthor(comment);
+    if (!author || !this.isAuthorBookmarked(author)) return;
+
+    const authorComments =
+      this.authorTracking.authorComments.get(author) || [];
+    const total = authorComments.length;
+    if (total <= 1) return;
+
+    const idx = authorComments.indexOf(comment);
+    if (idx === -1) return;
+
+    const navsSpan = comment.querySelector(".comhead .navs");
+    if (!navsSpan || navsSpan.querySelector(".bookmarked-next")) return;
+
+    const next = document.createElement("a");
+    next.href = "#";
+    next.className = "hn-enhancer-link bookmarked-next";
+    next.textContent = `${idx + 1}/${total} next`;
+    next.title = `Next comment by ${author} (${idx + 1} of ${total})`;
+    next.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.authorTracking.navigateAuthorComments(author, comment, "next");
+    });
+
+    navsSpan.appendChild(document.createTextNode(" | "));
+    navsSpan.appendChild(next);
   }
 
   /**

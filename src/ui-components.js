@@ -226,7 +226,7 @@ class UIComponents {
                     <div class="stat-value" data-stat-list="longest-comment"><ul><li>[...]</li></ul></div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-label">Users with Highest Karma:</div>
+                    <div class="stat-label" data-stat-label-action="jump-to-top-karma" title="Jump to top karma user's comment">Users with Highest Karma:</div>
                     <div class="stat-value" data-stat-list="highest-karma-users"><ul><li>Loading from cache…</li></ul></div>
                 </div>
                 <div class="stat-item">

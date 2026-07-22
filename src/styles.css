@@ -494,6 +494,16 @@
     justify-content: flex-end; /* Right-align content */
 }
 
+.stat-label[data-stat-label-action] {
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s ease;
+}
+.stat-label[data-stat-label-action]:hover {
+    color: #ff6600;
+    text-decoration: underline;
+}
+
 .stat-value {
     flex-grow: 1; /* Allow value area to take remaining space */
     text-align: left; /* Align value list to the left */
@@ -557,6 +567,15 @@
 .hn-bookmark-toggle.is-bookmarked {
     color: #ff6600;
     font-weight: bold;
+}
+
+.bookmarked-next {
+    cursor: pointer;
+    color: #ff6600;
+    font-weight: bold;
+}
+.bookmarked-next:hover {
+    text-decoration: underline;
 }
 
 .hn-save-comment-toggle {
