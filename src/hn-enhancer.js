@@ -304,6 +304,25 @@ window.HNEnhancer = class HNEnhancer {
     if (typeof this.adapter?.initArticlePage === 'function') {
       this.adapter.initArticlePage(this);
     }
+
+    // Substack uses client-side routing — watch for URL changes and
+    // close the summary panel so stale content doesn't persist.
+    if (!isHN && this.summaryPanel) {
+      let lastUrl = location.href;
+      const urlObserver = new MutationObserver(() => {
+        if (location.href !== lastUrl) {
+          lastUrl = location.href;
+          if (this.summaryPanel.isVisible) {
+            this.summaryPanel.toggle();
+          }
+          // Re-init for the new page after Substack finishes rendering
+          setTimeout(() => {
+            this.summarization?._clearViewState?.();
+          }, 300);
+        }
+      });
+      urlObserver.observe(document.body, { childList: true, subtree: true });
+    }
   }
 
   /**

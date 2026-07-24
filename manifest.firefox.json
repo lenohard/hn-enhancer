@@ -18,7 +18,8 @@
   },
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
     "https://*/*",
@@ -28,7 +29,10 @@
     "page": "options.html",
     "open_in_tab": false
   },
-  "action": {},
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "HN Companion"
+  },
   "background": {
     "scripts": ["background.js"]
   },
@@ -51,8 +55,10 @@
         "src/summarization.js",
         "src/author-tracking.js",
         "src/ui-components.js",
+        "src/chat-modal.js",
         "src/hub-panel.js",
         "src/prompts.js",
+        "src/substack-domains.js",
         "src/adapters/site-adapter.js",
         "src/adapters/hn-adapter.js",
         "src/adapters/substack-adapter.js",
@@ -85,6 +91,6 @@
       "src/adapters/adapter-registry.js",
       "src/hn-enhancer.js"
     ],
-    "matches": ["https://news.ycombinator.com/*", "https://*.substack.com/*"]
+    "matches": ["<all_urls>"]
   }]
 }

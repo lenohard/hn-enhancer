@@ -222,7 +222,8 @@ window.SiteAdapter = class SiteAdapter {
         return `You are an AI assistant specialized in analyzing and summarizing articles. ` +
             `Your goal is to help users quickly understand the article's main thesis, key arguments, and structure. ` +
             `Be concise and clear. When referencing specific parts of the article, use [P#] notation ` +
-            `where # is the paragraph number shown in the input. ` +
+            `where # is the paragraph number shown in the input (e.g. [P11], [P12]). ` +
+            `Do NOT use (P11), （P11）, or parenthetical ranges — only [P#] form is linkable. ` +
             `Do NOT reference comments or use comment notation [1.2.3].`;
     }
 

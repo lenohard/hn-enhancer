@@ -85,6 +85,29 @@
                         <div id="cache-stats" class="hidden mt-2 p-3 bg-gray-50 rounded-md text-sm text-gray-700"></div>
                     </div>
 
+                    <!-- Substack custom domains -->
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-900">Substack Custom Domains</label>
+                            <p class="mt-1 text-sm text-gray-600">
+                                Substack newsletters and podcasts on custom domains (e.g. stratechery.com).
+                                Enable from the extension popup on a post page, or add a domain manually below.
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <input type="text" id="substack-domain-input" placeholder="example.com"
+                                class="block flex-1 min-w-[160px] rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                            <button type="button" id="add-substack-domain"
+                                class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                                Add domain
+                            </button>
+                        </div>
+                        <div id="substack-domains-list"
+                            class="max-h-40 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700">
+                            <div class="text-gray-500 px-1 py-2">Loading…</div>
+                        </div>
+                    </div>
+
                     <!-- Saved Comments list -->
                     <div class="space-y-3">
                         <div class="flex flex-wrap items-center justify-between gap-2">

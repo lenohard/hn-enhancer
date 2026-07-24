@@ -648,3 +648,13 @@ All LLM summarization prompts live in `src/prompts.js` as `window.HNPrompts`. Lo
 **Sets**: `HNPrompts.hn` (thread), `HNPrompts.substack.article` (structured article extraction), `HNPrompts.substack.comments` (comment thread).
 
 **Content injection**: User templates are instructions only; `summarization.js` appends title/body or comments via `getUserMessage()` / `_getPostSummaryUserMessage()`.
+
+### SPA URL Change Detection (2025-07-24)
+
+Substack uses client-side routing (`pushState` / `replaceState`). When navigating between article and comments pages on the same post, the content script doesn't re-run and the old summary panel persists with stale content.
+
+**Fix**: `initCommentsPageNavigation()` adds a `MutationObserver` on `document.body` for non-HN sites. When `location.href` changes, it:
+1. Closes the summary panel (`.toggle()`)
+2. Clears the summarization view state (`_clearViewState()`) after a 300ms delay to let Substack re-render
+
+This ensures the summary panel doesn't show stale content from the previous page. Users can then click Summary again to load the cached summary for the new page.

@@ -749,6 +749,68 @@ function showTestResult(message, type) {
   }
 }
 
+async function loadSubstackCustomDomains() {
+  const response = await chrome.runtime.sendMessage({ type: "LIST_SUBSTACK_DOMAINS" });
+  return response?.domains || [];
+}
+
+function normalizeDomainInput(raw) {
+  return (raw || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .replace(/^www\./i, "")
+    .toLowerCase();
+}
+
+async function renderSubstackDomainsList() {
+  const listEl = document.getElementById("substack-domains-list");
+  if (!listEl) {
+    return;
+  }
+
+  try {
+    const domains = await loadSubstackCustomDomains();
+    if (!domains.length) {
+      listEl.innerHTML =
+        '<div class="text-gray-500 px-1 py-2">No custom domains enabled. Use the extension popup on a Substack post page.</div>';
+      return;
+    }
+
+    listEl.innerHTML = domains
+      .map(
+        (domain) => `
+        <div class="flex items-center justify-between gap-2 py-1.5 px-1 border-b border-gray-200 last:border-0">
+          <span class="truncate" title="${domain}">${domain}</span>
+          <button type="button" class="remove-substack-domain rounded px-2 py-0.5 text-xs font-semibold text-red-600 hover:bg-red-50" data-domain="${domain}">Remove</button>
+        </div>`
+      )
+      .join("");
+
+    listEl.querySelectorAll(".remove-substack-domain").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const domain = btn.dataset.domain;
+        if (!domain || !confirm(`Remove ${domain} from enabled Substack sites?`)) {
+          return;
+        }
+        btn.disabled = true;
+        try {
+          await chrome.runtime.sendMessage({
+            type: "REMOVE_SUBSTACK_DOMAIN",
+            data: { hostname: domain },
+          });
+          await renderSubstackDomainsList();
+        } catch (error) {
+          alert(`Failed to remove domain: ${error.message}`);
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (error) {
+    listEl.innerHTML = `<div class="text-red-600 px-1 py-2">Error loading domains: ${error.message}</div>`;
+  }
+}
+
 // Initialize event listeners and load settings
 document.addEventListener("DOMContentLoaded", async () => {
   // Load saved settings (this will also load Gemini models if needed)
@@ -866,6 +928,45 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
   });
+
+  // Substack custom domains
+  const addSubstackDomainBtn = document.getElementById("add-substack-domain");
+  const substackDomainInput = document.getElementById("substack-domain-input");
+
+  if (addSubstackDomainBtn && substackDomainInput) {
+    addSubstackDomainBtn.addEventListener("click", async () => {
+      const hostname = normalizeDomainInput(substackDomainInput.value);
+      if (!hostname || hostname.includes(" ")) {
+        alert("Enter a valid domain (e.g. stratechery.com)");
+        return;
+      }
+      addSubstackDomainBtn.disabled = true;
+      try {
+        const result = await chrome.runtime.sendMessage({
+          type: "ENABLE_SUBSTACK_DOMAIN",
+          data: { hostname },
+        });
+        if (!result?.success) {
+          throw new Error(result?.error || "Failed to add domain");
+        }
+        substackDomainInput.value = "";
+        await renderSubstackDomainsList();
+      } catch (error) {
+        alert(`Failed to add domain: ${error.message}`);
+      } finally {
+        addSubstackDomainBtn.disabled = false;
+      }
+    });
+
+    substackDomainInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addSubstackDomainBtn.click();
+      }
+    });
+  }
+
+  await renderSubstackDomainsList();
 
   // Saved comments list (post title + open/focus + unsave)
   const savedCommentsList = document.getElementById("saved-comments-list");
@@ -1037,7 +1138,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Add cancel button event listener
   const cancelButton = document.querySelector(
-    'button[type="button"]:not(#test-connection):not(#refresh-gemini-models):not(#refresh-router-models):not(#view-cache-stats):not(#clear-cache):not(#export-bookmarks):not(#import-bookmarks):not(#refresh-saved-comments):not(.unsave-comment-btn)'
+    'button[type="button"]:not(#test-connection):not(#refresh-gemini-models):not(#refresh-router-models):not(#view-cache-stats):not(#clear-cache):not(#add-substack-domain):not(#export-bookmarks):not(#import-bookmarks):not(#refresh-saved-comments):not(.unsave-comment-btn):not(.remove-substack-domain)'
   );
   cancelButton.addEventListener("click", () => {
     window.close();

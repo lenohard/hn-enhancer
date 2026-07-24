@@ -20,6 +20,8 @@ const OUTPUT_FILE_FIREFOX = `hn-companion-firefox-v${VERSION}.zip`;
 const FILES_TO_COPY = [
   "background.js",
   "content.js",
+  "popup.html",
+  "popup.js",
   "src/options/options-styles.css",
   "src/options/options.html",
   "src/options/options.js",
@@ -169,6 +171,7 @@ function copySrcDirectory(targetDir) {
     "chat-modal.js",
     "hub-panel.js",
     "prompts.js",
+    "substack-domains.js",
     "hn-enhancer.js",
   ];
 

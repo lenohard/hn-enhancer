@@ -812,6 +812,66 @@ class HNState {
   }
 
   /**
+   * Prefix for listing all cached summaries of one scope (before provider/model/language).
+   * @private
+   */
+  static _getSummaryKeyPrefix(siteKey, postId, commentId) {
+    const baseKey = commentId
+      ? `summary_${siteKey}_${postId}_${commentId}`
+      : `summary_${siteKey}_${postId}_post`;
+    return `${baseKey}_`;
+  }
+
+  /**
+   * Lists all non-expired cached summaries for a post/scope, newest first.
+   * @param {string} siteKey
+   * @param {string} postId
+   * @param {string|null} commentId - null for post summaries, or scope id (e.g. article, comments)
+   * @param {number} maxAge - Max age in ms (default 24h)
+   * @returns {Promise<object[]>}
+   */
+  static async listSummaries(
+    siteKey,
+    postId,
+    commentId,
+    maxAge = 24 * 60 * 60 * 1000
+  ) {
+    if (!postId) {
+      return [];
+    }
+    const prefix = this._getSummaryKeyPrefix(siteKey, postId, commentId);
+    try {
+      const allData = await chrome.storage.local.get(null);
+      const now = Date.now();
+      const entries = [];
+
+      for (const [storageKey, entry] of Object.entries(allData)) {
+        if (!storageKey.startsWith(prefix)) {
+          continue;
+        }
+        if (!entry || !entry.summary) {
+          continue;
+        }
+        const ts = entry.timestamp || entry.metadata?.timestamp || 0;
+        if (now - ts > maxAge) {
+          continue;
+        }
+        entries.push({
+          ...entry,
+          storageKey,
+          timestamp: ts,
+        });
+      }
+
+      entries.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      return entries;
+    } catch (error) {
+      console.error("Error listing summary caches:", error);
+      return [];
+    }
+  }
+
+  /**
    * Saves a summarization result to cache.
    * @param {string} postId - The ID of the post.
    * @param {string} commentId - The ID of the comment (null for post summaries).
@@ -880,10 +940,9 @@ class HNState {
       model,
       language,
     };
-    chrome.storage.local.set({ [key]: cacheEntry }).catch((error) => {
+    return chrome.storage.local.set({ [key]: cacheEntry }).catch((error) => {
       console.error(`Error saving summary cache for ${key}:`, error);
     });
-    // console.log(`[HNState] Saved summary for ${key}`, cacheEntry); // Optional debug log
   }
 
   /**

@@ -91,6 +91,28 @@ class MarkdownUtils {
     static replacePathsWithCommentLinks(text, commentPathToIdMap) {
         // Regex to find [...] blocks
         return text.replace(/\[([^\]]+)\]/g, (match, content) => {
+            // [#2.1], [#post] — strip leading # and link by path
+            const hashPathMatch = content.match(/^#(post|\d+(?:\.\d+)*)$/i);
+            if (hashPathMatch) {
+                const path = hashPathMatch[1].toLowerCase() === 'post'
+                    ? 'post'
+                    : hashPathMatch[1];
+                const id = commentPathToIdMap?.get(path);
+                const idAttr = id ? ` data-comment-id="${id}"` : "";
+                return `<a href="#" class="summary-comment-link" title="Go to comment ${path}" data-comment-link="true"${idAttr} data-comment-path="${path}">${match}</a>`;
+            }
+
+            // [来自 #3] or similar prefix before #path
+            const attributedMatch = content.match(/^(.+?)#(post|\d+(?:\.\d+)*)$/i);
+            if (attributedMatch) {
+                const path = attributedMatch[2].toLowerCase() === 'post'
+                    ? 'post'
+                    : attributedMatch[2];
+                const id = commentPathToIdMap?.get(path);
+                const idAttr = id ? ` data-comment-id="${id}"` : "";
+                return `<a href="#" class="summary-comment-link" title="Go to comment ${path}" data-comment-link="true"${idAttr} data-comment-path="${path}">${match}</a>`;
+            }
+
             // Check if content is a list of paths (digits, dots, commas, spaces only)
             // And contains at least one digit (to avoid empty [] or just [,,])
             if (/^[\d\.,\s]+$/.test(content) && /\d/.test(content)) {

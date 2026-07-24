@@ -21,15 +21,20 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
      * Does NOT match /notes/, /about/, or the homepage listing.
      */
     matches(url) {
-        // Match only actual post pages, exclude known non-post paths
-        // (e.g. /about, /archive, /podcast, /subscribe)
+        const customDomains = window.__HN_SUBSTACK_CUSTOM_DOMAINS || [];
+        if (typeof SubstackDomains !== 'undefined') {
+            return SubstackDomains.matchesSubstackUrl(url, customDomains);
+        }
         return /^https:\/\/[\w-]+\.substack\.com\/(p|post)\/[\w-]+(\/comments)?\/?$/.test(url);
     }
 
     // ── Site identity ─────────────────────────────────────────────
 
     getSiteKey() {
-        return 'substack.com';
+        if (typeof SubstackDomains !== 'undefined') {
+            return SubstackDomains.normalizeHostname(location.hostname);
+        }
+        return location.hostname.replace(/^www\./i, '');
     }
 
     // ── Post identity ─────────────────────────────────────────────
@@ -429,7 +434,7 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
                 if (link.dataset.hnEnhancedComments) return;
                 link.dataset.hnEnhancedComments = 'true';
                 link.href = commentsUrl;
-                link.textContent = 'Comments';
+                // Keep original "N more comments..." text, just enhance the link
                 link.title = 'Open full comments page';
             });
         };

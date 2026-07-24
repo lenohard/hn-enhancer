@@ -1,5 +1,6 @@
 async function onInstalled() {
   console.log("[BACKGROUND] 扩展已安装/启动");
+  await registerSubstackCustomDomainScripts();
   const data = await chrome.storage.sync.get("settings");
   const providerSelection = data.settings?.providerSelection;
 
@@ -10,6 +11,107 @@ async function onInstalled() {
       console.log("Error opening options page:", e);
     }
   }
+}
+
+// Keep in sync with manifest content_scripts js/css arrays
+const HN_CONTENT_SCRIPT_JS = [
+  "src/hn-state.js",
+  "src/api-client.js",
+  "src/markdown-utils.js",
+  "src/dom-utils.js",
+  "src/summary-panel.js",
+  "src/navigation.js",
+  "src/summarization.js",
+  "src/author-tracking.js",
+  "src/ui-components.js",
+  "src/chat-modal.js",
+  "src/hub-panel.js",
+  "src/prompts.js",
+  "src/substack-domains.js",
+  "src/adapters/site-adapter.js",
+  "src/adapters/hn-adapter.js",
+  "src/adapters/substack-adapter.js",
+  "src/adapters/adapter-registry.js",
+  "src/hn-enhancer.js",
+  "content.js",
+];
+
+const HN_CONTENT_SCRIPT_CSS = ["styles.css"];
+
+function normalizeHostname(hostname) {
+  return (hostname || "").replace(/^www\./i, "").toLowerCase();
+}
+
+async function getSubstackCustomDomains() {
+  const data = await chrome.storage.sync.get("substackCustomDomains");
+  const domains = data.substackCustomDomains;
+  if (!Array.isArray(domains)) {
+    return [];
+  }
+  return [...new Set(domains.map(normalizeHostname).filter(Boolean))];
+}
+
+async function saveSubstackCustomDomains(domains) {
+  const normalized = [...new Set(domains.map(normalizeHostname).filter(Boolean))];
+  await chrome.storage.sync.set({ substackCustomDomains: normalized });
+  return normalized;
+}
+
+function contentScriptIdForDomain(hostname) {
+  return `hn-substack-${normalizeHostname(hostname).replace(/\./g, "-")}`;
+}
+
+async function registerSubstackCustomDomainScripts() {
+  if (!chrome.scripting?.registerContentScripts) {
+    return;
+  }
+
+  const domains = await getSubstackCustomDomains();
+  const existing = await chrome.scripting.getRegisteredContentScripts();
+  const staleIds = existing
+    .filter((entry) => entry.id?.startsWith("hn-substack-"))
+    .map((entry) => entry.id);
+
+  if (staleIds.length) {
+    await chrome.scripting.unregisterContentScripts({ ids: staleIds });
+  }
+
+  if (!domains.length) {
+    return;
+  }
+
+  const scripts = domains.map((hostname) => ({
+    id: contentScriptIdForDomain(hostname),
+    matches: [`https://${hostname}/*`, `http://${hostname}/*`],
+    js: HN_CONTENT_SCRIPT_JS,
+    css: HN_CONTENT_SCRIPT_CSS,
+    runAt: "document_end",
+  }));
+
+  await chrome.scripting.registerContentScripts(scripts);
+}
+
+async function enableSubstackCustomDomain(hostname) {
+  const host = normalizeHostname(hostname);
+  if (!host || /\.substack\.com$/i.test(host)) {
+    return { success: true, domains: await getSubstackCustomDomains(), alreadyNative: true };
+  }
+
+  const domains = await getSubstackCustomDomains();
+  if (!domains.includes(host)) {
+    domains.push(host);
+  }
+  const saved = await saveSubstackCustomDomains(domains);
+  await registerSubstackCustomDomainScripts();
+  return { success: true, domains: saved };
+}
+
+async function removeSubstackCustomDomain(hostname) {
+  const host = normalizeHostname(hostname);
+  const domains = (await getSubstackCustomDomains()).filter((entry) => entry !== host);
+  const saved = await saveSubstackCustomDomains(domains);
+  await registerSubstackCustomDomainScripts();
+  return { success: true, domains: saved };
 }
 
 // Handle Gemini API requests
@@ -125,6 +227,15 @@ async function handleGeminiRequest(data) {
 
 // 启用安装处理程序
 chrome.runtime.onInstalled.addListener(onInstalled);
+chrome.runtime.onStartup.addListener(() => {
+  registerSubstackCustomDomainScripts().catch((error) => {
+    console.error("[BACKGROUND] Failed to register Substack custom domains:", error);
+  });
+});
+
+registerSubstackCustomDomainScripts().catch((error) => {
+  console.error("[BACKGROUND] Failed to register Substack custom domains on load:", error);
+});
 
 // 添加启动日志
 console.log("[BACKGROUND] Background script 已加载");
@@ -242,6 +353,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return handleAsyncMessage(
         message,
         async () => await handleFetchOpenAIRouterModels(message.data),
+        sendResponse
+      );
+
+    case "GET_SUBSTACK_DOMAIN_STATUS":
+      return handleAsyncMessage(
+        message,
+        async () => {
+          const hostname = normalizeHostname(message.data?.hostname);
+          const domains = await getSubstackCustomDomains();
+          return {
+            hostname,
+            domains,
+            enabled: domains.includes(hostname),
+          };
+        },
+        sendResponse
+      );
+
+    case "ENABLE_SUBSTACK_DOMAIN":
+      return handleAsyncMessage(
+        message,
+        async () => {
+          const result = await enableSubstackCustomDomain(message.data?.hostname);
+          return result;
+        },
+        sendResponse
+      );
+
+    case "REMOVE_SUBSTACK_DOMAIN":
+      return handleAsyncMessage(
+        message,
+        async () => await removeSubstackCustomDomain(message.data?.hostname),
+        sendResponse
+      );
+
+    case "LIST_SUBSTACK_DOMAINS":
+      return handleAsyncMessage(
+        message,
+        async () => ({ domains: await getSubstackCustomDomains() }),
         sendResponse
       );
 

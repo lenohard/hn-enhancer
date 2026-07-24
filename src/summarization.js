@@ -57,6 +57,10 @@ class Summarization {
    * @param {string} itemId
    * @returns {object}
    */
+  _clearViewState() {
+    this._summaryViewState = null;
+  }
+
   _ensureSummaryViewState(itemId) {
     if (!itemId) {
       itemId = this.enhancer.domUtils.getCurrentHNItemId();
@@ -72,6 +76,8 @@ class Summarization {
         itemId,
         cacheScope,
         localCache: null,
+        localCaches: [],
+        selectedLocalCacheKey: null,
         serverCache: null,
         generating: null,
         activeView: "local",
@@ -138,6 +144,62 @@ class Summarization {
           ? `<span class="cache-indicator">📋 Cached (${cacheAge}m ago)</span>`
           : null,
     };
+  }
+
+  /**
+   * Unique key for a local cache entry (provider + model + language).
+   * @param {object} entry
+   * @returns {string}
+   */
+  _localCacheKey(entry) {
+    if (!entry) return "";
+    const provider = entry.provider || entry.metadata?.provider || "";
+    const model = entry.model || entry.metadata?.model || "";
+    const language = entry.language || entry.metadata?.language || "";
+    return `${provider}:${model}:${language}`;
+  }
+
+  /**
+   * Load all local caches for the current post scope; default to newest entry.
+   * @param {string} itemId
+   * @param {{ selectKey?: string|null, selectLatest?: boolean }} options
+   * @returns {Promise<{ caches: object[], selected: object|null }>}
+   */
+  async loadLocalCaches(itemId, options = {}) {
+    const { selectKey = null, selectLatest = true } = options;
+    const siteKey =
+      this.enhancer.adapter?.getSiteKey?.() ?? "news.ycombinator.com";
+    const cacheCommentId = this._effectiveSummaryCacheId(null);
+
+    let caches = await HNState.listSummaries(siteKey, itemId, cacheCommentId);
+
+    // Substack article summaries saved before scope split used `_post` key
+    if (caches.length === 0 && cacheCommentId === "article") {
+      caches = await HNState.listSummaries(siteKey, itemId, null);
+    }
+
+    const state = this._ensureSummaryViewState(itemId);
+    state.localCaches = caches;
+
+    let selected = null;
+    if (selectKey) {
+      selected =
+        caches.find((entry) => this._localCacheKey(entry) === selectKey) ||
+        null;
+    } else if (selectLatest && caches.length > 0) {
+      selected = caches[0];
+    }
+
+    state.localCache = selected;
+    state.selectedLocalCacheKey = selected
+      ? this._localCacheKey(selected)
+      : null;
+
+    if (selected) {
+      state.lastMeta = this._metaFromLocalCache(selected) || state.lastMeta;
+    }
+
+    return { caches, selected };
   }
 
   /**
@@ -245,6 +307,58 @@ class Summarization {
   }
 
   /**
+   * Model switcher when multiple local caches exist for the same post scope.
+   * @param {object} state
+   * @returns {string}
+   */
+  _buildModelTabsHtml(state) {
+    const caches = state.localCaches || [];
+    const isStreaming = !!(state.generating && state.generating.isStreaming);
+
+    if (caches.length <= 1 || isStreaming || state.activeView === "server") {
+      return "";
+    }
+
+    const selectedKey = state.selectedLocalCacheKey;
+    const latestKey = caches[0] ? this._localCacheKey(caches[0]) : null;
+
+    const pills = caches
+      .map((entry) => {
+        const cacheKey = this._localCacheKey(entry);
+        const model = entry.model || entry.metadata?.model || "unknown";
+        const provider = entry.provider || entry.metadata?.provider || "";
+        const label = provider ? `${model}` : model;
+        const isActive = cacheKey === selectedKey ? "active" : "";
+        const isLatest = cacheKey === latestKey ? "is-latest" : "";
+        const ts = entry.timestamp || entry.metadata?.timestamp;
+        const title = ts
+          ? `${provider} / ${model} · ${new Date(ts).toLocaleString()}`
+          : `${provider} / ${model}`;
+        return `<button type="button" class="cache-toggle-btn model-tab-btn ${isActive} ${isLatest}" data-cache-key="${cacheKey}" title="${title}">${label}</button>`;
+      })
+      .join("");
+
+    return `<div class="summary-model-tabs">
+      <span class="summary-model-label">Models</span>
+      ${pills}
+    </div>`;
+  }
+
+  /**
+   * Source tabs (Local/Server) plus model comparison tabs.
+   * @param {object} state
+   * @returns {string}
+   */
+  _buildSummaryMetadataHtml(state) {
+    const sourceTabs = this._buildSourceTabsHtml(state);
+    const modelTabs = this._buildModelTabsHtml(state);
+    if (!sourceTabs && !modelTabs) {
+      return "";
+    }
+    return `${sourceTabs}${modelTabs}`;
+  }
+
+  /**
    * Renders the active Local / Server view into the summary panel.
    */
   async _renderSummaryView() {
@@ -265,7 +379,7 @@ class Summarization {
       state.activeView = "local";
     }
 
-    const tabsHtml = this._buildSourceTabsHtml(state);
+    const tabsHtml = this._buildSummaryMetadataHtml(state);
     let title = this._getSummaryPanelTitle();
     let headerHtml = "";
     let bodyHtml = "";
@@ -331,6 +445,7 @@ class Summarization {
     });
 
     this._bindSourceTabHandlers();
+    this._bindModelTabHandlers();
     this._bindPostSummaryActions();
     this._bindSummaryCommentLinks();
   }
@@ -402,6 +517,40 @@ class Summarization {
     });
   }
 
+  _bindModelTabHandlers() {
+    const state = this._summaryViewState;
+    if (!state) return;
+
+    document.querySelectorAll(".model-tab-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const cacheKey = btn.dataset.cacheKey;
+        if (!cacheKey || btn.disabled) return;
+        this._switchLocalCache(cacheKey);
+      });
+    });
+  }
+
+  /**
+   * Switch displayed local summary to a different cached model.
+   * @param {string} cacheKey - provider:model:language
+   */
+  _switchLocalCache(cacheKey) {
+    const state = this._summaryViewState;
+    if (!state || state.selectedLocalCacheKey === cacheKey) return;
+
+    const entry = (state.localCaches || []).find(
+      (item) => this._localCacheKey(item) === cacheKey
+    );
+    if (!entry) return;
+
+    state.selectedLocalCacheKey = cacheKey;
+    state.localCache = entry;
+    state.lastMeta = this._metaFromLocalCache(entry) || state.lastMeta;
+    state.activeView = "local";
+    this._renderSummaryView();
+  }
+
   /**
    * Switch visible source without interrupting generation.
    * @param {"local"|"server"} view
@@ -426,8 +575,9 @@ class Summarization {
       ".summary-metadata"
     );
     if (!metadataElement) return;
-    metadataElement.innerHTML = this._buildSourceTabsHtml(state);
+    metadataElement.innerHTML = this._buildSummaryMetadataHtml(state);
     this._bindSourceTabHandlers();
+    this._bindModelTabHandlers();
   }
 
   /**
@@ -499,15 +649,14 @@ class Summarization {
         this.enhancer.summaryPanel.toggle();
       }
 
-      const [localCache, serverCache] = await Promise.all([
-        this.checkLocalCache(itemId),
+      const [{ selected: localCache }, serverCache] = await Promise.all([
+        this.loadLocalCaches(itemId),
         this.enhancer.adapter?.supportsServerSummary?.()
           ? this.enhancer.getCachedSummary(itemId)
           : Promise.resolve(null),
       ]);
 
       const state = this._ensureSummaryViewState(itemId);
-      state.localCache = localCache;
       state.serverCache = serverCache;
 
       if (state.generating?.isStreaming) {
@@ -567,13 +716,12 @@ class Summarization {
         return;
       }
 
-      const [localCache, serverCache] = await Promise.all([
-        this.checkLocalCache(itemId),
+      const [{ selected: localCache }, serverCache] = await Promise.all([
+        this.loadLocalCaches(itemId),
         this.enhancer.adapter?.supportsServerSummary?.()
           ? this.enhancer.getCachedSummary(itemId)
           : Promise.resolve(null),
       ]);
-      state.localCache = localCache;
       state.serverCache = serverCache;
 
       // Detect article page (non-dedicated comments) → post-body-only summary
@@ -615,8 +763,8 @@ class Summarization {
   async autoOpenSummaryPanel(itemId) {
     if (!itemId || !this.enhancer.summaryPanel) return;
     try {
-      const [localCache, serverCache] = await Promise.all([
-        this.checkLocalCache(itemId),
+      const [{ selected: localCache }, serverCache] = await Promise.all([
+        this.loadLocalCaches(itemId),
         this.enhancer.adapter?.supportsServerSummary?.()
           ? this.enhancer.getCachedSummary(itemId)
           : Promise.resolve(null),
@@ -648,11 +796,11 @@ class Summarization {
    */
   async _showCachedSummary(itemId, localCache, serverCache, which) {
     const state = this._ensureSummaryViewState(itemId);
-    state.localCache = localCache;
+    await this.loadLocalCaches(itemId, {
+      selectKey: localCache ? this._localCacheKey(localCache) : null,
+      selectLatest: !localCache,
+    });
     state.serverCache = serverCache;
-    if (localCache) {
-      state.lastMeta = this._metaFromLocalCache(localCache) || state.lastMeta;
-    }
     if (which === "local" || which === "server") {
       state.activeView = which;
     } else {
@@ -687,6 +835,113 @@ class Summarization {
   }
 
   /**
+   * Replace comment refs with private-use tokens (survives markdown escape).
+   * Handles [#1], [#2.1], [#post], [来自 #3], and similar attribution forms.
+   * @param {string} text
+   * @returns {{ text: string, tokens: Array<{display: string, path: string}> }}
+   */
+  _tokenizeCommentRefs(text) {
+    const tokens = [];
+    const emit = (display, path) => {
+      const token = `\uE002${tokens.length}\uE003`;
+      tokens.push({ display, path });
+      return token;
+    };
+
+    text = text.replace(
+      /\[([^\[\]#]*?)#(\d+(?:\.\d+)*|post)\]/gi,
+      (match, prefix, path) => {
+        const normalizedPath = path.toLowerCase() === 'post' ? 'post' : path;
+        const trimmedPrefix = prefix.trim();
+        const display = trimmedPrefix
+          ? `[${trimmedPrefix} #${normalizedPath}]`
+          : `[#${normalizedPath}]`;
+        return emit(display, normalizedPath);
+      }
+    );
+
+    return { text, tokens };
+  }
+
+  /**
+   * Restore comment-ref tokens as clickable jump buttons.
+   * @param {string} html
+   * @param {Array<{display: string, path: string}>} tokens
+   * @returns {string}
+   */
+  _restoreCommentRefTokens(html, tokens) {
+    tokens.forEach(({ display, path }, index) => {
+      const token = `\uE002${index}\uE003`;
+      const dataRef = path === 'post' ? '#post' : `#${path}`;
+      const btn =
+        `<button type="button" class="hn-summary-ref" data-ref="${dataRef}">` +
+        `${display}</button>`;
+      html = html.split(token).join(btn);
+    });
+
+    return html;
+  }
+
+  /**
+   * Replace paragraph refs in raw summary text with private-use tokens (survives markdown escape).
+   * Handles [P11], (P11), （P11）, and ranges like (P12–14).
+   * @param {string} text
+   * @returns {{ text: string, tokens: string[][] }}
+   */
+  _tokenizeParagraphRefs(text) {
+    const tokens = [];
+    const emit = (refs) => {
+      const token = `\uE000${tokens.length}\uE001`;
+      tokens.push(refs);
+      return token;
+    };
+
+    // Ranges first: (P12–14), [P12-14], （P12–14）
+    text = text.replace(
+      /(?:\[|\(|（)\s*P(\d+)\s*[-–—~至]\s*P?(\d+)\s*(?:\]|）|\))/gi,
+      (match, startStr, endStr) => {
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+        if (!start || !end || end < start || end - start > 30) {
+          return match;
+        }
+        const refs = [];
+        for (let i = start; i <= end; i++) {
+          refs.push(`P${i}`);
+        }
+        return emit(refs);
+      }
+    );
+
+    // Single refs: [P11], (P11), （P11）
+    text = text.replace(
+      /(?:\[|\(|（)\s*(P\d+)\s*(?:\]|）|\))/gi,
+      (match, ref) => emit([ref])
+    );
+
+    return { text, tokens };
+  }
+
+  /**
+   * Restore paragraph-ref tokens as clickable jump buttons.
+   * @param {string} html
+   * @param {string[][]} tokens
+   * @returns {string}
+   */
+  _restoreParagraphRefTokens(html, tokens) {
+    const makeBtn = (ref) =>
+      `<button type="button" class="hn-summary-ref" data-ref="${ref}">[${ref}]</button>`;
+
+    tokens.forEach((refs, index) => {
+      const token = `\uE000${index}\uE001`;
+      const buttons = refs.map(makeBtn).join("");
+      html = html.split(token).join(buttons);
+    });
+
+    return html;
+  }
+
+  /**
    * Converts summary markdown to HTML and replaces comment path references with links.
    * @param {string} summary - Raw summary text
    * @param {Map<string, string>} commentPathToIdMap - Map of comment paths to IDs
@@ -698,8 +953,13 @@ class Summarization {
         ? commentPathToIdMap
         : new Map(commentPathToIdMap || []);
 
+    const { text: textAfterCommentTokens, tokens: commentRefTokens } =
+      this._tokenizeCommentRefs(summary);
+    const { text: summaryWithTokens, tokens: paragraphRefTokens } =
+      this._tokenizeParagraphRefs(textAfterCommentTokens);
+
     const summaryHtml =
-      this.enhancer.markdownUtils.convertMarkdownToHTML(summary);
+      this.enhancer.markdownUtils.convertMarkdownToHTML(summaryWithTokens);
     let formattedSummary =
       this.enhancer.markdownUtils.replacePathsWithCommentLinks(
         summaryHtml,
@@ -707,11 +967,23 @@ class Summarization {
       );
 
     formattedSummary = this._normalizeCommentAnchors(formattedSummary);
+    formattedSummary = this._restoreParagraphRefTokens(
+      formattedSummary,
+      paragraphRefTokens
+    );
+    formattedSummary = this._restoreCommentRefTokens(
+      formattedSummary,
+      commentRefTokens
+    );
 
-    // Replace [#N], [#post], and [P#] (paragraph) references with clickable buttons
+    // Fallback for any [#N] / [#N.M] refs that slipped through tokenization
     formattedSummary = formattedSummary.replace(
-      /\[(#\d+|#post|P\d+)\]/g,
-      '<button class="hn-summary-ref" data-ref="$1">[$1]</button>'
+      /\[(#(?:post|\d+(?:\.\d+)*))\]/gi,
+      (match, ref) => {
+        const path = ref.toLowerCase() === '#post' ? 'post' : ref.slice(1);
+        const dataRef = path === 'post' ? '#post' : `#${path}`;
+        return `<button type="button" class="hn-summary-ref" data-ref="${dataRef}">${match}</button>`;
+      }
     );
 
     return formattedSummary;
@@ -901,12 +1173,22 @@ class Summarization {
     // Paragraph ref: [P1], [P2], etc. → query data-para-index on body element
     const paraMatch = ref.match(/^P(\d+)$/);
     if (paraMatch) {
-      const paraEl = this.enhancer.adapter
-        .getPostBodyElement?.()
-        ?.querySelector(`[data-para-index="${paraMatch[1]}"]`);
-      if (paraEl) {
-        this._scrollAndFlashSummaryTarget(paraEl);
-        return;
+      const bodyEl = this.enhancer.adapter.getPostBodyElement?.();
+      if (bodyEl) {
+        // Try pre-set data-para-index first (from _formatPostBodyForLLM)
+        let paraEl = bodyEl.querySelector(`[data-para-index="${paraMatch[1]}"]`);
+        // Fallback: collect <p> elements by 1-based index
+        if (!paraEl) {
+          const idx = parseInt(paraMatch[1], 10) - 1;
+          const paras = bodyEl.querySelectorAll('p');
+          if (idx >= 0 && idx < paras.length) {
+            paraEl = paras[idx];
+          }
+        }
+        if (paraEl) {
+          this._scrollAndFlashSummaryTarget(paraEl);
+          return;
+        }
       }
       console.warn("Could not find paragraph:", ref);
       return;
@@ -1027,10 +1309,11 @@ class Summarization {
     const state = this._ensureSummaryViewState(itemId);
     try {
       const tasks = [];
-      if (!state.localCache) {
+      if (!state.localCaches?.length) {
         tasks.push(
-          this.checkLocalCache(itemId).then((cache) => {
-            if (cache) state.localCache = cache;
+          this.loadLocalCaches(itemId, {
+            selectKey: state.selectedLocalCacheKey,
+            selectLatest: !state.selectedLocalCacheKey,
           })
         );
       }
@@ -1161,7 +1444,7 @@ class Summarization {
               : [],
         };
 
-        HNState.saveSummary(
+        await HNState.saveSummary(
           siteKey,
           postId,
           cacheCommentId,
@@ -1376,22 +1659,14 @@ class Summarization {
         const id = adapter.getBlockId(block);
         if (id == null) return;
         const path = parentPath ? `${parentPath}.${siblingIndex}` : String(siblingIndex);
-        const indent = adapter.getBlockIndentLevel(block);
         const author = adapter.getBlockAuthor(block);
         const text = adapter.getBlockText(block);
-        const downvotes = adapter.getBlockDownvoteCount(block);
-        const score = Math.floor(
-          SUMMARIZATION_CONFIG.LIMITS.MAX_SCORE - (indent * SUMMARIZATION_CONFIG.LIMITS.MAX_SCORE) / 10
-        );
 
         flatComments.push({
           id,
           path,
           author,
           text,
-          downvotes,
-          score,
-          replies: 0,
         });
         commentPathToIdMap.set(path, String(id));
 
@@ -1411,7 +1686,7 @@ class Summarization {
         flatComments
           .map(
             (comment) =>
-              `[${comment.path}] (score: ${comment.score}) {downvotes: ${comment.downvotes}} ${comment.author}: ${comment.text}\n`
+              `[${comment.path}] ${comment.author}: ${comment.text}\n`
           )
           .join("")
       );
@@ -2352,30 +2627,17 @@ ${languageInstruction}`;
       cacheIndicator,
     };
 
-    // Update Local immediately (saveSummary may still be flushing async)
-    state.localCache = {
-      summary,
-      metadata: {
-        duration: duration ?? 0,
-        commentCount: commentPathToIdMap?.size || 0,
-        timestamp: Date.now(),
-        commentPathToIdMap:
-          commentPathToIdMap instanceof Map
-            ? Array.from(commentPathToIdMap.entries())
-            : [],
-      },
-      timestamp: Date.now(),
-      provider: aiProvider,
-      model,
-      language,
-    };
+    // Finished stream: clear generating flag so Local shows saved cache
+    state.generating = null;
 
-    // Stay on whatever tab user was viewing; default to Local for new result
+    // Stay on Local for new result; refresh model list and select this generation
     if (state.activeView !== "server") {
       state.activeView = "local";
     }
-    // Finished stream: clear generating flag so Local shows saved cache
-    state.generating = null;
+    await this.loadLocalCaches(itemId, {
+      selectKey: `${aiProvider}:${model}:${language}`,
+      selectLatest: false,
+    });
 
     await this._renderSummaryView();
   }

@@ -25,22 +25,36 @@
     }
   }
 
-  if (!initEnhancer()) {
-    let checkInterval = setInterval(function() {
-      if (initEnhancer()) {
-        clearInterval(checkInterval);
-      }
-    }, 200);
+  async function bootstrap() {
+    try {
+      const data = await chrome.storage.sync.get("substackCustomDomains");
+      window.__HN_SUBSTACK_CUSTOM_DOMAINS = Array.isArray(data.substackCustomDomains)
+        ? data.substackCustomDomains
+        : [];
+    } catch (error) {
+      console.warn("[HN Companion] Could not load Substack custom domains:", error);
+      window.__HN_SUBSTACK_CUSTOM_DOMAINS = [];
+    }
 
-    setTimeout(function() {
-      if (checkInterval) {
-        clearInterval(checkInterval);
-        if (!window.hnEnhancer) {
-          console.error("无法加载 HNEnhancer 类，已超时");
+    if (!initEnhancer()) {
+      let checkInterval = setInterval(function() {
+        if (initEnhancer()) {
+          clearInterval(checkInterval);
         }
-      }
-    }, 10000);
+      }, 200);
+
+      setTimeout(function() {
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          if (!window.hnEnhancer) {
+            console.error("无法加载 HNEnhancer 类，已超时");
+          }
+        }
+      }, 10000);
+    }
   }
+
+  bootstrap();
 })();
 
 document.addEventListener("DOMContentLoaded", () => {
