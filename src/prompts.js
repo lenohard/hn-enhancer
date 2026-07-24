@@ -172,7 +172,6 @@ Guidelines:
 - If a cached summary is also provided, treat it as a high-level orientation aid — when answering, prefer details from the article body and reach for the summary only when the user asks for the high-level view.
 - If the user asks something the article does not cover, say so plainly rather than guessing.
 - Keep replies focused and conversational. Use markdown when it improves clarity.`,
-            user: '',
         },
     },
 };

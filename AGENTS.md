@@ -658,3 +658,45 @@ Substack uses client-side routing (`pushState` / `replaceState`). When navigatin
 2. Clears the summarization view state (`_clearViewState()`) after a 300ms delay to let Substack re-render
 
 This ensures the summary panel doesn't show stale content from the previous page. Users can then click Summary again to load the cached summary for the new page.
+
+### Multi-Turn Post-Body Chat (2026-07-24)
+
+Extended the chat modal so sites that summarize an *article body* (not a comment thread) get a multi-turn Q&A experience: Post / Summary / Post+Summary contexts, with cached summary as an option that appears only when one exists.
+
+**Three new abstract hooks on `SiteAdapter`:**
+| Method | Purpose |
+|---|---|
+| `getChatContextOptions(enhancer)` | Async. Return `[{id, label, group, requiresSummary?}]`. `group: 'comment'` for per-comment flows, `'post'` for whole-post flows. |
+| `getCachedPostSummary(enhancer)` | Async. Return the most recent cached summary for the current post, or null. ChatModal uses this to filter options with `requiresSummary: true`. |
+| `getChatSystemMessage()` | Return a site-specific chat system prompt (e.g. Substack's reading-companion prompt with `[P#]` citation guidance). |
+
+**ChatModal refactor — dynamic, adapter-driven radios:**
+- `_rebuildContextOptions(options)` — wipes and re-creates the radio group from an options array. Each option's `group` becomes the radio's `data-group`.
+- `_setVisibleContextGroup(group)` — generic show/hide filter; returns the first visible value (used as the open-time default).
+- `_dispatchGather(contextType)` — routes to one of three gather methods based on the option's `group` (NOT a hardcoded type list):
+  - `group: 'comment'` → `_gatherContextAndInitiateChat()` (per-comment thread)
+  - `group: 'post'` (no HN post) → `_gatherPostBodyContextAndInitiateChat()` (new, article body)
+  - `group: 'post'` (HN legacy) → `_gatherPostContextAndInitiateChat()` (all comments)
+- `_isPostBodyContext()` was **removed** — dispatch is now data-driven off `option.group`, so adding a new post-body context type ("highlights", "article-only", etc.) requires zero changes in chat-modal.
+
+**New flow: `_gatherPostBodyContextAndInitiateChat(contextType)`**
+- Loads history for `chatHistory_${siteKey}_${postId}_post_${contextType}` (new contextTypes `post` / `summary` / `post-summary` don't collide with legacy `parents/descendants/children`).
+- Builds the article body as `[P#]`-numbered paragraphs and prepends a labelled section block.
+- **Puts context in the initial user message**, not the system message — works uniformly across all providers and supports multi-turn Q&A.
+- `getChatSystemMessage()` is the per-site system prompt; falls back to a generic "reading companion" message if the adapter doesn't override.
+
+**Sync/async split pattern:** `open()` / `openForPost()` are now thin sync wrappers that delegate to `_openAsync()` / `_openForPostAsync()`. Internal `await adapter.getChatContextOptions()` works without forcing all callers to become async.
+
+**Adapter changes:**
+- `HnAdapter.getChatContextOptions()` → returns parents/descendants/children, all `group: 'comment'`.
+- `SubstackAdapter.getChatContextOptions()` → returns `[{id: 'post', group: 'post'}]` initially, appends `summary` and `post-summary` (both `group: 'post'`) once a cached summary exists. **Storage key prefix is now siteKey-based** (`getSiteKey()` instead of hardcoded `news.ycombinator.com`).
+- `SubstackAdapter.getChatSystemMessage()` → `HNPrompts.substack.chat.system`.
+- `SubstackAdapter.getHubButtons()` → added a "Chat" button (universal; previously the post-level Chat link was HN-only via `injectChatPostLink`).
+
+**Prompt addition:** `HNPrompts.substack.chat.system` — Q&A reading companion prompt with `[P#]` citation guidance. (Removed dead `user: ''` field — the user message is built dynamically in chat-modal.)
+
+**Fix in `_openForPostAsync`:** legacy HN case (no 'post' group options) previously left all radios hidden while dispatching `descendants` as default. Now falls back through `_setVisibleContextGroup('comment')` so the user still sees Parents/Descendants/Children radios.
+
+**Other small fixes from this pass:**
+- `src/hn-enhancer.js`: `openPostChatModal()` now uses `this.adapter?.getPostId?.()` instead of `domUtils.getCurrentHNItemId()` (so it works on Substack too).
+- `src/hn-enhancer.js`: `injectChatPostLink()` is no longer gated behind `isHN` — universal.

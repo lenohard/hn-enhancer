@@ -229,28 +229,23 @@ class ChatModal {
 
   /**
    * Dispatch to the right gather method based on the chat mode and
-   * selected contextType. Used by openForPost and _switchContext so we
-   * keep the comment-level / post-comments / post-body flows separated.
+   * the selected context option's group. Adding a new post-body context
+   * type only requires registering a new option in the adapter — no
+   * changes here. Used by openForPost and _switchContext so we keep the
+   * comment-level / post-comments / post-body flows separated.
    * @param {string} contextType
    * @private
    */
   _dispatchGather(contextType) {
-    if (this._isPostBodyContext(contextType)) {
-      return this._gatherPostBodyContextAndInitiateChat(contextType);
+    if (!this.isPostChat) {
+      return this._gatherContextAndInitiateChat(contextType);
     }
-    if (this.isPostChat) {
-      return this._gatherPostContextAndInitiateChat(contextType);
-    }
-    return this._gatherContextAndInitiateChat(contextType);
-  }
-
-  /**
-   * @param {string} contextType
-   * @returns {boolean}
-   * @private
-   */
-  _isPostBodyContext(contextType) {
-    return contextType === "post" || contextType === "summary" || contextType === "post-summary";
+    const option = (this._allContextOptions || []).find(
+      (o) => o.id === contextType
+    );
+    return option?.group === "post"
+      ? this._gatherPostBodyContextAndInitiateChat(contextType)
+      : this._gatherPostContextAndInitiateChat(contextType);
   }
 
   /**
@@ -268,6 +263,15 @@ class ChatModal {
       // Optionally display an error to the user
       return;
     }
+    return this._openAsync(commentElement, postId);
+  }
+
+  /**
+   * Async core of open() — split out so the public entry point stays
+   * synchronous-looking and existing callers don't need to await it.
+   * @private
+   */
+  async _openAsync(commentElement, postId) {
 
     // 如果模态框已经可见且是相同的评论，则直接返回
     if (this.isVisible && this.targetCommentElement === commentElement) {
@@ -284,30 +288,23 @@ class ChatModal {
     );
 
     // Reset state (partially, history might be loaded)
-    // this.conversationArea.innerHTML = "<p><em>Gathering context...</em></p>"; // Clear previous chat
     this.inputElement.value = "";
     this.inputElement.disabled = true; // Disable input until context/history is loaded
     this.sendButton.disabled = true;
-    // DO NOT clear conversationHistory here, it will be loaded or set in _gatherContext...
-    // this.conversationHistory = [];
 
-    // Ensure 'parents' option is visible for comment-level chat
-    const parentsRadio =
-      this.contextSelectorContainer.querySelector("#context-parents");
-    const parentsLabel = this.contextSelectorContainer.querySelector(
-      'label[for="context-parents"]'
-    );
-
-    if (parentsRadio && parentsLabel) {
-      parentsRadio.style.display = "";
-      parentsLabel.style.display = "";
-    }
+    // Build context options from the adapter (per-site, possibly async)
+    const adapter = this.enhancer.adapter;
+    const options = adapter?.getChatContextOptions
+      ? await adapter.getChatContextOptions(this.enhancer)
+      : [];
+    this._rebuildContextOptions(options);
+    const defaultType = this._setVisibleContextGroup("comment") || "parents";
 
     this.show(); // 显示模态框
     // Don't focus input yet, wait for load
 
     // Trigger context/history loading and potential chat initiation
-    this._gatherContextAndInitiateChat(); // Default context type is used initially
+    this._dispatchGather(defaultType);
   }
 
   /**
@@ -333,6 +330,14 @@ class ChatModal {
       return;
     }
 
+    return this._openForPostAsync(postId);
+  }
+
+  /**
+   * Async core of openForPost(). See _openAsync.
+   * @private
+   */
+  async _openForPostAsync(postId) {
     this.isPostChat = true; // This is a post-level chat
     this.targetCommentElement = null; // No specific comment
     this.currentPostId = postId;
@@ -344,38 +349,31 @@ class ChatModal {
       titleElement.textContent = "Chat about Post";
     }
 
-    // Reset state (Clearing area is handled by _gatherPostContextAndInitiateChat)
-    // this.conversationArea.innerHTML = "<p><em>Gathering post context...</em></p>"; // Removed this line
     this.inputElement.value = "";
     this.inputElement.disabled = true;
     this.sendButton.disabled = true;
 
-    // Update context selector UI - hide 'parents' option for post chat
-    const parentsRadio =
-      this.contextSelectorContainer.querySelector("#context-parents");
-    const parentsLabel = this.contextSelectorContainer.querySelector(
-      'label[for="context-parents"]'
-    );
-
-    if (parentsRadio && parentsLabel) {
-      parentsRadio.style.display = "none";
-      parentsLabel.style.display = "none";
-
-      // Select descendants by default if parents was selected
-      if (parentsRadio.checked) {
-        const descendantsRadio = this.contextSelectorContainer.querySelector(
-          "#context-descendants"
-        );
-        if (descendantsRadio) {
-          descendantsRadio.checked = true;
-        }
-      }
-    }
+    // Build context options from the adapter (per-site, possibly async)
+    const adapter = this.enhancer.adapter;
+    const options = adapter?.getChatContextOptions
+      ? await adapter.getChatContextOptions(this.enhancer)
+      : [];
+    this._rebuildContextOptions(options);
+    // Show the 'post' group radios (Substack: Post / Summary / Post+Summary).
+    // If the adapter registered no 'post' group options (HN legacy), fall
+    // back to showing the 'comment' group so the user still sees the
+    // Parents/Descendants/Children radios.
+    const defaultType =
+      this._setVisibleContextGroup("post") ||
+      this._setVisibleContextGroup("comment") ||
+      "descendants";
 
     this.show(); // 显示模态框
 
-    // Trigger context gathering for post
-    this._gatherPostContextAndInitiateChat();
+    // Dispatch to the right gather method based on the default context type.
+    // (post/summary/post-summary -> new post-body flow;
+    //  descendants/children -> legacy all-comments flow.)
+    await this._dispatchGather(defaultType);
   }
 
   /**
@@ -390,20 +388,6 @@ class ChatModal {
     const titleElement = this.modalElement.querySelector(".modal-header h2");
     if (titleElement) {
       titleElement.textContent = "Chat about Comment";
-    }
-
-    // Show 'parents' option again if it was hidden
-    if (this.isPostChat) {
-      const parentsRadio =
-        this.contextSelectorContainer.querySelector("#context-parents");
-      const parentsLabel = this.contextSelectorContainer.querySelector(
-        'label[for="context-parents"]'
-      );
-
-      if (parentsRadio && parentsLabel) {
-        parentsRadio.style.display = "";
-        parentsLabel.style.display = "";
-      }
     }
 
     this.isPostChat = false; // Reset post chat flag
@@ -1635,7 +1619,7 @@ ${systemPromptIntro}
 
   /**
    * Switches the chat context type, clears the conversation, and re-initiates the chat.
-   * @param {string} newContextType - The new context type ('parents', 'descendants', 'children').
+   * @param {string} newContextType - The new context type.
    * @private
    */
   async _switchContext(newContextType) {
@@ -1648,15 +1632,7 @@ ${systemPromptIntro}
 
     this.enhancer.logInfo(`Switching chat context to: ${newContextType}`);
 
-    // For post chat, 'parents' is not applicable
-    if (this.isPostChat && newContextType === "parents") {
-      this.enhancer.logDebug(
-        `'parents' context not applicable for post chat, using 'descendants' instead.`
-      );
-      newContextType = "descendants";
-    }
-
-    // 1. Update state (will be updated again in _gatherContextAndInitiateChat, but good practice)
+    // 1. Update state (will be updated again in the gather method, but good practice)
     this.currentContextType = newContextType;
 
     // 2. Clear conversation area and history
@@ -1668,12 +1644,8 @@ ${systemPromptIntro}
     this.inputElement.disabled = true;
     this.sendButton.disabled = true;
 
-    // 4. Re-gather context and initiate chat with the new type
-    if (this.isPostChat) {
-      await this._gatherPostContextAndInitiateChat(newContextType);
-    } else {
-      await this._gatherContextAndInitiateChat(newContextType);
-    }
+    // 4. Re-gather context via the dispatch helper (handles all chat modes)
+    await this._dispatchGather(newContextType);
   }
 
   /**
@@ -2137,6 +2109,262 @@ ${systemPromptIntro}
     } catch (error) {
       console.error(
         "Error gathering post context or initializing chat:",
+        error
+      );
+      this.inputElement.disabled = false;
+      this.sendButton.disabled = false;
+      this._displayMessage(
+        "Error preparing chat. Please check console.",
+        "system"
+      );
+    }
+  }
+
+  /**
+   * Gathers post-body context (article and/or cached summary) and initiates
+   * a conversational chat. Used for Substack's Post / Summary / Post+Summary
+   * context options. The article body uses [P#] paragraph citations; the
+   * summary is a free-form prior overview.
+   * @param {'post'|'summary'|'post-summary'} contextType
+   * @private
+   */
+  async _gatherPostBodyContextAndInitiateChat(contextType) {
+    if (!this.currentPostId) {
+      console.error("Missing postId in _gatherPostBodyContextAndInitiateChat");
+      this._displayMessage(
+        "Error: Cannot initiate chat due to missing post ID.",
+        "system"
+      );
+      return;
+    }
+
+    this.aiSession = null;
+    this.currentLlmMessageElement = null;
+    this.currentContextType = contextType;
+    this.currentAiProvider = null;
+    this.currentModel = null;
+    this.conversationHistory = [];
+    this.commentPathToIdMap = new Map();
+    this.conversationArea.innerHTML = "";
+    this.historyProvider = null;
+    this.historyModel = null;
+    this._updateModelIndicator(null, null);
+
+    const postId = this.currentPostId;
+    const adapter = this.enhancer.adapter;
+    const siteKey = adapter?.getSiteKey?.() || "news.ycombinator.com";
+
+    this.enhancer.logInfo(
+      `Initiating post-body chat for ${siteKey} post ${postId}, context: ${contextType}`
+    );
+
+    try {
+      // --- Try loading history first ---
+      const storedHistoryEntry = await this.enhancer.hnState.getChatHistory(
+        siteKey,
+        postId,
+        "post",
+        contextType
+      );
+
+      const loadedHistory = Array.isArray(storedHistoryEntry)
+        ? storedHistoryEntry
+        : Array.isArray(storedHistoryEntry?.history)
+        ? storedHistoryEntry.history
+        : null;
+
+      if (loadedHistory && loadedHistory.length > 0) {
+        this.enhancer.logInfo(
+          `Loaded existing post-body chat history for ${postId}/${contextType}`
+        );
+        this.conversationHistory = loadedHistory;
+        this.historyProvider = storedHistoryEntry?.provider || null;
+        this.historyModel = storedHistoryEntry?.model || null;
+
+        this.conversationHistory.forEach((message) => {
+          if (message.role === "system") {
+            this._displayMessage(
+              `Loaded previous chat (${contextType} context).`,
+              "system"
+            );
+          } else {
+            this._displayMessage(
+              message.content,
+              message.role === "assistant" ? "llm" : message.role
+            );
+          }
+        });
+
+        await this._refreshProviderAndModel();
+        const aiProvider = this.currentAiProvider;
+        const model = this.currentModel;
+
+        if (!aiProvider) {
+          this.enhancer.summarization.showConfigureAIMessage(
+            this.conversationArea
+          );
+        } else {
+          if (aiProvider === "chrome-ai") {
+            await this._initializeChromeAISessionIfNeeded();
+          }
+          this.inputElement.disabled = false;
+          this.sendButton.disabled = false;
+          this.inputElement.focus();
+        }
+        this._updateModelIndicator(aiProvider, model);
+        return;
+      }
+
+      // --- No history: gather post body and (optionally) cached summary ---
+      const postTitle =
+        adapter?.getPostTitle?.() || document.title || "Untitled";
+      const postText = adapter?.getPostText?.() || "";
+      const postParagraphs = postText
+        ? postText
+            .split(/\n\s*\n/)
+            .map((p) => p.trim())
+            .filter(Boolean)
+        : [];
+
+      let summaryEntry = null;
+      if (contextType === "summary" || contextType === "post-summary") {
+        summaryEntry = await adapter?.getCachedPostSummary?.(this.enhancer);
+        if (!summaryEntry) {
+          // Defensive — the option should have been hidden if no summary exists.
+          this._displayMessage(
+            "No cached summary found. Pick a different context or generate a summary first.",
+            "system"
+          );
+          this.inputElement.disabled = false;
+          this.sendButton.disabled = false;
+          return;
+        }
+      }
+
+      if (contextType === "post" && postParagraphs.length === 0) {
+        this._displayMessage(
+          "No article body found on this page. Cannot start post-body chat.",
+          "system"
+        );
+        this.inputElement.disabled = false;
+        this.sendButton.disabled = false;
+        return;
+      }
+
+      // --- Build the system message ---
+      const systemMessageFromAdapter = adapter?.getChatSystemMessage?.();
+      const systemPrompt =
+        systemMessageFromAdapter ||
+        `You are a reading companion. Use the supplied article (and summary, if provided) to answer the user's questions concisely and accurately. Cite paragraphs with [P#] notation.`;
+
+      // --- Build the initial user message that carries the context ---
+      const contextSections = [`# Article Title\n${postTitle}`];
+
+      if (contextType !== "summary" && postParagraphs.length > 0) {
+        contextSections.push(
+          "# Article Body\n" +
+            postParagraphs
+              .map((para, i) => `[P${i + 1}] ${para}`)
+              .join("\n\n")
+        );
+      }
+
+      if (summaryEntry?.summary) {
+        contextSections.push(
+          "# Cached Summary\n" + String(summaryEntry.summary).trim()
+        );
+      }
+
+      contextSections.push(
+        "# Instructions\nAnswer the user's questions using the materials above. Cite the article with [P#] notation when relevant. Reply in the user's language."
+      );
+
+      const initialUserMessage = contextSections.join("\n\n---\n\n");
+
+      // --- Determine AI provider ---
+      await this._refreshProviderAndModel();
+      const aiProvider = this.currentAiProvider;
+      const model = this.currentModel;
+
+      if (!aiProvider) {
+        this.enhancer.logInfo("Post-body chat: AI provider not configured.");
+        this.enhancer.summarization.showConfigureAIMessage(
+          this.conversationArea
+        );
+        this._updateModelIndicator(aiProvider, model);
+        return;
+      }
+
+      this.enhancer.logInfo(
+        `Post-body chat: Using AI Provider: ${aiProvider}, Model: ${
+          model || "default"
+        }`
+      );
+
+      // --- Initialize conversation history ---
+      this.conversationHistory.push({
+        role: "system",
+        content: systemPrompt,
+      });
+      this.conversationHistory.push({
+        role: "user",
+        content: initialUserMessage,
+      });
+      this.enhancer.logDebug(
+        "Initialized post-body chat history with system prompt and context."
+      );
+
+      // Display a friendly context-loaded summary
+      const paraCount =
+        contextType !== "summary" ? postParagraphs.length : 0;
+      const summaryLines = summaryEntry
+        ? String(summaryEntry.summary).split("\n").length
+        : 0;
+      const summaryLine = summaryEntry
+        ? `\nSummary: ${summaryLines} lines from ${summaryEntry.provider || "cache"}`
+        : "";
+      this._displayMessage(
+        `Loaded ${contextType} context: ${paraCount} paragraph(s)${summaryLine}.\nAsk a question to start the conversation.`,
+        "system"
+      );
+
+      // --- Prepare chat based on provider ---
+      if (aiProvider === "chrome-ai") {
+        if (
+          this.enhancer.isChomeAiAvailable !==
+          HNEnhancer.CHROME_AI_AVAILABLE.YES
+        ) {
+          try {
+            const availability = await window.ai.canCreateTextSession();
+            this.enhancer.isChomeAiAvailable = availability;
+          } catch (err) {
+            console.error("Error checking AI availability:", err);
+            this.enhancer.isChomeAiAvailable =
+              HNEnhancer.CHROME_AI_AVAILABLE.NO;
+          }
+        }
+
+        if (
+          this.enhancer.isChomeAiAvailable ===
+          HNEnhancer.CHROME_AI_AVAILABLE.YES
+        ) {
+          await this._initializeChromeAISessionIfNeeded();
+        } else {
+          this._displayMessage(
+            "Chrome Built-in AI is selected but not available or ready. Cannot start chat.",
+            "system"
+          );
+        }
+      }
+
+      // Enable input
+      this.inputElement.disabled = false;
+      this.sendButton.disabled = false;
+      this.inputElement.focus();
+      this._updateModelIndicator(aiProvider, model);
+    } catch (error) {
+      console.error(
+        "Error gathering post-body context or initializing chat:",
         error
       );
       this.inputElement.disabled = false;

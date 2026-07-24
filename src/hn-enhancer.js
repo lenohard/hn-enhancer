@@ -219,9 +219,11 @@ window.HNEnhancer = class HNEnhancer {
     }
 
     // --- Step 3: Inject post-level UI elements ---
+    // Chat about post works for any adapter that supplies chat context options,
+    // so it's universal; the rest remain HN-specific.
+    this.uiComponents.injectChatPostLink();
     if (isHN) {
       this.uiComponents.injectSummarizePostLink();
-      this.uiComponents.injectChatPostLink();
       this.uiComponents.injectToggleGrandchildrenRootLink();
       this.addCacheIndicators(); // Call without comment parameter for post-level indicators
     }
@@ -1925,7 +1927,7 @@ window.HNEnhancer = class HNEnhancer {
    */
   openPostChatModal() {
     if (this.chatModal) {
-      const postId = this.domUtils.getCurrentHNItemId();
+      const postId = this.adapter?.getPostId?.();
       if (!postId) {
         console.error("Could not determine post ID to open chat modal.");
         return;
