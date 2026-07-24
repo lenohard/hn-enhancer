@@ -72,18 +72,12 @@ class ChatModal {
     header.appendChild(title);
     header.appendChild(this.closeButton);
 
-    // Context Selector Area
+    // Context Selector Area — radios are populated dynamically per-site/per-mode
+    // by _rebuildContextOptions() whenever open() / openForPost() is called.
     this.contextSelectorContainer = document.createElement("div");
     this.contextSelectorContainer.className = "chat-context-selector";
-    this.contextSelectorContainer.innerHTML = `
-      <label>Context:</label>
-      <input type="radio" id="context-parents" name="chatContext" value="parents" checked>
-      <label for="context-parents">Parents</label>
-      <input type="radio" id="context-descendants" name="chatContext" value="descendants">
-      <label for="context-descendants">Descendants</label>
-      <input type="radio" id="context-children" name="chatContext" value="children">
-      <label for="context-children">Children</label>
-    `;
+    this.contextSelectorContainer.innerHTML = `<label>Context:</label>`;
+    this._allContextOptions = []; // populated on each open
 
     // Conversation Area
     const sessionMeta = document.createElement("div");
@@ -152,20 +146,111 @@ class ChatModal {
     // Send button
     this.sendButton.addEventListener("click", () => this._handleSendMessage());
 
-    // Context selector radio buttons
-    const contextRadios = this.contextSelectorContainer.querySelectorAll(
-      'input[name="chatContext"]'
-    );
-    contextRadios.forEach((radio) => {
-      radio.addEventListener("change", (e) => {
-        if (e.target.checked) {
-          this._switchContext(e.target.value); // Call switch context method
-        }
-      });
+    // Context selector — delegated so dynamically-added radios also work.
+    this.contextSelectorContainer.addEventListener("change", (e) => {
+      const target = e.target;
+      if (
+        target instanceof HTMLInputElement &&
+        target.name === "chatContext" &&
+        target.checked
+      ) {
+        this._switchContext(target.value);
+      }
     });
 
     // Mark listeners as added
     this.modalElement.dataset.listenersAdded = "true";
+  }
+
+  /**
+   * Rebuild the context-selector radios from the supplied options list.
+   * Stores the rendered options on this._allContextOptions so the
+   * open() / openForPost() callers can pick a default and _setVisibleContextGroup
+   * can filter by group.
+   * @param {Array<{id: string, label: string, group: string}>} options
+   * @private
+   */
+  _rebuildContextOptions(options) {
+    this._allContextOptions = Array.isArray(options) ? options : [];
+
+    // Reset the container, keeping a leading "Context:" label
+    this.contextSelectorContainer.innerHTML = "";
+    const leadingLabel = document.createElement("label");
+    leadingLabel.textContent = "Context:";
+    this.contextSelectorContainer.appendChild(leadingLabel);
+
+    this._allContextOptions.forEach((opt) => {
+      const id = `context-${opt.id}`;
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.id = id;
+      input.name = "chatContext";
+      input.value = opt.id;
+      input.dataset.group = opt.group;
+
+      const inputLabel = document.createElement("label");
+      inputLabel.htmlFor = id;
+      inputLabel.textContent = opt.label;
+
+      this.contextSelectorContainer.appendChild(input);
+      this.contextSelectorContainer.appendChild(inputLabel);
+    });
+  }
+
+  /**
+   * Show only the radios belonging to the given group. Selects the first
+   * visible radio as the default and returns its value.
+   * @param {'comment'|'post'} group
+   * @returns {string|null}
+   * @private
+   */
+  _setVisibleContextGroup(group) {
+    const radios = this.contextSelectorContainer.querySelectorAll(
+      'input[name="chatContext"]'
+    );
+    let firstVisible = null;
+
+    radios.forEach((radio) => {
+      const matches = radio.dataset.group === group;
+      radio.style.display = matches ? "" : "none";
+      const labelEl = this.contextSelectorContainer.querySelector(
+        `label[for="${radio.id}"]`
+      );
+      if (labelEl) labelEl.style.display = matches ? "" : "none";
+      if (matches && !firstVisible) firstVisible = radio;
+    });
+
+    if (firstVisible) {
+      firstVisible.checked = true;
+      return firstVisible.value;
+    }
+    return null;
+  }
+
+  /**
+   * Dispatch to the right gather method based on the chat mode and
+   * selected contextType. Used by openForPost and _switchContext so we
+   * keep the comment-level / post-comments / post-body flows separated.
+   * @param {string} contextType
+   * @private
+   */
+  _dispatchGather(contextType) {
+    if (this._isPostBodyContext(contextType)) {
+      return this._gatherPostBodyContextAndInitiateChat(contextType);
+    }
+    if (this.isPostChat) {
+      return this._gatherPostContextAndInitiateChat(contextType);
+    }
+    return this._gatherContextAndInitiateChat(contextType);
+  }
+
+  /**
+   * @param {string} contextType
+   * @returns {boolean}
+   * @private
+   */
+  _isPostBodyContext(contextType) {
+    return contextType === "post" || contextType === "summary" || contextType === "post-summary";
   }
 
   /**

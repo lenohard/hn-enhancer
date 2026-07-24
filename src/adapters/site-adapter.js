@@ -282,6 +282,35 @@ window.SiteAdapter = class SiteAdapter {
      */
     initArticlePage(_enhancer) {}
 
+    // ── Chat context options ─────────────────────────────────────
+
+    /**
+     * Return the chat-modal context options available for the current page.
+     * Each option: { id, label, group, requiresSummary? }
+     *   - id:    stable value used in the chat-history storage key
+     *   - label: short label rendered next to the radio input
+     *   - group: 'comment' for per-comment contexts, 'post' for whole-post contexts
+     *   - requiresSummary: when true, the option is only shown if a cached
+     *     post summary exists (resolved by ChatModal via getCachedPostSummary)
+     * May be async (e.g. Substack checks the summary cache).
+     * @returns {Promise<Array<object>|Array<object>}
+     */
+    async getChatContextOptions(_enhancer) { return []; }
+
+    /**
+     * Return the most recent cached post summary, or null. Used by ChatModal
+     * to decide whether summary-aware context options should be shown.
+     * @returns {Promise<object|null>}
+     */
+    async getCachedPostSummary(_enhancer) { return null; }
+
+    /**
+     * System message for post-body chat (Q&A against the article and/or
+     * cached summary). Override per site to inject site-specific guidance.
+     * @returns {string|null}
+     */
+    getChatSystemMessage() { return null; }
+
     // ── Favorites / bookmarks (site-specific URLs) ────────────────
 
     /**

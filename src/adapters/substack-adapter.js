@@ -391,6 +391,12 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
         }
 
         buttons.push({
+            label: 'Chat',
+            title: 'Open a chat about this post',
+            onClick: () => enhancer.openPostChatModal(),
+        });
+
+        buttons.push({
             label: 'Save',
             title: 'Bookmark this post for later',
             onClick: () => {
@@ -467,5 +473,55 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
 
     getUserFavoritesUrl(_username) {
         return null;
+    }
+
+    // ── Chat context options ─────────────────────────────────────
+
+    /**
+     * Return the most recent cached post summary, or null. Looks up the cache
+     * for the current scope (article or dedicated comments page).
+     * @param {object} enhancer
+     * @returns {Promise<object|null>}
+     */
+    async getCachedPostSummary(enhancer) {
+        const postId = this.getPostId();
+        if (!postId || !enhancer?.hnState?.listSummaries) return null;
+        const scope = this.getPostSummaryCacheId();
+        const entries = await enhancer.hnState.listSummaries(
+            this.getSiteKey(),
+            postId,
+            scope
+        );
+        return entries && entries.length > 0 ? entries[0] : null;
+    }
+
+    /**
+     * Substack post chats work against the article body, an optional cached
+     * summary, or both. Summary-dependent options are filtered out when no
+     * cached summary is available.
+     * @param {object} enhancer
+     * @returns {Promise<Array<{id: string, label: string, group: string, requiresSummary?: boolean}>>}
+     */
+    async getChatContextOptions(enhancer) {
+        const options = [
+            { id: 'post', label: 'Post', group: 'post' },
+        ];
+
+        const cached = await this.getCachedPostSummary(enhancer);
+        if (cached) {
+            options.push({ id: 'summary', label: 'Summary', group: 'post' });
+            options.push({
+                id: 'post-summary',
+                label: 'Post + Summary',
+                group: 'post',
+            });
+        }
+
+        return options;
+    }
+
+    /** @override */
+    getChatSystemMessage() {
+        return HNPrompts?.substack?.chat?.system || null;
     }
 };

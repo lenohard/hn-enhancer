@@ -1098,70 +1098,62 @@ class Summarization {
   }
 
   /**
-   * Binds click handlers to comment links after each summary render.
+   * Binds delegated click handlers on .summary-text so links stay clickable
+   * while streaming replaces innerHTML.
    */
   _bindSummaryCommentLinks() {
     const textElement =
       this.enhancer.summaryPanel.panel?.querySelector(".summary-text");
-    if (!textElement) {
+    if (!textElement || textElement.dataset.hnSummaryLinksBound === "true") {
       return;
     }
 
-    const bindLink = (link) => {
-      const newLink = link.cloneNode(true);
-      link.parentNode.replaceChild(newLink, link);
-      newLink.addEventListener("click", (event) => {
+    textElement.dataset.hnSummaryLinksBound = "true";
+    textElement.addEventListener("click", (event) => {
+      const refBtn = event.target.closest(".hn-summary-ref");
+      if (refBtn) {
         event.preventDefault();
-        const comment = this._resolveCommentFromLink(newLink);
-        if (comment) {
-          this._scrollAndFlashSummaryTarget(comment);
-          const isHN =
-            this.enhancer.adapter?.getSiteKey?.() === "news.ycombinator.com";
-          if (isHN && comment.querySelector(".hnuser")) {
-            this.enhancer.navigation?.setCurrentComment(comment, false);
-          }
-        } else {
-          console.error(
-            "Failed to resolve comment for link:",
-            newLink.dataset.commentPath,
-            newLink.dataset.commentId
-          );
-        }
-      });
-    };
-
-    textElement.querySelectorAll('[data-comment-link="true"]').forEach(bindLink);
-
-    textElement.querySelectorAll("a[href]").forEach((link) => {
-      if (link.dataset.commentLink === "true") {
-        return;
-      }
-      if (link.id === "options-page-link" || link.target === "_blank") {
-        return;
-      }
-
-      const href = link.getAttribute("href") || "";
-      const hashMatch = href.match(/^#(\d+)$/);
-      if (!hashMatch) {
-        return;
-      }
-
-      link.dataset.commentLink = "true";
-      link.dataset.commentId = hashMatch[1];
-      bindLink(link);
-    });
-
-    // Bind [#N] / [#post] / [P#] ref buttons from adapter-based summaries
-    textElement.querySelectorAll(".hn-summary-ref").forEach((btn) => {
-      const newBtn = btn.cloneNode(true);
-      btn.parentNode.replaceChild(newBtn, btn);
-      newBtn.addEventListener("click", (event) => {
-        event.preventDefault();
-        const ref = newBtn.dataset.ref;
+        const ref = refBtn.dataset.ref;
         if (ref) {
           this._resolveAndScrollToRef(ref);
         }
-      });
+        return;
+      }
+
+      let link = event.target.closest('[data-comment-link="true"]');
+      if (!link) {
+        link = event.target.closest("a[href]");
+        if (!link) {
+          return;
+        }
+        if (link.id === "options-page-link" || link.target === "_blank") {
+          return;
+        }
+        const href = link.getAttribute("href") || "";
+        const hashMatch = href.match(/^#(\d+)$/);
+        if (!hashMatch) {
+          return;
+        }
+        link.dataset.commentLink = "true";
+        link.dataset.commentId = hashMatch[1];
+      }
+
+      event.preventDefault();
+      const comment = this._resolveCommentFromLink(link);
+      if (comment) {
+        this._scrollAndFlashSummaryTarget(comment);
+        const isHN =
+          this.enhancer.adapter?.getSiteKey?.() === "news.ycombinator.com";
+        if (isHN && comment.querySelector(".hnuser")) {
+          this.enhancer.navigation?.setCurrentComment(comment, false);
+        }
+      } else {
+        console.error(
+          "Failed to resolve comment for link:",
+          link.dataset.commentPath,
+          link.dataset.commentId
+        );
+      }
     });
   }
 
@@ -2573,9 +2565,8 @@ ${languageInstruction}`;
       this._renderSummaryView();
     }
 
-    if (isFinal) {
-      this._bindSummaryCommentLinks();
-    } else {
+    this._bindSummaryCommentLinks();
+    if (!isFinal) {
       this._refreshSourceTabsOnly();
     }
   }

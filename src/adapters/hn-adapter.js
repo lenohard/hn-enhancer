@@ -461,6 +461,21 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
         return `https://news.ycombinator.com/favorites?id=${encodeURIComponent(username)}`;
     }
 
+    // ── Chat context options ─────────────────────────────────────
+
+    /**
+     * HN offers three comment-thread contexts that work the same whether
+     * initiated from a single comment or from the post as a whole.
+     * @returns {Promise<Array<{id: string, label: string, group: string}>>}
+     */
+    async getChatContextOptions() {
+        return [
+            { id: 'parents', label: 'Parents', group: 'comment' },
+            { id: 'descendants', label: 'Descendants', group: 'comment' },
+            { id: 'children', label: 'Children', group: 'comment' },
+        ];
+    }
+
     // ════════════════════════════════════════════════════════════════
     //  Ported helper methods from dom-utils.js
     // ════════════════════════════════════════════════════════════════
