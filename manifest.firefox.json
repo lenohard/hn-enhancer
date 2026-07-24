@@ -35,7 +35,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://news.ycombinator.com/*"
+        "https://news.ycombinator.com/*",
+        "https://*.substack.com/*"
       ],
       "css": [
         "styles.css"
@@ -51,6 +52,10 @@
         "src/author-tracking.js",
         "src/ui-components.js",
         "src/hub-panel.js",
+        "src/adapters/site-adapter.js",
+        "src/adapters/hn-adapter.js",
+        "src/adapters/substack-adapter.js",
+        "src/adapters/adapter-registry.js",
         "src/hn-enhancer.js",
         "content.js"
       ],
@@ -72,8 +77,12 @@
       "src/author-tracking.js",
       "src/ui-components.js",
       "src/hub-panel.js",
+      "src/adapters/site-adapter.js",
+      "src/adapters/hn-adapter.js",
+      "src/adapters/substack-adapter.js",
+      "src/adapters/adapter-registry.js",
       "src/hn-enhancer.js"
     ],
-    "matches": ["https://news.ycombinator.com/*"]
+    "matches": ["https://news.ycombinator.com/*", "https://*.substack.com/*"]
   }]
 }

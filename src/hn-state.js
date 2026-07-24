@@ -339,6 +339,7 @@ class HNState {
       }
       normalized.set(id, {
         commentId: id,
+        siteKey: entry?.siteKey || "news.ycombinator.com",
         author: entry?.author || entry?.username || null,
         text,
         permalink: entry?.permalink || null,
@@ -371,6 +372,7 @@ class HNState {
       }
       serialized[id] = {
         commentId: id,
+        siteKey: value?.siteKey || "news.ycombinator.com",
         author: value?.author || null,
         text,
         permalink: value?.permalink || null,
@@ -409,6 +411,7 @@ class HNState {
       }
       saved.set(commentId, {
         commentId,
+        siteKey: commentData?.siteKey || "news.ycombinator.com",
         author: commentData?.author || null,
         text,
         permalink: commentData?.permalink || null,
@@ -449,11 +452,12 @@ class HNState {
     if (entry.permalink) return entry.permalink;
     const postId = entry.postId;
     const commentId = entry.commentId;
+    const siteKey = entry.siteKey || "news.ycombinator.com";
     if (postId && commentId) {
-      return `https://news.ycombinator.com/item?id=${postId}#${commentId}`;
+      return `https://${siteKey}/item?id=${postId}#${commentId}`;
     }
     if (commentId) {
-      return `https://news.ycombinator.com/item?id=${commentId}`;
+      return `https://${siteKey}/item?id=${commentId}`;
     }
     return null;
   }
@@ -616,8 +620,8 @@ class HNState {
    * @returns {string} The storage key.
    * @private
    */
-  static _getChatHistoryKey(postId, commentId, contextType) {
-    return `chatHistory_${postId}_${commentId}_${contextType}`;
+  static _getChatHistoryKey(siteKey, postId, commentId, contextType) {
+    return `chatHistory_${siteKey}_${postId}_${commentId}_${contextType}`;
   }
 
   /**
@@ -628,6 +632,7 @@ class HNState {
    * @param {Array<object>} history - The conversation history array to save.
    */
   static saveChatHistory(
+    siteKey,
     postId,
     commentId,
     contextType,
@@ -635,8 +640,28 @@ class HNState {
     commentPathToIdMap = null,
     metadata = {}
   ) {
+    // Backward compatibility: if first arg is numeric (old calling convention), shift params
+    if (typeof siteKey === "number" || (typeof siteKey === "string" && /^\d+$/.test(siteKey))) {
+      // Old calling convention: saveChatHistory(postId, commentId, contextType, history, commentPathToIdMap, metadata)
+      const oldPostId = siteKey;
+      const oldCommentId = postId;
+      const oldContextType = commentId;
+      const oldHistory = contextType;
+      const oldCommentPathToIdMap = history;
+      const oldMetadata = commentPathToIdMap;
+      return this.saveChatHistory(
+        "news.ycombinator.com",
+        oldPostId,
+        oldCommentId,
+        oldContextType,
+        oldHistory,
+        oldCommentPathToIdMap,
+        oldMetadata
+      );
+    }
     if (!postId || !commentId || !contextType || !history) {
       console.error("saveChatHistory: Missing required arguments.", {
+        siteKey,
         postId,
         commentId,
         contextType,
@@ -644,7 +669,7 @@ class HNState {
       });
       return;
     }
-    const key = this._getChatHistoryKey(postId, commentId, contextType);
+    const key = this._getChatHistoryKey(siteKey, postId, commentId, contextType);
     const normalizedHistory = Array.isArray(history) ? history : [];
 
     const storageEntry = {
@@ -685,16 +710,25 @@ class HNState {
    * @param {string} contextType - The context type ('parents', 'descendants', 'children').
    * @returns {Promise<Array<object>|null>} The conversation history array or null if not found.
    */
-  static async getChatHistory(postId, commentId, contextType) {
+  static async getChatHistory(siteKey, postId, commentId, contextType) {
+    // Backward compatibility: if first arg is numeric (old calling convention), shift params
+    if (typeof siteKey === "number" || (typeof siteKey === "string" && /^\d+$/.test(siteKey))) {
+      // Old calling convention: getChatHistory(postId, commentId, contextType)
+      const oldPostId = siteKey;
+      const oldCommentId = postId;
+      const oldContextType = commentId;
+      return this.getChatHistory("news.ycombinator.com", oldPostId, oldCommentId, oldContextType);
+    }
     if (!postId || !commentId || !contextType) {
       console.error("getChatHistory: Missing required arguments.", {
+        siteKey,
         postId,
         commentId,
         contextType,
       });
       return null;
     }
-    const key = this._getChatHistoryKey(postId, commentId, contextType);
+    const key = this._getChatHistoryKey(siteKey, postId, commentId, contextType);
     try {
       const data = await chrome.storage.local.get(key);
       // console.log(`[HNState] Retrieved history for ${key}`, data[key]); // Optional debug log
@@ -735,16 +769,25 @@ class HNState {
    * @param {string} commentId - The ID of the comment.
    * @param {string} contextType - The context type ('parents', 'descendants', 'children').
    */
-  static async clearChatHistory(postId, commentId, contextType) {
+  static async clearChatHistory(siteKey, postId, commentId, contextType) {
+    // Backward compatibility: if first arg is numeric (old calling convention), shift params
+    if (typeof siteKey === "number" || (typeof siteKey === "string" && /^\d+$/.test(siteKey))) {
+      // Old calling convention: clearChatHistory(postId, commentId, contextType)
+      const oldPostId = siteKey;
+      const oldCommentId = postId;
+      const oldContextType = commentId;
+      return this.clearChatHistory("news.ycombinator.com", oldPostId, oldCommentId, oldContextType);
+    }
     if (!postId || !commentId || !contextType) {
       console.error("clearChatHistory: Missing required arguments.", {
+        siteKey,
         postId,
         commentId,
         contextType,
       });
       return;
     }
-    const key = this._getChatHistoryKey(postId, commentId, contextType);
+    const key = this._getChatHistoryKey(siteKey, postId, commentId, contextType);
     chrome.storage.local.remove(key).catch((error) => {
       console.error(`Error clearing chat history for ${key}:`, error);
     });
@@ -761,10 +804,10 @@ class HNState {
    * @returns {string} The storage key.
    * @private
    */
-  static _getSummaryKey(postId, commentId, provider, model, language) {
+  static _getSummaryKey(siteKey, postId, commentId, provider, model, language) {
     const baseKey = commentId
-      ? `summary_${postId}_${commentId}`
-      : `summary_${postId}_post`;
+      ? `summary_${siteKey}_${postId}_${commentId}`
+      : `summary_${siteKey}_${postId}_post`;
     return `${baseKey}_${provider}_${model}_${language}`;
   }
 
@@ -779,6 +822,7 @@ class HNState {
    * @param {object} metadata - Additional metadata (duration, token count, etc.).
    */
   static saveSummary(
+    siteKey,
     postId,
     commentId,
     provider,
@@ -787,8 +831,30 @@ class HNState {
     summary,
     metadata = {}
   ) {
+    // Backward compatibility: if first arg is numeric (old calling convention), shift params
+    if (typeof siteKey === "number" || (typeof siteKey === "string" && /^\d+$/.test(siteKey))) {
+      // Old calling convention: saveSummary(postId, commentId, provider, model, language, summary, metadata)
+      const oldPostId = siteKey;
+      const oldCommentId = postId;
+      const oldProvider = commentId;
+      const oldModel = provider;
+      const oldLanguage = model;
+      const oldSummary = language;
+      const oldMetadata = summary;
+      return this.saveSummary(
+        "news.ycombinator.com",
+        oldPostId,
+        oldCommentId,
+        oldProvider,
+        oldModel,
+        oldLanguage,
+        oldSummary,
+        oldMetadata
+      );
+    }
     if (!postId || !provider || !model || !language || !summary) {
       console.error("saveSummary: Missing required arguments.", {
+        siteKey,
         postId,
         commentId,
         provider,
@@ -799,6 +865,7 @@ class HNState {
       return;
     }
     const key = this._getSummaryKey(
+      siteKey,
       postId,
       commentId,
       provider,
@@ -830,6 +897,7 @@ class HNState {
    * @returns {Promise<object|null>} The cached summary entry or null if not found/expired.
    */
   static async getSummary(
+    siteKey,
     postId,
     commentId,
     provider,
@@ -837,8 +905,28 @@ class HNState {
     language,
     maxAge = 24 * 60 * 60 * 1000
   ) {
+    // Backward compatibility: if first arg is numeric (old calling convention), shift params
+    if (typeof siteKey === "number" || (typeof siteKey === "string" && /^\d+$/.test(siteKey))) {
+      // Old calling convention: getSummary(postId, commentId, provider, model, language, maxAge)
+      const oldPostId = siteKey;
+      const oldCommentId = postId;
+      const oldProvider = commentId;
+      const oldModel = provider;
+      const oldLanguage = model;
+      const oldMaxAge = language;
+      return this.getSummary(
+        "news.ycombinator.com",
+        oldPostId,
+        oldCommentId,
+        oldProvider,
+        oldModel,
+        oldLanguage,
+        oldMaxAge
+      );
+    }
     if (!postId || !provider || !model || !language) {
       console.error("getSummary: Missing required arguments.", {
+        siteKey,
         postId,
         commentId,
         provider,
@@ -848,6 +936,7 @@ class HNState {
       return null;
     }
     const key = this._getSummaryKey(
+      siteKey,
       postId,
       commentId,
       provider,
@@ -882,7 +971,7 @@ class HNState {
         console.log(
           `[DEBUG] HNState.getSummary: Cache expired, clearing entry for key: ${key}`
         );
-        await this.clearSummary(postId, commentId, provider, model, language);
+        await this.clearSummary(siteKey, postId, commentId, provider, model, language);
         return null;
       }
 
@@ -904,9 +993,20 @@ class HNState {
    * @param {string} model - The model used.
    * @param {string} language - The language setting.
    */
-  static async clearSummary(postId, commentId, provider, model, language) {
+  static async clearSummary(siteKey, postId, commentId, provider, model, language) {
+    // Backward compatibility: if first arg is numeric (old calling convention), shift params
+    if (typeof siteKey === "number" || (typeof siteKey === "string" && /^\d+$/.test(siteKey))) {
+      // Old calling convention: clearSummary(postId, commentId, provider, model, language)
+      const oldPostId = siteKey;
+      const oldCommentId = postId;
+      const oldProvider = commentId;
+      const oldModel = provider;
+      const oldLanguage = model;
+      return this.clearSummary("news.ycombinator.com", oldPostId, oldCommentId, oldProvider, oldModel, oldLanguage);
+    }
     if (!postId || !provider || !model || !language) {
       console.error("clearSummary: Missing required arguments.", {
+        siteKey,
         postId,
         commentId,
         provider,
@@ -916,6 +1016,7 @@ class HNState {
       return;
     }
     const key = this._getSummaryKey(
+      siteKey,
       postId,
       commentId,
       provider,
@@ -932,7 +1033,13 @@ class HNState {
    * Clears all cached summaries for a specific post.
    * @param {string} postId - The ID of the post.
    */
-  static async clearAllSummariesForPost(postId) {
+  static async clearAllSummariesForPost(siteKey, postId) {
+    // Backward compatibility: if first arg is numeric (old calling convention), shift params
+    if (typeof siteKey === "number" || (typeof siteKey === "string" && /^\d+$/.test(siteKey))) {
+      // Old calling convention: clearAllSummariesForPost(postId)
+      const oldPostId = siteKey;
+      return this.clearAllSummariesForPost("news.ycombinator.com", oldPostId);
+    }
     if (!postId) {
       console.error("clearAllSummariesForPost: Missing postId argument.");
       return;
@@ -940,7 +1047,7 @@ class HNState {
     try {
       const allData = await chrome.storage.local.get(null);
       const keysToRemove = Object.keys(allData).filter((key) =>
-        key.startsWith(`summary_${postId}_`)
+        key.startsWith(`summary_${siteKey}_${postId}_`)
       );
       if (keysToRemove.length > 0) {
         await chrome.storage.local.remove(keysToRemove);
@@ -1003,11 +1110,22 @@ class HNState {
    * @param {string} language - The language setting.
    * @returns {Promise<boolean>} True if a valid (non-expired) summary exists.
    */
-  static async hasSummary(postId, commentId, provider, model, language) {
+  static async hasSummary(siteKey, postId, commentId, provider, model, language) {
+    // Backward compatibility: if first arg is numeric (old calling convention), shift params
+    if (typeof siteKey === "number" || (typeof siteKey === "string" && /^\d+$/.test(siteKey))) {
+      // Old calling convention: hasSummary(postId, commentId, provider, model, language)
+      const oldPostId = siteKey;
+      const oldCommentId = postId;
+      const oldProvider = commentId;
+      const oldModel = provider;
+      const oldLanguage = model;
+      return this.hasSummary("news.ycombinator.com", oldPostId, oldCommentId, oldProvider, oldModel, oldLanguage);
+    }
     if (!postId || !provider || !model || !language) {
       return false;
     }
     const key = this._getSummaryKey(
+      siteKey,
       postId,
       commentId,
       provider,
@@ -1041,7 +1159,14 @@ class HNState {
    * @param {string} commentId - The ID of the comment (or "post" for post-level chat).
    * @returns {Promise<boolean>} True if chat history exists for any context type.
    */
-  static async hasChatHistory(postId, commentId) {
+  static async hasChatHistory(siteKey, postId, commentId) {
+    // Backward compatibility: if first arg is numeric (old calling convention), shift params
+    if (typeof siteKey === "number" || (typeof siteKey === "string" && /^\d+$/.test(siteKey))) {
+      // Old calling convention: hasChatHistory(postId, commentId)
+      const oldPostId = siteKey;
+      const oldCommentId = postId;
+      return this.hasChatHistory("news.ycombinator.com", oldPostId, oldCommentId);
+    }
     if (!postId || !commentId) {
       return false;
     }
@@ -1051,7 +1176,7 @@ class HNState {
       const contextTypes = ["descendants", "children"];
       try {
         for (const contextType of contextTypes) {
-          const key = this._getChatHistoryKey(postId, "post", contextType);
+          const key = this._getChatHistoryKey(siteKey, postId, "post", contextType);
           const data = await chrome.storage.local.get(key);
           const entry = data[key];
           const historyArray = Array.isArray(entry)
@@ -1075,7 +1200,7 @@ class HNState {
 
     try {
       for (const contextType of contextTypes) {
-        const key = this._getChatHistoryKey(postId, commentId, contextType);
+        const key = this._getChatHistoryKey(siteKey, postId, commentId, contextType);
         const data = await chrome.storage.local.get(key);
         const entry = data[key];
         const historyArray = Array.isArray(entry)

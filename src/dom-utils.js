@@ -1,11 +1,28 @@
 // dom-utils.js
+
+/**
+ * Utility class for DOM manipulation and extraction.
+ * Instance-based; delegates site-specific logic to an injected SiteAdapter.
+ *
+ * @param {import('./adapters/site-adapter.js').SiteAdapter} adapter
+ */
 class DomUtils {
+  constructor(adapter) {
+    this.adapter = adapter;
+  }
+
   /**
    * Gets the post ID from a post element.
    * @param {HTMLElement} post - The post element.
    * @returns {string|null} The post ID or null if not found.
    */
-  static getPostId(post) {
+  getPostId(post) {
+    // Try adapter first
+    if (this.adapter && typeof this.adapter.getPostId === 'function') {
+      const id = this.adapter.getPostId();
+      if (id != null) return String(id);
+    }
+    // Fallback to original logic
     const linkElement = post.querySelector(".athing .title a.storylink");
     if (!linkElement) {
       return null;
@@ -15,16 +32,29 @@ class DomUtils {
     return params.get("id");
   }
 
-  static getCurrentHNItemId() {
+  /**
+   * Gets the current page's post/item ID from the URL query string.
+   * @returns {string|null} The post/item ID or null if not found.
+   */
+  getCurrentHNItemId() {
+    if (this.adapter && typeof this.adapter.getPostId === 'function') {
+      const id = this.adapter.getPostId();
+      if (id != null) return String(id);
+    }
+    // Fallback
     const urlParams = new URLSearchParams(window.location.search);
     return urlParams.get("id");
   }
 
   /**
-   * Returns the logged-in HN username from the top navigation, if present.
+   * Returns the logged-in username from the top navigation, if present.
    * @returns {string|null}
    */
-  static getLoggedInUsername() {
+  getLoggedInUsername() {
+    if (this.adapter && typeof this.adapter.getLoggedInUsername === 'function') {
+      return this.adapter.getLoggedInUsername();
+    }
+    // Fallback original logic
     const favoritesLink = document.querySelector('a[href*="favorites?id="]');
     if (favoritesLink) {
       const href = favoritesLink.getAttribute("href") || "";
@@ -51,9 +81,13 @@ class DomUtils {
    * @param {HTMLElement} commentElement - The comment element.
    * @returns {string|null} The permalink URL or null if it cannot be determined.
    */
-  static getCommentPermalink(commentElement) {
-    const commentId = DomUtils.getCommentId(commentElement);
-    const postId = DomUtils.getCurrentHNItemId();
+  getCommentPermalink(commentElement) {
+    if (this.adapter && typeof this.adapter.getBlockPermalink === 'function') {
+      return this.adapter.getBlockPermalink(commentElement);
+    }
+    // Fallback original logic
+    const commentId = this.getCommentId(commentElement);
+    const postId = this.getCurrentHNItemId();
     if (!commentId || !postId) return null;
 
     const baseUrl = `${window.location.origin}/item?id=${postId}`;
@@ -66,7 +100,11 @@ class DomUtils {
    * @param {HTMLElement} commentElement - The comment element (usually the TR.athing.comtr).
    * @returns {number|null} The indentation level (0 for top-level) or null if it cannot be determined.
    */
-  static getCommentIndentLevel(commentElement) {
+  getCommentIndentLevel(commentElement) {
+    if (this.adapter && typeof this.adapter.getBlockIndentLevel === 'function') {
+      return this.adapter.getBlockIndentLevel(commentElement);
+    }
+    // Fallback original logic
     if (!commentElement) {
       console.warn("getCommentIndentLevel called with null element");
       return null;
@@ -106,11 +144,23 @@ class DomUtils {
     return Math.round(width / 40);
   }
 
-  static getDownvoteCount(commentTextDiv) {
-    // Add check for null or undefined commentTextDiv
-    if (!commentTextDiv) {
-      return 0;
+  /**
+   * Gets the downvote count from a comment's text div.
+   * @param {HTMLElement} commentTextDiv - The .commtext element of a comment.
+   * @returns {number} The downvote count, or 0.
+   */
+  getDownvoteCount(commentTextDiv) {
+    if (!commentTextDiv) return 0;
+
+    // Try adapter delegation by finding the parent comment block
+    if (this.adapter && typeof this.adapter.getBlockDownvoteCount === 'function') {
+      const block = commentTextDiv.closest('.athing.comtr, tr.athing.comtr');
+      if (block) {
+        return this.adapter.getBlockDownvoteCount(block);
+      }
     }
+
+    // Fallback original logic
     const downvoteSpan = commentTextDiv.querySelector(".downvotes");
     if (!downvoteSpan) {
       return 0; // or null, or handle as appropriate
@@ -121,7 +171,12 @@ class DomUtils {
     return isNaN(num) ? 0 : num;
   }
 
-  static getUpvoteCount(commentElement) {
+  /**
+   * Gets the upvote count from a comment element.
+   * @param {HTMLElement} commentElement - The comment element (TR.athing.comtr).
+   * @returns {number} The upvote count, or 0.
+   */
+  getUpvoteCount(commentElement) {
     const scoreElement = commentElement.querySelector(".score");
     if (!scoreElement) {
       return 0;
@@ -140,7 +195,12 @@ class DomUtils {
    * @param {HTMLElement} commentElement - The comment element (TR.athing.comtr).
    * @returns {string|null} The comment ID or null if not found.
    */
-  static getCommentId(commentElement) {
+  getCommentId(commentElement) {
+    if (this.adapter && typeof this.adapter.getBlockId === 'function') {
+      const id = this.adapter.getBlockId(commentElement);
+      return id != null ? String(id) : null;
+    }
+    // Fallback original logic
     if (!commentElement) return null;
     // Ensure we are targeting the TR element
     const commentRow =
@@ -153,7 +213,12 @@ class DomUtils {
    * @param {HTMLElement} commentElement - The comment element (TR.athing.comtr).
    * @returns {string|null} The author's username or null if not found.
    */
-  static getCommentAuthor(commentElement) {
+  getCommentAuthor(commentElement) {
+    if (this.adapter && typeof this.adapter.getBlockAuthor === 'function') {
+      const author = this.adapter.getBlockAuthor(commentElement);
+      return author || null;
+    }
+    // Fallback original logic
     if (!commentElement) return null;
     const authorElement = commentElement.querySelector(".hnuser");
     return authorElement ? authorElement.textContent.trim() : null;
@@ -164,7 +229,11 @@ class DomUtils {
    * @param {HTMLElement} commentElement - The comment element (TR.athing.comtr).
    * @returns {string} The comment text, or an empty string if not found.
    */
-  static getCommentText(commentElement) {
+  getCommentText(commentElement) {
+    if (this.adapter && typeof this.adapter.getBlockText === 'function') {
+      return this.adapter.getBlockText(commentElement);
+    }
+    // Fallback original logic
     if (!commentElement) return "";
     const commentTextElement = commentElement.querySelector(".commtext");
     // Use innerText to handle <p> tags etc. better than textContent
@@ -177,7 +246,12 @@ class DomUtils {
    * @param {string} commentId - The ID of the comment to find.
    * @returns {HTMLElement|null} The comment element or null if not found.
    */
-  static findCommentElementById(commentId) {
+  findCommentElementById(commentId) {
+    if (this.adapter && typeof this.adapter.resolveBlockByRef === 'function') {
+      const el = this.adapter.resolveBlockByRef(commentId);
+      if (el) return el;
+    }
+    // Fallback
     if (!commentId) return null;
     // HN IDs are typically numeric, so direct ID selection should work.
     return document.getElementById(commentId);
@@ -190,7 +264,7 @@ class DomUtils {
    * @returns {Array<{id: string, author: string, text: string, path: string, score: number, replies: number, downvotes: number, isTarget: boolean}>} 
    *          An array of enhanced comment objects, ordered from root parent to the target comment. Returns empty array on error.
    */
-  static getCommentContext(targetCommentElement) {
+  getCommentContext(targetCommentElement) {
     const context = [];
     if (!targetCommentElement) {
       console.error("getCommentContext: targetCommentElement is null");
@@ -200,13 +274,13 @@ class DomUtils {
 
     let currentElement = targetCommentElement;
     const visitedIds = new Set(); // Prevent infinite loops in case of weird DOM structures
-    const targetId = DomUtils.getCommentId(targetCommentElement);
+    const targetId = this.getCommentId(targetCommentElement);
 
     // First pass: gather all parent comments in reverse order (target to root)
     const reversedComments = [];
     
     while (currentElement) {
-      const commentId = DomUtils.getCommentId(currentElement);
+      const commentId = this.getCommentId(currentElement);
       
       // Prevent loops
       if (!commentId || visitedIds.has(commentId)) {
@@ -218,12 +292,12 @@ class DomUtils {
       }
       visitedIds.add(commentId);
 
-      const author = DomUtils.getCommentAuthor(currentElement);
-      const text = DomUtils.getCommentText(currentElement);
-      const downvotes = DomUtils.getDownvoteCount(currentElement.querySelector(".commtext")) || 0;
+      const author = this.getCommentAuthor(currentElement);
+      const text = this.getCommentText(currentElement);
+      const downvotes = this.getDownvoteCount(currentElement.querySelector(".commtext")) || 0;
       
       // Get direct children to count replies
-      const directChildren = DomUtils.getDirectChildComments(currentElement);
+      const directChildren = this.getDirectChildComments(currentElement);
       const replyCount = directChildren.length;
 
       if (author !== null) {
@@ -267,7 +341,7 @@ class DomUtils {
       }
       
       const parentId = parentIdMatch[1];
-      const parentElement = DomUtils.findCommentElementById(parentId);
+      const parentElement = this.findCommentElementById(parentId);
       if (!parentElement) {
         console.warn(`getCommentContext: Could not find parent element with ID: ${parentId}`);
         break;
@@ -288,7 +362,7 @@ class DomUtils {
       
       // Calculate score based on position (earlier = higher score)
       const position = totalComments - i - 1; // 0-based position from root
-      const score = DomUtils.calculateCommentScore(position, totalComments, comment.downvotes);
+      const score = this.calculateCommentScore(position, totalComments, comment.downvotes);
       
       // Add the enhanced comment to the context array
       context.push({
@@ -307,8 +381,15 @@ class DomUtils {
     return context;
   }
 
-  static calculateCommentStatistics() {
-    const allCommentRows = document.querySelectorAll("tr.athing.comtr");
+  /**
+   * Calculates comment statistics for the page.
+   * @returns {{topDeepest: Array, topMostDirectReplies: Array, topLongest: Array, authorComments: Map, rootAuthorOrder: Array}}
+   */
+  calculateCommentStatistics() {
+    const allCommentRows = this.adapter && typeof this.adapter.getCommentBlocks === 'function'
+      ? this.adapter.getCommentBlocks()
+      : document.querySelectorAll("tr.athing.comtr");
+
     if (!allCommentRows.length) {
       // Return empty arrays if no comments found
       return {
@@ -334,7 +415,7 @@ class DomUtils {
       const depth = indentElement
         ? Math.round(parseInt(indentElement.getAttribute("width"), 10) / 40)
         : 0;
-      const upvotes = DomUtils.getUpvoteCount(commentRow); // Keep upvotes for potential future use, but won't be in top 5 result
+      const upvotes = this.getUpvoteCount(commentRow); // Keep upvotes for potential future use, but won't be in top 5 result
       const commentText = commentTextDiv
         ? commentTextDiv.textContent.trim()
         : "";
@@ -351,7 +432,7 @@ class DomUtils {
       commentData.set(commentId, data);
       tree[commentId] = { data: data, children: [] }; // Initialize tree node
 
-      const author = DomUtils.getCommentAuthor(commentRow);
+      const author = this.getCommentAuthor(commentRow);
       if (author) {
         if (!authorCommentMap.has(author)) {
           authorCommentMap.set(author, []);
@@ -475,7 +556,7 @@ class DomUtils {
       rootAuthorOrder: commentList
         .filter((comment) => comment.depth === 0)
         .map((comment) => ({
-          author: DomUtils.getCommentAuthor(comment.element),
+          author: this.getCommentAuthor(comment.element),
           commentRow: comment.element,
         }))
         .filter((entry) => entry.author),
@@ -486,12 +567,26 @@ class DomUtils {
    * Gets the main post title from the page.
    * @returns {string|null} The post title or null if not found.
    */
-  static getHNPostTitle() {
-    // The title link is usually within td.title > span.titleline > a
+  getHNPostTitle() {
+    if (this.adapter && typeof this.adapter.getPostTitle === 'function') {
+      return this.adapter.getPostTitle();
+    }
+    // Fallback original logic
     const titleElement = document.querySelector(
       "td.title > span.titleline > a"
     );
     return titleElement ? titleElement.textContent.trim() : null;
+  }
+
+  /**
+   * Gets the post body element from the page (e.g., the article text).
+   * @returns {HTMLElement|null} The post body element or null if not found.
+   */
+  getPostBodyElement() {
+    if (this.adapter && typeof this.adapter.getPostBodyElement === 'function') {
+      return this.adapter.getPostBodyElement();
+    }
+    return null;
   }
 
   /**
@@ -504,7 +599,7 @@ class DomUtils {
    * @param {boolean} isTarget - Whether this is the target comment the user initiated chat from.
    * @returns {string} Formatted comment string.
    */
-  static formatCommentForLLM(comment, path, replyCount = 0, score = 500, downvotes = 0, isTarget = false) {
+  formatCommentForLLM(comment, path, replyCount = 0, score = 500, downvotes = 0, isTarget = false) {
     if (!comment || !comment.author) {
       return `[${path}] (score: ${score}) <replies: ${replyCount}> {downvotes: ${downvotes}} [unknown]: [missing content]`;
     }
@@ -522,7 +617,7 @@ class DomUtils {
    * @param {number} downvotes - Number of downvotes (default 0).
    * @returns {number} A normalized score between 0-1000.
    */
-  static calculateCommentScore(position, totalComments, downvotes = 0) {
+  calculateCommentScore(position, totalComments, downvotes = 0) {
     const MAX_SCORE = 1000;
     const MAX_DOWNVOTES = 10;
     
@@ -542,21 +637,21 @@ class DomUtils {
    * @returns {Array<{id: string, author: string, text: string, path: string, score: number, replies: number, downvotes: number, isTarget: boolean}>} 
    *          An array of enhanced direct child comment objects.
    */
-  static getDirectChildCommentsWithMetadata(parentComment) {
+  getDirectChildCommentsWithMetadata(parentComment) {
     // First get the raw child elements
-    const childElements = DomUtils.getDirectChildComments(parentComment);
+    const childElements = this.getDirectChildComments(parentComment);
     if (!childElements.length) {
       return [];
     }
     
-    const targetId = DomUtils.getCommentId(parentComment);
+    const targetId = this.getCommentId(parentComment);
     const enhancedChildren = [];
     
     // Process each child to add metadata
     childElements.forEach((childElement, index) => {
-      const commentId = DomUtils.getCommentId(childElement);
-      const author = DomUtils.getCommentAuthor(childElement);
-      const text = DomUtils.getCommentText(childElement);
+      const commentId = this.getCommentId(childElement);
+      const author = this.getCommentAuthor(childElement);
+      const text = this.getCommentText(childElement);
       
       if (!commentId || author === null) {
         console.warn("getDirectChildCommentsWithMetadata: Skipping child due to missing ID or author.", childElement);
@@ -564,15 +659,15 @@ class DomUtils {
       }
       
       // Get metadata
-      const downvotes = DomUtils.getDownvoteCount(childElement.querySelector(".commtext")) || 0;
-      const directChildren = DomUtils.getDirectChildComments(childElement);
+      const downvotes = this.getDownvoteCount(childElement.querySelector(".commtext")) || 0;
+      const directChildren = this.getDirectChildComments(childElement);
       const replyCount = directChildren.length;
       
       // Calculate path: for direct children, use 1.1, 1.2, etc.
       const path = `1.${index + 1}`;
       
       // Calculate score based on position
-      const score = DomUtils.calculateCommentScore(index, childElements.length, downvotes);
+      const score = this.calculateCommentScore(index, childElements.length, downvotes);
       
       enhancedChildren.push({
         id: commentId,
@@ -597,7 +692,7 @@ class DomUtils {
    * @returns {Array<{id: string, author: string, text: string, path: string, score: number, replies: number, downvotes: number, isTarget: boolean}>} 
    *          An array of enhanced descendant comment objects. Returns empty array on error or if no descendants.
    */
-  static getDescendantComments(targetCommentElement) {
+  getDescendantComments(targetCommentElement) {
     const descendants = [];
     if (!targetCommentElement) {
       console.error("getDescendantComments: targetCommentElement is null");
@@ -610,13 +705,13 @@ class DomUtils {
       return descendants;
     }
 
-    const targetIndent = DomUtils.getCommentIndentLevel(targetCommentElement);
+    const targetIndent = this.getCommentIndentLevel(targetCommentElement);
     if (targetIndent === null) {
       console.error("getDescendantComments: Could not determine indent level for target:", targetCommentElement.id);
       return descendants;
     }
 
-    const targetId = DomUtils.getCommentId(targetCommentElement);
+    const targetId = this.getCommentId(targetCommentElement);
     
     // First pass: gather all descendants with their indentation levels
     const rawDescendants = [];
@@ -638,7 +733,7 @@ class DomUtils {
             continue;
         }
 
-        const currentIndent = DomUtils.getCommentIndentLevel(currentCommentElement);
+        const currentIndent = this.getCommentIndentLevel(currentCommentElement);
 
         if (currentIndent === null) {
             // Cannot determine indent, skip
@@ -648,13 +743,13 @@ class DomUtils {
 
         if (currentIndent > targetIndent) {
             // This is a descendant
-            const commentId = DomUtils.getCommentId(currentCommentElement);
-            const author = DomUtils.getCommentAuthor(currentCommentElement);
-            const text = DomUtils.getCommentText(currentCommentElement);
-            const downvotes = DomUtils.getDownvoteCount(currentCommentElement.querySelector(".commtext")) || 0;
+            const commentId = this.getCommentId(currentCommentElement);
+            const author = this.getCommentAuthor(currentCommentElement);
+            const text = this.getCommentText(currentCommentElement);
+            const downvotes = this.getDownvoteCount(currentCommentElement.querySelector(".commtext")) || 0;
             
             // Get direct children to count replies
-            const directChildren = DomUtils.getDirectChildComments(currentCommentElement);
+            const directChildren = this.getDirectChildComments(currentCommentElement);
             const replyCount = directChildren.length;
 
             if (commentId && author !== null) {
@@ -702,8 +797,8 @@ class DomUtils {
       }
     }
     
-    // Function to recursively build paths
-    function buildDescendantPaths(index, basePath, level = 1) {
+    // Function to recursively build paths (arrow function to capture `this`)
+    const buildDescendantPaths = (index, basePath, level = 1) => {
       const comment = rawDescendants[index];
       const childIndices = childrenMap.get(index);
       
@@ -711,7 +806,7 @@ class DomUtils {
       const path = basePath ? `${basePath}.${level}` : `1.${level}`;
       
       // Calculate score based on position and indentation
-      const score = DomUtils.calculateCommentScore(index, totalComments, comment.downvotes);
+      const score = this.calculateCommentScore(index, totalComments, comment.downvotes);
       
       // Add the enhanced comment to the descendants array
       descendants.push({
@@ -729,7 +824,7 @@ class DomUtils {
       childIndices.forEach((childIndex, i) => {
         buildDescendantPaths(childIndex, path, i + 1);
       });
-    }
+    };
     
     // Process all top-level descendants (direct children of target)
     const topLevelDescendants = rawDescendants
@@ -748,7 +843,11 @@ class DomUtils {
    * @param {HTMLElement} parentComment - The parent comment element (TR.athing.comtr).
    * @returns {Array<HTMLElement>} An array of direct child comment elements.
    */
-  static getDirectChildComments(parentComment) {
+  getDirectChildComments(parentComment) {
+    if (this.adapter && typeof this.adapter.getChildBlocks === 'function') {
+      return this.adapter.getChildBlocks(parentComment);
+    }
+    // Fallback original logic
     const children = [];
     if (!parentComment) {
       console.error("getDirectChildComments: parentComment is null");
@@ -761,7 +860,7 @@ class DomUtils {
       return children;
     }
     
-    const parentIndent = DomUtils.getCommentIndentLevel(parentComment);
+    const parentIndent = this.getCommentIndentLevel(parentComment);
     if (parentIndent === null) {
       console.error("getDirectChildComments: Could not determine indent level for parent:", parentComment.id);
       return children;
@@ -785,7 +884,7 @@ class DomUtils {
         continue;
       }
     
-      const currentIndent = DomUtils.getCommentIndentLevel(currentCommentElement);
+      const currentIndent = this.getCommentIndentLevel(currentCommentElement);
     
       if (currentIndent === null) {
         // Cannot determine indent, skip
@@ -813,7 +912,7 @@ class DomUtils {
    * @param {string} path - The structured path (e.g. "3.2.2").
    * @returns {HTMLElement|null}
    */
-  static resolveCommentElementByPath(path) {
+  resolveCommentElementByPath(path) {
     if (!path) {
       return null;
     }
@@ -829,7 +928,7 @@ class DomUtils {
 
     const topLevelComments = Array.from(
       document.querySelectorAll("tr.athing.comtr")
-    ).filter((comment) => DomUtils.getCommentIndentLevel(comment) === 0);
+    ).filter((comment) => this.getCommentIndentLevel(comment) === 0);
 
     const rootIndex = segments[0] - 1;
     if (rootIndex < 0 || rootIndex >= topLevelComments.length) {
@@ -847,7 +946,7 @@ class DomUtils {
         return null;
       }
 
-      const directChildren = DomUtils.getDirectChildComments(currentElement);
+      const directChildren = this.getDirectChildComments(currentElement);
       if (!directChildren || childIndex >= directChildren.length) {
         return null;
       }
@@ -859,6 +958,6 @@ class DomUtils {
   }
     
 }
-    
+
 // Make the class available globally
 window.DomUtils = DomUtils;

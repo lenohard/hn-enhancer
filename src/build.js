@@ -184,6 +184,23 @@ function copySrcDirectory(targetDir) {
       );
     }
   });
+
+  // Copy adapters directory
+  const adaptersSourcePath = path.join("src", "adapters");
+  const adaptersDestPath = path.join(srcTargetPath, "adapters");
+  if (fs.existsSync(adaptersSourcePath)) {
+    if (!fs.existsSync(adaptersDestPath)) {
+      fs.mkdirSync(adaptersDestPath, { recursive: true });
+    }
+    const adapterFiles = fs.readdirSync(adaptersSourcePath).filter(f => f.endsWith('.js'));
+    adapterFiles.forEach(file => {
+      fs.copyFileSync(
+        path.join(adaptersSourcePath, file),
+        path.join(adaptersDestPath, file)
+      );
+      console.log(`Copied adapters/${file} to dist`);
+    });
+  }
 }
 
 // Run the build

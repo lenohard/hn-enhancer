@@ -1,8 +1,8 @@
-# Hacker News Companion 扩展架构文档
+# HN Enhancer 浏览器扩展架构文档
 
 ## 项目概述
 
-Hacker News Companion 是一个浏览器扩展，为 Hacker News 网站提供智能导航、AI 驱动的摘要和增强的用户交互功能。该扩展支持 Chrome 和 Firefox 浏览器，集成了多种 AI 提供商，包括 OpenAI、Anthropic、Google Gemini、DeepSeek 和 OpenAI Router（OpenAI 兼容代理）。
+HN Enhancer 是一个浏览器扩展，为 Hacker News 和 Substack 等网站提供智能导航、AI 驱动的摘要和增强的用户交互功能。该扩展支持 Chrome 和 Firefox 浏览器，集成了多种 AI 提供商。
 
 ## 开发环境
 
@@ -89,11 +89,17 @@ hn-enhancer/
 │   ├── chat-modal.js            # 聊天模态框
 │   ├── summary-panel.js         # 摘要面板
 │   ├── navigation.js            # 导航功能
-│   ├── dom-utils.js             # DOM 操作工具
-│   ├── hn-state.js              # 状态持久化
+│   ├── dom-utils.js             # DOM 操作工具（委托给 adapter）
+│   ├── hn-state.js              # 状态持久化（支持多 siteKey）
 │   ├── author-tracking.js       # 作者跟踪功能
 │   ├── ui-components.js         # UI 组件
+│   ├── hub-panel.js             # Hub 面板
 │   ├── markdown-utils.js        # Markdown 处理工具
+│   ├── adapters/
+│   │   ├── site-adapter.js      # 抽象基类
+│   │   ├── hn-adapter.js        # HN 适配器
+│   │   ├── substack-adapter.js  # Substack 适配器
+│   │   └── adapter-registry.js  # URL → adapter 注册表
 │   └── options/
 │       ├── options.html         # 设置页面
 │       ├── options.js           # 设置页面逻辑
@@ -295,6 +301,55 @@ hn-enhancer/
 
 - `convertMarkdownToHTML()`: Markdown 到 HTML 转换
 - `replacePathsWithCommentLinks()`: 替换路径为评论链接
+
+## 多站点架构 (2025-07-24)
+
+### SiteAdapter 抽象层
+
+扩展现在通过 `SiteAdapter` 抽象类支持多个网站。每个站点只需实现一个 adapter，无需修改核心代码。
+
+**核心理念**:
+- 每个站点有一个 `SiteAdapter` 子类，封装所有 DOM 查询和页面结构差异
+- `AdapterRegistry` 根据 URL 自动选择正确的 adapter
+- 核心模块（`DomUtils`、`Summarization`、`ChatModal`、`SummaryPanel`）通过 adapter 获取站点特定数据
+
+**Adapter 关键方法**:
+| 方法 | 用途 |
+|------|------|
+| `getSiteKey()` | 唯一站点标识符 (e.g. `news.ycombinator.com`) |
+| `matches(url)` | 判断 URL 是否匹配 |
+| `getPostId()` | 提取帖子 ID |
+| `getCommentBlocks()` | 获取所有评论块 DOM 元素 |
+| `getCommentId(block)` | 从评论块提取 ID |
+| `getCommentAuthor(block)` | 从评论块提取作者名 |
+| `getCommentText(block)` | 从评论块提取文本内容 |
+| `getBlockPermalink(block)` | 获取评论的永久链接 |
+| `getInjectTarget(block)` | 返回注入 "summarize" / "chat" 链接的目标元素 |
+| `getPageActionAnchor()` | 返回注入页面级操作链接的目标元素 |
+| `resolveBlockByRef(ref)` | 将引用字符串解析为 DOM 元素（用于锚点跳转） |
+| `getSystemMessage()` | LLM 系统提示词 |
+| `getPromptContext()` | 页面上下文描述（用于聊天） |
+
+**已支持的站点**:
+- ✅ Hacker News (`news.ycombinator.com`) — `HnAdapter`
+- 🧪 Substack (`*.substack.com`) — `SubstackAdapter`（**选择器未经实际 Substack 页面测试**）
+
+**添加新站点的步骤**:
+1. 创建 `src/adapters/new-site-adapter.js`，继承 `SiteAdapter`
+2. 实现所有抽象方法
+3. 在 `adapter-registry.js` 末尾注册：`window.AdapterRegistry.register(new NewSiteAdapter());`
+4. 在 `manifest.*.json` 中添加匹配 URL 和 host_permissions
+5. 更新 `build.js` 的 `copySrcDirectory`（已自动处理 `src/adapters/*.js`）
+
+**文件加载顺序**（关键 — 无 bundler，靠 manifest `js` 数组顺序）:
+1. `hn-state.js` → `api-client.js` → ... → 所有核心模块
+2. `site-adapter.js` → 各站点 adapter → `adapter-registry.js`
+3. `hn-enhancer.js`（最后，因为构造函数需要 `AdapterRegistry`）
+
+**HN 专属功能隔离**:
+- `initCommentsPageNavigation()` 通过 `isHN = this.adapter?.getSiteKey() === 'news.ycombinator.com'` 判断
+- 作者跟踪、导航快捷键、统计面板、书签等仅在 HN 上激活
+- `[#N]` 评论引用格式在所有站点通用
 
 ## 后台脚本 (background.js)
 

@@ -26,12 +26,21 @@ window.HNEnhancer = class HNEnhancer {
     try {
       this.apiClient = new ApiClient(HNEnhancer.DEBUG);
       this.markdownUtils = MarkdownUtils;
-      this.domUtils = DomUtils;
       this.hnState = HNState;
       this.isChomeAiAvailable = HNEnhancer.CHROME_AI_AVAILABLE.NO;
 
       // Initialize page state
       this.currentComment = null;
+
+      // Resolve site adapter
+      this.adapter = AdapterRegistry.resolve(window.location.href);
+      if (!this.adapter) {
+        console.log('HN Enhancer: unsupported site, skipping initialization');
+        return;
+      }
+      this.logDebug(`Site adapter: ${this.adapter.name} (${this.adapter.getSiteKey()})`);
+
+      this.domUtils = new DomUtils(this.adapter);
 
       // Initialize components
       this.uiComponents = new UIComponents(this);
@@ -102,16 +111,21 @@ window.HNEnhancer = class HNEnhancer {
    * @returns {boolean} True if the current page is a home page
    */
   get isHomePage() {
-    const pathname = window.location.pathname;
-    const isHome =
-      pathname === "/" ||
-      pathname === "/news" ||
-      pathname === "/newest" ||
-      pathname === "/ask" ||
-      pathname === "/show" ||
-      pathname === "/front" ||
-      pathname === "/shownew";
-    return isHome;
+    // For HN, use pathname-based detection
+    if (this.adapter?.getSiteKey() === 'news.ycombinator.com') {
+      const pathname = window.location.pathname;
+      const isHome =
+        pathname === "/" ||
+        pathname === "/news" ||
+        pathname === "/newest" ||
+        pathname === "/ask" ||
+        pathname === "/show" ||
+        pathname === "/front" ||
+        pathname === "/shownew";
+      return isHome;
+    }
+    // For other sites, assume it's not a listing page
+    return false;
   }
 
   /**
@@ -119,8 +133,12 @@ window.HNEnhancer = class HNEnhancer {
    * @returns {boolean} True if the current page is a comments page
    */
   get isCommentsPage() {
-    const isComments = window.location.pathname === "/item";
-    return isComments;
+    // For HN, check pathname
+    if (this.adapter?.getSiteKey() === 'news.ycombinator.com') {
+      return window.location.pathname === "/item";
+    }
+    // For other sites (Substack, etc.), the single page IS the post
+    return true;
   }
 
   toggleHelpModal(show) {
@@ -128,6 +146,11 @@ window.HNEnhancer = class HNEnhancer {
   }
 
   initHomePageNavigation() {
+    // Home page navigation is only supported on listing-style sites (HN)
+    if (this.adapter?.getSiteKey() !== 'news.ycombinator.com') {
+      this.logDebug('Home page navigation not supported for this site');
+      return;
+    }
     this.allPosts = document.querySelectorAll(".athing");
     HNState.getLastSeenPostId().then((lastSeenPostId) => {
       let lastSeenPostIndex = -1;
@@ -147,84 +170,90 @@ window.HNEnhancer = class HNEnhancer {
   }
 
   initCommentsPageNavigation() {
-    // --- Step 1: Create main wrapper and move HN content ---
+    // --- Step 1: Create main wrapper and move page content ---
     // This structure is needed for the resizable summary panel
-    const mainHnTable = document.querySelector("center > table");
-    if (!mainHnTable) {
-      console.error("Could not find main HN table (center > table) to wrap.");
-      return; // Cannot proceed without the main table
-    }
+    const isHN = this.adapter?.getSiteKey() === 'news.ycombinator.com';
 
-    // Check if wrapper already exists (e.g., due to HMR or previous script run)
+    // Check if wrapper already exists
     let mainWrapper = document.querySelector(".main-content-wrapper");
+    let mainContentEl = null;
+
     if (!mainWrapper) {
+      mainContentEl = isHN
+        ? document.querySelector("center > table")
+        : (this.adapter?.getPageBodyElement?.()
+          || document.querySelector('article')
+          || document.querySelector('main')
+          || document.querySelector('[role="main"]')
+          || document.body.firstElementChild);
+
+      if (!mainContentEl) {
+        this.logDebug("Could not find page content element. Skipping wrapper setup.");
+        return;
+      }
+
       mainWrapper = document.createElement("div");
       mainWrapper.className = "main-content-wrapper";
 
-      const hnContentContainer = document.createElement("div");
-      hnContentContainer.className = "hn-content-container";
+      const contentContainer = document.createElement("div");
+      contentContainer.className = "hn-content-container";
 
-      // Insert the wrapper before the main table
-      mainHnTable.parentNode.insertBefore(mainWrapper, mainHnTable);
-      // Move the main table into the content container
-      hnContentContainer.appendChild(mainHnTable);
-      // Put the content container into the main wrapper
-      mainWrapper.appendChild(hnContentContainer);
-      this.logDebug("Created .main-content-wrapper and moved HN content.");
-    } else {
-      this.logDebug(".main-content-wrapper already exists.");
+      mainContentEl.parentNode.insertBefore(mainWrapper, mainContentEl);
+      contentContainer.appendChild(mainContentEl);
+      mainWrapper.appendChild(contentContainer);
+      this.logDebug("Created .main-content-wrapper for page content.");
     }
 
     // --- Step 2: Initialize Summary Panel (now that wrapper exists) ---
     if (!this.summaryPanel) {
-      this.summaryPanel = new SummaryPanel();
-      this.logDebug("SummaryPanel initialized.");
+      if (mainWrapper.querySelector(".summary-panel")) {
+        this.logDebug("SummaryPanel already exists in DOM, skipping duplicate.");
+      } else {
+        this.summaryPanel = new SummaryPanel();
+        this.logDebug("SummaryPanel initialized.");
+      }
     }
 
-    // --- Step 3: Inject other UI elements ---
-    // Inject 'Summarize all comments', 'Chat about post', and root-level toggle links
+    // --- Step 3: Inject post-level UI elements ---
     this.uiComponents.injectSummarizePostLink();
     this.uiComponents.injectChatPostLink();
-    this.uiComponents.injectToggleGrandchildrenRootLink();
+    if (isHN) {
+      this.uiComponents.injectToggleGrandchildrenRootLink();
+      this.addCacheIndicators(); // Call without comment parameter for post-level indicators
+    }
 
-    // Add cache indicators to the post title area
-    this.addCacheIndicators(); // Call without comment parameter for post-level indicators
-
-    // Go through all the comments in this post and inject all our nav elements - author, summarize etc.
-    const allComments = document.querySelectorAll(".athing.comtr");
+    // --- Step 4: Per-comment injection ---
+    const allComments = isHN
+      ? document.querySelectorAll(".athing.comtr")
+      : this.adapter.getCommentBlocks();
 
     allComments.forEach((comment) => {
-      // inject the author nav links - # of comments, left/right links to see comments by the same author
-      this.authorTracking.injectAuthorCommentsNavLinks(comment);
-
-      // customize the default next/prev/root/parent links to do the Companion behavior
-      this.navigation.customizeDefaultNavLinks(comment);
-
-      // Insert summarize thread link
+      // Common across all sites
       this.injectSummarizeThreadLinks(comment);
-      // Insert chat link
-      this.injectChatLink(comment); // <-- Add chat link injection
-      // Insert toggle grandchildren button
-      this.injectToggleGrandchildrenButton(comment);
-      // Insert focus button
-      this.injectFocusButton(comment);
-      // Insert bookmark toggle (author)
-      this.injectBookmarkToggle(comment);
-      // Insert "n/m next" link if the author is bookmarked
-      this.injectBookmarkedCommentNav(comment);
-      // Insert save toggle (comment text)
-      this.injectSaveCommentToggle(comment);
-      // Add cache indicators
-      this.addCacheIndicators(comment);
+      this.injectChatLink(comment);
+
+      // HN-specific
+      if (isHN) {
+        this.authorTracking.injectAuthorCommentsNavLinks(comment);
+        this.navigation.customizeDefaultNavLinks(comment);
+        this.injectToggleGrandchildrenButton(comment);
+        this.injectFocusButton(comment);
+        this.injectBookmarkToggle(comment);
+        this.injectBookmarkedCommentNav(comment);
+        this.injectSaveCommentToggle(comment);
+        this.addCacheIndicators(comment);
+      }
     });
 
-    this.refreshBookmarksDisplay();
-    this.refreshSavedCommentsDisplay();
+    // --- Step 5: HN-specific features ---
+    if (isHN) {
+      this.refreshBookmarksDisplay();
+      this.refreshSavedCommentsDisplay();
 
-    // Set up the hover events on all user elements - in the main post subline and each comment
-    this.authorTracking.setupUserHover();
+      // Set up the hover events on all user elements
+      this.authorTracking.setupUserHover();
 
-    // Append and populate the statistics panel
+      // Append and populate the statistics panel
     const commentTreeTable = document.querySelector("table.comment-tree");
     if (commentTreeTable && this.statisticsPanel) {
       commentTreeTable.parentNode.insertBefore(
@@ -252,26 +281,23 @@ window.HNEnhancer = class HNEnhancer {
           this.statisticsPanel.style.display = "block";
         }
       }
-    } else {
-      console.warn(
-        "Could not find comment tree table or statistics panel instance for insertion."
-      );
-      if (!commentTreeTable)
-        console.warn("Reason: commentTreeTable not found.");
-      if (!this.statisticsPanel)
-        console.warn("Reason: this.statisticsPanel not found.");
-    }
+    } // end if (commentTreeTable...)
+    } // end if (isHN)
 
-    // Auto-open summary panel: show cache if present, else empty Local prompt
-    const postId = this.domUtils.getCurrentHNItemId();
-    if (postId && this.summarization) {
-      this.summarization.autoOpenSummaryPanel(postId).catch((error) => {
-        console.warn("Auto-open summary panel failed:", error);
-      });
+    // Auto-open summary panel when cache exists
+    if (isHN) {
+      const postId = this.domUtils.getCurrentHNItemId();
+      if (postId && this.summarization) {
+        this.summarization.autoOpenSummaryPanel(postId).catch((error) => {
+          console.warn("Auto-open summary panel failed:", error);
+        });
+      }
     }
 
     // Deep-link: item?id=POST#COMMENT_ID → scroll + keyboard focus
-    this.focusCommentFromHash();
+    if (isHN) {
+      this.focusCommentFromHash();
+    }
   }
 
   /**
@@ -951,13 +977,12 @@ window.HNEnhancer = class HNEnhancer {
         }
       },
       s: () => {
-        // Open/close the summary panel on the right
-        this.summaryPanel.toggle();
-
-        // If the panel is now visible and the current comment is set, summarize its thread
-        if (this.summaryPanel.isVisible && this.currentComment) {
-          this.summarization.summarizeThread(this.currentComment);
+        if (this.summaryPanel.isVisible) {
+          this.summaryPanel.toggle();
+          return;
         }
+        // Open panel and show cached Local / Server summary (no auto-generation)
+        this.summarization.summarizeAllComments();
       },
       i: () => {
         // 切换显示/隐藏聊天窗口
@@ -1256,7 +1281,7 @@ window.HNEnhancer = class HNEnhancer {
       return;
     }
 
-    const navsSpan = comment.querySelector(".comhead .navs");
+    const navsSpan = this.adapter?.getInjectTarget(comment) || comment.querySelector(".comhead .navs");
     if (!navsSpan) {
       this.logDebug(
         `Could not find .navs span for comment ${comment.id} (summarize)`
@@ -1295,7 +1320,7 @@ window.HNEnhancer = class HNEnhancer {
    */
   injectChatLink(comment) {
     // Target the navigation links span in the comment header
-    const navsSpan = comment.querySelector(".comhead .navs");
+    const navsSpan = this.adapter?.getInjectTarget(comment) || comment.querySelector(".comhead .navs");
     if (!navsSpan) {
       this.logDebug(
         `Could not find .navs span for comment ${comment.id} (chat link)`
@@ -1541,7 +1566,7 @@ window.HNEnhancer = class HNEnhancer {
    * @param {HTMLElement} comment - The comment element.
    */
   injectToggleGrandchildrenButton(comment) {
-    const navsSpan = comment.querySelector(".comhead .navs");
+    const navsSpan = this.adapter?.getInjectTarget(comment) || comment.querySelector(".comhead .navs");
     if (!navsSpan) {
       this.logDebug(
         `Could not find .navs span for comment ${comment.id} (toggle GC)`
@@ -1581,7 +1606,7 @@ window.HNEnhancer = class HNEnhancer {
    * @param {HTMLElement} comment - The comment element.
    */
   injectFocusButton(comment) {
-    const navsSpan = comment.querySelector(".comhead .navs");
+    const navsSpan = this.adapter?.getInjectTarget(comment) || comment.querySelector(".comhead .navs");
     if (!navsSpan) return;
 
     if (navsSpan.querySelector(".focus-node-link")) return;
@@ -1608,7 +1633,7 @@ window.HNEnhancer = class HNEnhancer {
    * @param {HTMLElement} comment - The comment element.
    */
   injectBookmarkToggle(comment) {
-    const navsSpan = comment.querySelector(".comhead .navs");
+    const navsSpan = this.adapter?.getInjectTarget(comment) || comment.querySelector(".comhead .navs");
     if (!navsSpan) return;
 
     let bookmarkLink = navsSpan.querySelector("a.hn-bookmark-toggle[data-comment-id]");
@@ -1650,7 +1675,7 @@ window.HNEnhancer = class HNEnhancer {
     const idx = authorComments.indexOf(comment);
     if (idx === -1) return;
 
-    const navsSpan = comment.querySelector(".comhead .navs");
+    const navsSpan = this.adapter?.getInjectTarget(comment) || comment.querySelector(".comhead .navs");
     if (!navsSpan || navsSpan.querySelector(".bookmarked-next")) return;
 
     const next = document.createElement("a");
@@ -1672,7 +1697,7 @@ window.HNEnhancer = class HNEnhancer {
    * @param {HTMLElement} comment
    */
   injectSaveCommentToggle(comment) {
-    const navsSpan = comment.querySelector(".comhead .navs");
+    const navsSpan = this.adapter?.getInjectTarget(comment) || comment.querySelector(".comhead .navs");
     if (!navsSpan) return;
 
     let saveLink = navsSpan.querySelector("a.hn-save-comment-toggle");
@@ -2056,9 +2081,4 @@ window.HNEnhancer = class HNEnhancer {
     return await this.apiClient.sendBackgroundMessage("FETCH_AI_SETTINGS");
   }
 }; // <-- Moved openChatModal inside the class and kept the final brace
-// Initialize the extension
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => new HNEnhancer());
-} else {
-  new HNEnhancer();
-}
+// Initialization is handled by content.js (singleton via window.hnEnhancer)

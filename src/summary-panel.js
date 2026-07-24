@@ -140,6 +140,7 @@ class SummaryPanel {
 
   adjustMainContentWidth(panelWidth, clientX) {
     const hnTable = document.querySelector("#hnmain");
+    if (!hnTable) return;
     const viewportWidth = window.innerWidth;
     const availableWidth = viewportWidth - panelWidth - this.resizerWidth;
     const movePercent = (viewportWidth - clientX) / availableWidth;
@@ -165,14 +166,16 @@ class SummaryPanel {
       this.resizer.style.display = "block";
 
       const hnTable = document.querySelector("#hnmain");
-      hnTable.style.minWidth = "0";
+      if (hnTable) hnTable.style.minWidth = "0";
     } else {
       this.panel.style.display = "none";
       this.resizer.style.display = "none";
 
       const hnTable = document.querySelector("#hnmain");
-      hnTable.style.removeProperty("min-width");
-      hnTable.style.removeProperty("width");
+      if (hnTable) {
+        hnTable.style.removeProperty("min-width");
+        hnTable.style.removeProperty("width");
+      }
     }
   }
 

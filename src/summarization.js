@@ -176,8 +176,12 @@ class Summarization {
         bodyHtml = this._formatSummaryHtml(local.summary || "", pathMap);
       } else {
         title = "Summary";
-        bodyHtml =
-          "<div>No local summary yet. Click <strong>Summarize</strong> on the post to generate one. Click Summarize again anytime to regenerate.</div>";
+        bodyHtml = `<div class="summary-empty-prompt">No local summary yet.</div>
+          <div class="summary-actions"><button type="button" class="cache-toggle-btn summary-generate-btn" id="summary-generate-post">Generate</button></div>`;
+      }
+
+      if (hasLocal && !isStreaming) {
+        bodyHtml += `<div class="summary-actions"><button type="button" class="cache-toggle-btn summary-generate-btn" id="summary-generate-post">Regenerate</button></div>`;
       }
     } else {
       bodyHtml = "<div>No summary available for this source.</div>";
@@ -190,7 +194,22 @@ class Summarization {
     });
 
     this._bindSourceTabHandlers();
+    this._bindPostSummaryActions();
     this._bindSummaryCommentLinks();
+  }
+
+  _bindPostSummaryActions() {
+    const btn = this.enhancer.summaryPanel.panel?.querySelector(
+      "#summary-generate-post"
+    );
+    if (!btn) return;
+
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    newBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      this._generatePostSummary();
+    });
   }
 
   /**
@@ -312,7 +331,8 @@ class Summarization {
   }
 
   /**
-   * Summarizes all comments in the current post
+   * Opens the summary panel and shows cached Local / Server content.
+   * Does not start generation — use Generate in the panel or _generatePostSummary().
    */
   async summarizeAllComments() {
     const itemId = this.enhancer.domUtils.getCurrentHNItemId();
@@ -328,44 +348,79 @@ class Summarization {
         this.enhancer.summaryPanel.toggle();
       }
 
-      // Fetch both caches so Local/Server tabs work while generating
-      const [localCache, cachedSummary] = await Promise.all([
+      const [localCache, serverCache] = await Promise.all([
         this.checkLocalCache(itemId),
         this.enhancer.getCachedSummary(itemId),
       ]);
 
       const state = this._ensureSummaryViewState(itemId);
       state.localCache = localCache;
-      state.serverCache = cachedSummary;
+      state.serverCache = serverCache;
 
-      // Avoid stacking parallel generations; jump to Local stream instead
       if (state.generating?.isStreaming) {
         state.activeView = "local";
         await this._renderSummaryView();
         return;
       }
 
-      // "summarize all comments" always generates (re-click = regenerate).
-      // Server/Local tabs stay available for viewing cached copies mid-stream.
-      const { aiProvider, model } = await this.getAIProviderModel();
-      if (!aiProvider) {
-        // No AI configured: still show any cached summary
-        if (localCache || cachedSummary) {
-          await this._showCachedSummary(
-            itemId,
-            localCache,
-            cachedSummary,
-            localCache ? "local" : "server"
-          );
-        } else {
-          this.showConfigureAIMessage();
-        }
+      if (localCache || serverCache) {
+        await this._showCachedSummary(
+          itemId,
+          localCache,
+          serverCache,
+          localCache ? "local" : "server"
+        );
+      } else {
+        state.activeView = "local";
+        state.generating = null;
+        await this._renderSummaryView();
+      }
+    } catch (error) {
+      this.handleError("Error opening summary panel", error);
+    }
+  }
+
+  /**
+   * Generates (or regenerates) a local summary for the full post.
+   */
+  async _generatePostSummary() {
+    const itemId = this.enhancer.domUtils.getCurrentHNItemId();
+    if (!itemId) {
+      console.error(
+        "Could not get item id of the current post to generate summary"
+      );
+      return;
+    }
+
+    try {
+      if (!this.enhancer.summaryPanel.isVisible) {
+        this.enhancer.summaryPanel.toggle();
+      }
+
+      const state = this._ensureSummaryViewState(itemId);
+
+      if (state.generating?.isStreaming) {
+        state.activeView = "local";
+        await this._renderSummaryView();
         return;
       }
 
+      const { aiProvider, model } = await this.getAIProviderModel();
+      if (!aiProvider) {
+        this.showConfigureAIMessage();
+        return;
+      }
+
+      const [localCache, serverCache] = await Promise.all([
+        this.checkLocalCache(itemId),
+        this.enhancer.getCachedSummary(itemId),
+      ]);
+      state.localCache = localCache;
+      state.serverCache = serverCache;
+
       this.showLoadingMessage(
         "Post Summary",
-        localCache || cachedSummary
+        localCache || serverCache
           ? "Regenerating summary..."
           : "Analyzing all threads in this post...",
         aiProvider,
@@ -382,11 +437,8 @@ class Summarization {
   }
 
   /**
-   * Auto-open summary panel on comments page load when useful:
-   * - no server summary → open (empty Local prompt, or Local if cached)
-   * - local summary exists → open (even if server also exists)
-   * - both exist → default view is Local
-   * - server-only → do not auto-open (user can open manually)
+   * Auto-open summary panel on comments page load when Local or Server cache exists.
+   * Prefer Local when both exist; otherwise show whichever is available.
    * @param {string} itemId
    */
   async autoOpenSummaryPanel(itemId) {
@@ -397,31 +449,18 @@ class Summarization {
         this.enhancer.getCachedSummary(itemId),
       ]);
 
-      // Open when missing server, or when local cache exists
-      const shouldOpen = !serverCache || !!localCache;
-      if (!shouldOpen) return;
+      if (!localCache && !serverCache) return;
 
       if (!this.enhancer.summaryPanel.isVisible) {
         this.enhancer.summaryPanel.toggle();
       }
 
-      if (localCache || serverCache) {
-        // Prefer Local whenever it exists; otherwise Server
-        await this._showCachedSummary(
-          itemId,
-          localCache,
-          serverCache,
-          localCache ? "local" : "server"
-        );
-      } else {
-        // No caches — open empty Local so user can Summarize
-        const state = this._ensureSummaryViewState(itemId);
-        state.localCache = null;
-        state.serverCache = null;
-        state.generating = null;
-        state.activeView = "local";
-        await this._renderSummaryView();
-      }
+      await this._showCachedSummary(
+        itemId,
+        localCache,
+        serverCache,
+        localCache ? "local" : "server"
+      );
     } catch (error) {
       console.warn("Could not auto-open summary panel:", error);
     }
@@ -492,6 +531,12 @@ class Summarization {
       );
 
     formattedSummary = this._normalizeCommentAnchors(formattedSummary);
+
+    // Replace [#N] and [#post] references with clickable anchor buttons
+    formattedSummary = formattedSummary.replace(
+      /\[#(\d+|post)\]/g,
+      '<button class="hn-summary-ref" data-ref="$1">[#$1]</button>'
+    );
 
     return formattedSummary;
   }
@@ -629,6 +674,39 @@ class Summarization {
       link.dataset.commentLink = "true";
       link.dataset.commentId = hashMatch[1];
       bindLink(link);
+    });
+
+    // Bind [#N] / [#post] ref buttons from adapter-based summaries
+    textElement.querySelectorAll(".hn-summary-ref").forEach((btn) => {
+      const newBtn = btn.cloneNode(true);
+      btn.parentNode.replaceChild(newBtn, btn);
+      newBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        const ref = newBtn.dataset.ref;
+        const target = this.enhancer.adapter.resolveBlockByRef(ref);
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+          target.classList.add("hn-flash-highlight");
+          setTimeout(() => {
+            target.classList.remove("hn-flash-highlight");
+          }, 2000);
+        } else {
+          // Fallback: try resolving via commentPathToIdMap
+          if (ref !== "post" && this._summaryPathMap) {
+            const mappedId = this._summaryPathMap.get(ref);
+            const el = mappedId ? document.getElementById(String(mappedId)) : null;
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              el.classList.add("hn-flash-highlight");
+              setTimeout(() => {
+                el.classList.remove("hn-flash-highlight");
+              }, 2000);
+              return;
+            }
+          }
+          console.warn("Could not resolve ref:", ref);
+        }
+      });
     });
   }
 
@@ -844,6 +922,8 @@ class Summarization {
         language = language || settings.language;
       }
 
+      const siteKey = this.enhancer.adapter ? this.enhancer.adapter.getSiteKey() : "news.ycombinator.com";
+
       if (postId && aiProvider && model && language && summary) {
         const metadata = {
           duration,
@@ -856,6 +936,7 @@ class Summarization {
         };
 
         HNState.saveSummary(
+          siteKey,
           postId,
           targetCommentId,
           aiProvider,
@@ -893,8 +974,10 @@ class Summarization {
     try {
       const { aiProvider, model, language } = await this.getAIProviderModel();
       if (!aiProvider || !model || !language) return null;
+      const siteKey = this.enhancer.adapter ? this.enhancer.adapter.getSiteKey() : "news.ycombinator.com";
 
       const cached = await HNState.getSummary(
+        siteKey,
         postId,
         commentId,
         aiProvider,
@@ -975,6 +1058,22 @@ class Summarization {
    */
   async getHNThread(itemId) {
     try {
+      // HN uses the Algolia API to fetch comments; other sites build from DOM
+      if (this.enhancer.adapter.constructor.name === 'HnAdapter') {
+        return await this._getHNThreadFromAPI(itemId);
+      }
+      return await this._getThreadFromDOM();
+    } catch (error) {
+      console.error(`Error: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets thread data from HN API (Hacker News only)
+   */
+  async _getHNThreadFromAPI(itemId) {
+    try {
       const commentsJson = await this.enhancer.apiClient.fetchHNCommentsFromAPI(
         itemId
       );
@@ -1005,9 +1104,63 @@ class Summarization {
 
       return { formattedComment, commentPathToIdMap };
     } catch (error) {
-      console.error(`Error: ${error.message}`);
+      console.error(`Error fetching HN thread from API: ${error.message}`);
       throw error;
     }
+  }
+
+  /**
+   * Gets thread data from DOM using the site adapter (non-HN sites)
+   */
+  async _getThreadFromDOM() {
+    const adapter = this.enhancer.adapter;
+    const commentPathToIdMap = new Map();
+    const flatComments = [];
+
+    const walkBlocks = (blocks, parentPath = '') => {
+      let siblingIndex = 1;
+      blocks.forEach((block) => {
+        const id = adapter.getBlockId(block);
+        if (id == null) return;
+        const path = parentPath ? `${parentPath}.${siblingIndex}` : String(siblingIndex);
+        const indent = adapter.getBlockIndentLevel(block);
+        const author = adapter.getBlockAuthor(block);
+        const text = adapter.getBlockText(block);
+        const downvotes = adapter.getBlockDownvoteCount(block);
+        const score = Math.floor(
+          SUMMARIZATION_CONFIG.LIMITS.MAX_SCORE - (indent * SUMMARIZATION_CONFIG.LIMITS.MAX_SCORE) / 10
+        );
+
+        flatComments.push({
+          id,
+          path,
+          author,
+          text,
+          downvotes,
+          score,
+          replies: 0,
+        });
+        commentPathToIdMap.set(path, String(id));
+
+        const children = adapter.getChildBlocks(block);
+        if (children && children.length > 0) {
+          walkBlocks(children, path);
+        }
+        siblingIndex++;
+      });
+    };
+
+    const topBlocks = adapter.getCommentBlocks();
+    walkBlocks(topBlocks);
+
+    const formattedComment = flatComments
+      .map(
+        (comment) =>
+          `[${comment.path}] (score: ${comment.score}) {downvotes: ${comment.downvotes}} ${comment.author}: ${comment.text}\n`
+      )
+      .join("");
+
+    return { formattedComment, commentPathToIdMap };
   }
 
   /**
@@ -1227,7 +1380,10 @@ class Summarization {
       `Looking for cached summary: postId=${postId}, commentId=${targetCommentId}, provider=${providerSelection}, model=${model}, language=${language}`
     );
 
+    const siteKey = this.enhancer.adapter ? this.enhancer.adapter.getSiteKey() : "news.ycombinator.com";
+
     const cachedSummary = await HNState.getSummary(
+      siteKey,
       postId,
       targetCommentId,
       providerSelection,
@@ -1643,59 +1799,7 @@ class Summarization {
    * Gets the system message for AI summarization
    */
   getSystemMessage() {
-    return `You are an AI assistant specialized in analyzing and summarizing Hacker News discussions.
-Your goal is to help users quickly understand the key discussions and insights from Hacker News threads without having to read through lengthy comment sections.
-
-Follow these guidelines:
-
-1. Discussion Structure Understanding:
-   Comments are formatted as: [hierarchy_path] (score: X) <replies: Y> {downvotes: Z} Author: Comment
-   - hierarchy_path: Shows the comment's position in the discussion tree
-   - You can cite multiple comments by separating paths with commas, e.g., [1.2, 1.3]
-   - score: A normalized value between 1000 and 1, representing the comment's relative importance
-   - replies: Number of direct responses to this comment
-   - downvotes: Number of downvotes the comment received (exclude comments with 4+ downvotes)
-
-2. Content Prioritization:
-   - Focus on high-scoring comments as they represent valuable community insights
-   - Pay attention to comments with many replies as they sparked discussion
-   - Consider the combination of score, downvotes AND replies to gauge overall importance
-
-3. Theme Identification:
-   - Use top-level comments to identify main discussion themes
-   - Group related comments into thematic clusters
-   -
-
-Track how each theme develops through reply chains
-   - Track recommended resources (books, papers, tools, sites, media) mentioned in comments
-
-4. Quality Assessment:
-   - Prioritize comments that exhibit a combination of high score, low downvotes, substantial replies, and depth of content
-   - Actively identify and highlight expert explanations or in-depth analyses
-   - Capture all recommended resources, especially those praised or endorsed by multiple users
-
-Based on the above instructions, you should summarize the discussion. Your output should be well-structured, informative, and easily digestible for someone who hasn't read the original thread.
-
-Your response should be formatted using markdown and should have the following structure:
-
-# Overview
-Brief summary of the overall discussion in 2-3 sentences.
-
-# Main Themes & Key Insights
-[Bulleted list of themes, ordered by community engagement]
-
-# [Theme 1 title]
-[Summarize key insights with hierarchy_paths for linking back to comments]
-
-# Key Perspectives
-[Present contrasting perspectives with hierarchy_paths and author attribution]
-
-# Notable Side Discussions
-[Interesting tangents that added value with hierarchy_paths]
-
-# Recommendations
-[Extract recommended resources mentioned in comments with hierarchy_paths and author attribution. Include books, papers, tools, github repos, sites, media, etc. Do NOT list everything — select only the most praised and well-received resources (high score, multiple endorsements, or strong praise from credible sources). Max 8-10 items.]
-`
+    return this.enhancer.adapter.getSystemMessage();
   }
 
   /**
@@ -1738,9 +1842,8 @@ Brief summary of the overall discussion in 2-3 sentences.
         SUMMARIZATION_CONFIG.LANGUAGE_INSTRUCTIONS[language] || "";
     }
 
-    return `Provide a concise and insightful summary of the following Hacker News discussion, as per the guidelines you've been given.
-The goal is to help someone quickly grasp the main discussion points and key perspectives without reading all comments.
-Please focus on extracting the main themes, significant viewpoints, and high-quality contributions.
+    const template = this.enhancer.adapter.getUserMessageTemplate();
+    return `${template}
 The post title and comments are separated by three dashed lines:
 ---
 Post Title:

@@ -1160,7 +1160,7 @@ class ChatModal {
 
       switch (contextType) {
         case "parents":
-          systemPromptIntro = `下面提供了一系列 HN 评论，这些评论来自同一个帖子下的一个讨论分支，按时间顺序从最顶层的父评论到用户发起聊天的目标评论排列。`;
+          systemPromptIntro = `下面提供了一系列 ${this.enhancer?.adapter?.getPromptContext() || 'HN'} 评论，这些评论来自同一个帖子下的一个讨论分支，按时间顺序从最顶层的父评论到用户发起聊天的目标评论排列。`;
           break;
         case "descendants":
           systemPromptIntro = `下面提供了用户发起聊天的目标评论以及它的所有后代评论（回复）。`;
@@ -1173,7 +1173,7 @@ class ChatModal {
       // 获取帖子标题
       const postTitle = this.enhancer.domUtils.getHNPostTitle() || "未知标题";
 
-      const systemPrompt = `你是一个 Hacker News (HN) 助手。正在讨论的帖子标题是: "${postTitle}"
+      const systemPrompt = `你是一个 ${this.enhancer?.adapter?.getPromptContext() || 'Hacker News'} 助手。正在讨论的帖子标题是: "${postTitle}"
 
 ${systemPromptIntro}
 每个评论都使用以下格式呈现，包含了评论的层级结构和元数据：
@@ -1943,12 +1943,12 @@ ${systemPromptIntro}
       let systemPromptIntro = "";
 
       if (contextType === "descendants") {
-        systemPromptIntro = `你是一个 Hacker News (HN) 帖子助手。下面提供了整个帖子的所有评论。`;
+        systemPromptIntro = `你是一个 ${this.enhancer?.adapter?.getPromptContext() || 'Hacker News'} 帖子助手。下面提供了整个帖子的所有评论。`;
       } else if (contextType === "children") {
-        systemPromptIntro = `你是一个 Hacker News (HN) 帖子助手。下面提供了帖子的所有顶级评论（直接回复帖子的评论）。`;
+        systemPromptIntro = `你是一个 ${this.enhancer?.adapter?.getPromptContext() || 'Hacker News'} 帖子助手。下面提供了帖子的所有顶级评论（直接回复帖子的评论）。`;
       }
 
-      const systemPrompt = `你是一个 Hacker News (HN) 帖子助手。正在讨论的帖子标题是: "${postTitle}"
+      const systemPrompt = `你是一个 ${this.enhancer?.adapter?.getPromptContext() || 'Hacker News'} 帖子助手。正在讨论的帖子标题是: "${postTitle}"
 ${postText ? `\n帖子内容:\n${postText}\n` : ""}
 ${systemPromptIntro}
 每个评论都使用以下格式呈现，包含了评论的层级结构和元数据：

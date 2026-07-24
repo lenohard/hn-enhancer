@@ -908,6 +908,25 @@ tr.athing.comtr.noshow .comhead .togg {
     gap: 4px;
 }
 
+.summary-empty-prompt {
+    margin-bottom: 8px;
+    color: #666;
+    font-size: 13px;
+}
+
+.summary-actions {
+    margin-top: 10px;
+}
+
+.summary-generate-btn {
+    background-color: #ff6600;
+    color: white;
+}
+
+.summary-generate-btn:hover:not(:disabled) {
+    background-color: #e55c00;
+}
+
 .cache-toggle-btn {
     background-color: #e0e0e0;
     color: #333;

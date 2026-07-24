@@ -32,7 +32,7 @@ class UIComponents {
     content.className = "keyboard-help-content";
 
     const title = document.createElement("h2");
-    title.textContent = "HN Companion: Keyboard Shortcuts";
+    title.textContent = (this.enhancer?.adapter?.getHubTitle() || 'HN Companion') + ": Keyboard Shortcuts";
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "help-close-btn";
@@ -60,7 +60,7 @@ class UIComponents {
           { key: "j k", description: "Next/previous comment" },
           { key: "l h", description: "Next child/parent comment" },
           { key: "[ ]", description: "Prev/next comment by author" },
-          { key: "s", description: "Toggle summary panel" },
+          { key: "s", description: "Toggle summary panel (show cached summary)" },
           { key: "r", description: "Go to root comment" },
           { key: "gg", description: "First comment" },
           { key: "z", description: "Scroll to current" },
@@ -137,7 +137,7 @@ class UIComponents {
    * Injects a link to summarize all comments in the post
    */
   injectSummarizePostLink() {
-    const navLinks = document.querySelector(".subtext .subline");
+    const navLinks = this.enhancer.adapter?.getPageActionAnchor();
     if (!navLinks) return;
 
     const summarizeLink = document.createElement("a");
@@ -157,7 +157,7 @@ class UIComponents {
    * Injects a link to chat about the entire post
    */
   injectChatPostLink() {
-    const navLinks = document.querySelector(".subtext .subline");
+    const navLinks = this.enhancer.adapter?.getPageActionAnchor();
     if (!navLinks) return;
 
     const chatLink = document.createElement("a");
@@ -178,7 +178,7 @@ class UIComponents {
    * Injects a Toggle GC link for all root comments into the post metadata line.
    */
   injectToggleGrandchildrenRootLink() {
-    const navLinks = document.querySelector(".subtext .subline");
+    const navLinks = this.enhancer.adapter?.getPageActionAnchor();
     if (!navLinks) return;
 
     if (navLinks.querySelector(".toggle-grandchildren-root-link")) {

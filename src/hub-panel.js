@@ -55,6 +55,19 @@ class HubPanel {
       </div>
     `;
 
+    // Use adapter for site-specific strings
+    const adapter = this.enhancer?.adapter;
+    if (adapter) {
+      const titleEl = this.panel.querySelector('.hn-hub-title');
+      if (titleEl) titleEl.textContent = adapter.getHubTitle();
+
+      // Show/hide buttons based on adapter capabilities
+      const authorsBtn = this.panel.querySelector('[data-hub-view="authors"]');
+      if (authorsBtn) authorsBtn.hidden = adapter.getSiteKey() !== 'news.ycombinator.com';
+      const favBtn = this.panel.querySelector('[data-hub-link="favorites"]');
+      if (favBtn) favBtn.hidden = !adapter.getFavoritesUrl();
+    }
+
     document.body.appendChild(this.panel);
     this.setupInteractions();
     this.restorePosition();
@@ -393,18 +406,17 @@ class HubPanel {
   }
 
   openFavoritesPage() {
-    const username = DomUtils.getLoggedInUsername?.();
+    const username = this.enhancer?.domUtils?.getLoggedInUsername?.();
+    const baseUrl = this.enhancer?.adapter?.getFavoritesUrl();
+    if (!baseUrl) return;
+
     if (!username) {
-      window.open(
-        "https://news.ycombinator.com/login?goto=favorites",
-        "_blank",
-        "noopener,noreferrer"
-      );
+      window.open(baseUrl, "_blank", "noopener,noreferrer");
       return;
     }
 
     window.open(
-      `https://news.ycombinator.com/favorites?id=${encodeURIComponent(username)}`,
+      this.enhancer.adapter.getUserFavoritesUrl(username),
       "_blank",
       "noopener,noreferrer"
     );
