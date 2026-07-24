@@ -61,20 +61,50 @@ function contentScriptIdForDomain(hostname) {
   return `hn-substack-${normalizeHostname(hostname).replace(/\./g, "-")}`;
 }
 
-async function registerSubstackCustomDomainScripts() {
-  if (!chrome.scripting?.registerContentScripts) {
-    return;
+/** Match both apex and www — users often visit www.* while we store the bare hostname. */
+function contentScriptMatchesForHostname(hostname) {
+  const host = normalizeHostname(hostname);
+  const hosts = new Set([host]);
+  if (host.startsWith("www.")) {
+    hosts.add(host.slice(4));
+  } else {
+    hosts.add(`www.${host}`);
   }
 
-  const domains = await getSubstackCustomDomains();
+  const patterns = [];
+  for (const h of hosts) {
+    patterns.push(`https://${h}/*`, `http://${h}/*`);
+  }
+  return patterns;
+}
+
+/** Serialize concurrent registration calls (onInstalled + on load + enable). */
+let substackRegistrationPromise = null;
+
+async function unregisterHnSubstackContentScripts() {
   const existing = await chrome.scripting.getRegisteredContentScripts();
   const staleIds = existing
     .filter((entry) => entry.id?.startsWith("hn-substack-"))
     .map((entry) => entry.id);
 
-  if (staleIds.length) {
-    await chrome.scripting.unregisterContentScripts({ ids: staleIds });
+  if (!staleIds.length) {
+    return;
   }
+
+  try {
+    await chrome.scripting.unregisterContentScripts({ ids: staleIds });
+  } catch (error) {
+    console.warn("[BACKGROUND] unregisterContentScripts:", error);
+  }
+}
+
+async function registerSubstackCustomDomainScriptsImpl() {
+  if (!chrome.scripting?.registerContentScripts) {
+    return;
+  }
+
+  const domains = await getSubstackCustomDomains();
+  await unregisterHnSubstackContentScripts();
 
   if (!domains.length) {
     return;
@@ -82,13 +112,71 @@ async function registerSubstackCustomDomainScripts() {
 
   const scripts = domains.map((hostname) => ({
     id: contentScriptIdForDomain(hostname),
-    matches: [`https://${hostname}/*`, `http://${hostname}/*`],
+    matches: contentScriptMatchesForHostname(hostname),
     js: HN_CONTENT_SCRIPT_JS,
     css: HN_CONTENT_SCRIPT_CSS,
     runAt: "document_end",
   }));
 
-  await chrome.scripting.registerContentScripts(scripts);
+  try {
+    await chrome.scripting.registerContentScripts(scripts);
+    console.log("[BACKGROUND] Registered Substack custom domain scripts:", domains);
+  } catch (error) {
+    console.warn("[BACKGROUND] Bulk register failed, retrying one-by-one:", error);
+    for (const script of scripts) {
+      try {
+        await chrome.scripting.unregisterContentScripts({ ids: [script.id] }).catch(() => {});
+        await chrome.scripting.registerContentScripts([script]);
+      } catch (innerError) {
+        console.error("[BACKGROUND] Failed to register script", script.id, innerError);
+        throw innerError;
+      }
+    }
+  }
+}
+
+function registerSubstackCustomDomainScripts() {
+  if (!chrome.scripting?.registerContentScripts) {
+    return Promise.resolve();
+  }
+
+  if (!substackRegistrationPromise) {
+    substackRegistrationPromise = registerSubstackCustomDomainScriptsImpl()
+      .finally(() => {
+        substackRegistrationPromise = null;
+      });
+  }
+
+  return substackRegistrationPromise;
+}
+
+async function injectEnhancerIntoTab(tabId) {
+  if (!tabId || !chrome.scripting?.executeScript) {
+    return;
+  }
+
+  try {
+    const domains = await getSubstackCustomDomains();
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (customDomains) => {
+        window.__HN_SUBSTACK_CUSTOM_DOMAINS = customDomains;
+      },
+      args: [domains],
+    });
+    await chrome.scripting.insertCSS({
+      target: { tabId },
+      files: HN_CONTENT_SCRIPT_CSS,
+    });
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: HN_CONTENT_SCRIPT_JS,
+    });
+    console.log("[BACKGROUND] Injected enhancer into tab", tabId);
+  } catch (error) {
+    console.error("[BACKGROUND] Failed to inject enhancer into tab:", error);
+    throw error;
+  }
 }
 
 async function enableSubstackCustomDomain(hostname) {
@@ -374,9 +462,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "ENABLE_SUBSTACK_DOMAIN":
       return handleAsyncMessage(
         message,
+        async () => await enableSubstackCustomDomain(message.data?.hostname),
+        sendResponse
+      );
+
+    case "INJECT_ENHANCER_TAB":
+      return handleAsyncMessage(
+        message,
         async () => {
-          const result = await enableSubstackCustomDomain(message.data?.hostname);
-          return result;
+          await injectEnhancerIntoTab(message.data?.tabId);
+          return { injected: true };
         },
         sendResponse
       );

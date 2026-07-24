@@ -750,8 +750,8 @@ function showTestResult(message, type) {
 }
 
 async function loadSubstackCustomDomains() {
-  const response = await chrome.runtime.sendMessage({ type: "LIST_SUBSTACK_DOMAINS" });
-  return response?.domains || [];
+  const data = await sendBackgroundMessage("LIST_SUBSTACK_DOMAINS");
+  return data?.domains || [];
 }
 
 function normalizeDomainInput(raw) {
@@ -795,10 +795,7 @@ async function renderSubstackDomainsList() {
         }
         btn.disabled = true;
         try {
-          await chrome.runtime.sendMessage({
-            type: "REMOVE_SUBSTACK_DOMAIN",
-            data: { hostname: domain },
-          });
+          await sendBackgroundMessage("REMOVE_SUBSTACK_DOMAIN", { hostname: domain });
           await renderSubstackDomainsList();
         } catch (error) {
           alert(`Failed to remove domain: ${error.message}`);
@@ -942,13 +939,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       addSubstackDomainBtn.disabled = true;
       try {
-        const result = await chrome.runtime.sendMessage({
-          type: "ENABLE_SUBSTACK_DOMAIN",
-          data: { hostname },
-        });
-        if (!result?.success) {
-          throw new Error(result?.error || "Failed to add domain");
-        }
+        await sendBackgroundMessage("ENABLE_SUBSTACK_DOMAIN", { hostname });
         substackDomainInput.value = "";
         await renderSubstackDomainsList();
       } catch (error) {

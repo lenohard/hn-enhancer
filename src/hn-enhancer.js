@@ -35,7 +35,10 @@ window.HNEnhancer = class HNEnhancer {
       // Resolve site adapter
       this.adapter = AdapterRegistry.resolve(window.location.href);
       if (!this.adapter) {
-        console.log('HN Enhancer: unsupported site, skipping initialization');
+        console.log(
+          'HN Enhancer: unsupported site, skipping initialization',
+          { href: window.location.href, customDomains: window.__HN_SUBSTACK_CUSTOM_DOMAINS }
+        );
         return;
       }
       this.logDebug(`Site adapter: ${this.adapter.name} (${this.adapter.getSiteKey()})`);

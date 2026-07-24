@@ -19,6 +19,44 @@ async function getActiveTab() {
     return tabs[0] || null;
 }
 
+async function sendBackgroundMessage(type, data) {
+    const response = await chrome.runtime.sendMessage({ type, data });
+    if (!response?.success) {
+        throw new Error(response?.error || 'Request failed');
+    }
+    return response.data;
+}
+
+/** Reload tab, then inject scripts after load (inject-before-reload is wiped by reload). */
+function reloadTabAndInject(tabId) {
+    return new Promise((resolve, reject) => {
+        if (!tabId) {
+            reject(new Error('No tab to reload'));
+            return;
+        }
+
+        const timeoutMs = 30000;
+        const timeoutId = setTimeout(() => {
+            chrome.tabs.onUpdated.removeListener(onUpdated);
+            reject(new Error('Page reload timed out'));
+        }, timeoutMs);
+
+        function onUpdated(updatedTabId, changeInfo) {
+            if (updatedTabId !== tabId || changeInfo.status !== 'complete') {
+                return;
+            }
+            chrome.tabs.onUpdated.removeListener(onUpdated);
+            clearTimeout(timeoutId);
+            sendBackgroundMessage('INJECT_ENHANCER_TAB', { tabId })
+                .then(resolve)
+                .catch(reject);
+        }
+
+        chrome.tabs.onUpdated.addListener(onUpdated);
+        chrome.tabs.reload(tabId);
+    });
+}
+
 async function detectSubstack(tab) {
     if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('about:')) {
         return null;
@@ -102,12 +140,9 @@ async function initPopup() {
     }
 
     const { hostname, isNative, likelySubstack, substackFeed, pathnameOk } = detection;
-    const response = await chrome.runtime.sendMessage({
-        type: 'GET_SUBSTACK_DOMAIN_STATUS',
-        data: { hostname },
-    });
-    const enabled = !!response?.enabled;
-    const domains = response?.domains || [];
+    const status = await sendBackgroundMessage('GET_SUBSTACK_DOMAIN_STATUS', { hostname });
+    const enabled = !!status?.enabled;
+    const domains = status?.domains || [];
 
     if (isNative) {
         titleEl.textContent = 'Substack (native)';
@@ -132,7 +167,25 @@ async function initPopup() {
     showMeta([hostname, feedHint].filter(Boolean).join(' · '));
 
     if (enabled) {
-        messageEl.innerHTML = '<span class="status-ok">Enhancer is enabled on this site.</span> Reload the page if the hub panel is not visible.';
+        messageEl.innerHTML = '<span class="status-ok">Enhancer is enabled on this site.</span>';
+        if (pathnameOk) {
+            enableBtn.textContent = 'Inject / reload';
+            enableBtn.classList.remove('hidden');
+            enableBtn.addEventListener('click', async () => {
+                enableBtn.disabled = true;
+                try {
+                    messageEl.innerHTML = '<span class="status-ok">Reloading and injecting…</span>';
+                    await reloadTabAndInject(tab.id);
+                    messageEl.innerHTML = '<span class="status-ok">Injected. Hub panel should appear on the post page.</span>';
+                } catch (error) {
+                    messageEl.textContent = `Failed: ${error.message}`;
+                } finally {
+                    enableBtn.disabled = false;
+                }
+            });
+        } else {
+            messageEl.innerHTML += ' Open a post page (<code>/p/slug</code>) to use Summary.';
+        }
         return;
     }
 
@@ -142,18 +195,9 @@ async function initPopup() {
         enableBtn.disabled = true;
         enableBtn.textContent = 'Enabling…';
         try {
-            const result = await chrome.runtime.sendMessage({
-                type: 'ENABLE_SUBSTACK_DOMAIN',
-                data: { hostname, tabId: tab.id },
-            });
-            if (result?.success) {
-                messageEl.innerHTML = '<span class="status-ok">Enabled. Reloading page…</span>';
-                if (tab.id) {
-                    chrome.tabs.reload(tab.id);
-                }
-            } else {
-                throw new Error(result?.error || 'Enable failed');
-            }
+            await sendBackgroundMessage('ENABLE_SUBSTACK_DOMAIN', { hostname });
+            messageEl.innerHTML = '<span class="status-ok">Enabled. Reloading and injecting…</span>';
+            await reloadTabAndInject(tab.id);
         } catch (error) {
             enableBtn.disabled = false;
             enableBtn.textContent = 'Enable on this site';
