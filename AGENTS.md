@@ -600,3 +600,51 @@ The current summarization caching implementation mixes summaries for entire post
 - `background.js`: Added logic to include usage flag in payload when present
 
 **Important note**: The codebase has been fully renamed from "litellm" to "openai-router" in variable names, message types, and internal references. The provider ID is now `openai-router` (previously `litellm`), message types are `OPENAI_ROUTER_API_REQUEST` / `FETCH_OPENAI_ROUTER_MODELS`, and handler functions are `handleOpenAIRouterRequest` / `handleFetchOpenAIRouterModels`.
+
+### HubPanel Adapter Pattern & Substack Selector Fix (2025-12-24)
+**HubPanel refactored**: Removed hardcoded HTML buttons from HubPanel. Now uses `setupHubButtons()` to create universal buttons (Summary, Options), then appends site-specific buttons via `adapter.getHubButtons(enhancer)`.
+- `src/hub-panel.js`: `setupHubButtons()` replaces inline HTML; buttons are built programmatically.
+- `src/adapters/site-adapter.js`: Added `getHubButtons(_enhancer)` base method returning `[]`.
+- `src/adapters/hn-adapter.js`: Returns Authors, Saved, Favorite HN buttons.
+- `src/adapters/substack-adapter.js`: Returns Save button (TODO: implement bookmarking).
+
+**Substack selectors rewritten**: Based on real DOM dumps from `https://*.substack.com/p/*` pages.
+- `getCommentBlocks()`: `.comment` (top-level only; never `[data-hn-block-hash]` — that attr is extension-set)
+- `getInjectTarget()`: `.comment-anchor`
+- `getBlockAuthor()`: `.comment-author-name a`
+- `getBlockText()`: `.comment-body`
+- `getPageActionAnchor()`: `.post-header .meta-EgzBVA`
+
+**HN-specific feature gating**: `injectSummarizePostLink()`, `injectChatPostLink()`, `injectToggleGrandchildrenRootLink()`, and `addCacheIndicators()` are now gated behind `isHN` check in `initCommentsPageNavigation()`.
+
+**Dedup check added**: `injectSummarizeThreadLinks()` now checks for existing `.summarize-thread-link` before injecting, preventing duplicate links per comment.
+
+**Injection pattern rule**: All `inject*` methods must include a dedup check (query for existing class/data attribute) before creating and appending elements.
+
+**Selector gotcha — dataset attributes in initial selectors**: A `[data-x="y"]` attribute that the extension sets via `el.dataset.x = ...` does NOT exist in the original DOM on page load. Using such a selector in `getCommentBlocks()` / `getChildBlocks()` etc. will return 0 elements until the extension touches them — making the whole adapter appear broken on first load. Always use class/tag selectors for initial detection; use the dataset attribute only as an internal dedup/marker key.
+
+### Substack Summary & Adapter Hooks (2025-07-24)
+**Two page modes**: Article (`/p/slug`) summarizes post + inline comments; dedicated comments page (`/p/slug/comments`) summarizes comment thread only.
+- `SubstackAdapter.isDedicatedCommentsPage()` vs `isCommentsPage()` (both init comment navigation).
+- `shouldIncludePostInSummary()` — false on dedicated comments page.
+- `shouldAutoGeneratePostSummary()` — article needs `getPostText()`; comments page needs visible comment blocks.
+
+**Comment IDs**: Use Substack's native `.comment-anchor` id (`comment-298895672`), not content hash. `resolveBlockByRef()` supports `post`, dotted paths (`1.2.3`), and `comment-*` ids.
+
+**Server tab gating**: `adapter.supportsServerSummary()` — true only for HN (`hncompanion.com` cache). Other sites hide Local/Server tabs and skip server fetch.
+
+**Summary panel mount**: Non-HN sites mount on `document.body` with `.summary-panel-fixed` (400px right side); HN keeps flex layout inside `.main-content-wrapper`.
+
+**SiteAdapter hooks for summary behavior**: `getPostText()`, `shouldIncludePostInSummary()`, `shouldAutoGeneratePostSummary()`, `supportsServerSummary()`, `getPostSummaryCacheId()`, site-specific `getSystemMessage()` / `getUserMessageTemplate()`.
+
+**Separate cache keys (Substack)**: `getPostSummaryCacheId()` returns `'article'` on post pages and `'comments'` on `/comments` pages (HN uses `null` → `_post`). Cached summaries show provider/model/duration/timestamp via `_metaFromLocalCache()` in the LOCAL badge row.
+
+**Summary link jumps**: `_scrollAndFlashSummaryTarget()` highlights `.comment-content` / `.comment-body` (not empty `.comment-anchor` divs).
+
+### Prompt Templates (`src/prompts.js`, 2025-07-24)
+
+All LLM summarization prompts live in `src/prompts.js` as `window.HNPrompts`. Loaded in manifest **before** adapters; adapters delegate via `getSystemMessage()` / `getUserMessageTemplate()` / `getPostSummary*()`.
+
+**Sets**: `HNPrompts.hn` (thread), `HNPrompts.substack.article` (structured article extraction), `HNPrompts.substack.comments` (comment thread).
+
+**Content injection**: User templates are instructions only; `summarization.js` appends title/body or comments via `getUserMessage()` / `_getPostSummaryUserMessage()`.

@@ -808,11 +808,7 @@ async function handleOpenAIRouterRequest(data) {
 
   // API key should only be in Authorization header, not in request body for OpenAI Router proxy
 
-  // Log the payload being sent
-  console.log("OpenAI Router request payload:", JSON.stringify(payload, null, 2));
-
   try {
-    console.log("Sending OpenAI Router API request...");
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {

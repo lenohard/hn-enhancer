@@ -1,11 +1,10 @@
 /**
  * SubstackAdapter — DOM extraction for Substack posts.
  *
- * Substack comments do NOT have stable IDs, so the comment ID strategy
- * uses a hash of author + first 100 chars of text as a fallback.
- *
- * The main use case is summarizing the post content, not deep comment
- * analysis, but full comment extraction is supported.
+ * Comment IDs come from Substack's `.comment-anchor` elements (e.g.
+ * `comment-298895672`). Summary scope differs by page:
+ *   - Article page (`/p/slug`): post body + inline comments
+ *   - Comments page (`/p/slug/comments`): comment thread only
  */
 
 window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
@@ -22,7 +21,9 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
      * Does NOT match /notes/, /about/, or the homepage listing.
      */
     matches(url) {
-        return /^https:\/\/[\w-]+\.substack\.com\/(p|post)\/[\w-]+/.test(url);
+        // Match only actual post pages, exclude known non-post paths
+        // (e.g. /about, /archive, /podcast, /subscribe)
+        return /^https:\/\/[\w-]+\.substack\.com\/(p|post)\/[\w-]+(\/comments)?\/?$/.test(url);
     }
 
     // ── Site identity ─────────────────────────────────────────────
@@ -36,6 +37,30 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
     getPostId() {
         const match = location.pathname.match(/\/(p|post)\/([\w-]+)/);
         return match ? match[2] : null;
+    }
+
+    /** @override */
+    isCommentsPage() {
+        // Article pages include inline comments; dedicated /comments pages too.
+        return /\/(p|post)\/[\w-]+(\/comments)?\/?$/.test(location.pathname);
+    }
+
+    /** True only for the dedicated full comments page (not inline discussion on article). */
+    isDedicatedCommentsPage() {
+        return /\/comments\/?$/.test(location.pathname);
+    }
+
+    /**
+     * URL of the dedicated comments page for the current post.
+     * @returns {string|null}
+     */
+    getCommentsPageUrl() {
+        const postId = this.getPostId();
+        if (!postId) return null;
+
+        const match = location.pathname.match(/\/(p|post)\//);
+        const segment = match ? match[1] : 'p';
+        return `${location.origin}/${segment}/${postId}/comments`;
     }
 
     getLoggedInUsername() {
@@ -69,119 +94,95 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
 
     getPostBodyElement() {
         return (
+            document.querySelector('article .body.markup') ||
             document.querySelector('article') ||
-            document.querySelector('.body') ||
-            document.querySelector('[class*="post-body"]')
+            document.querySelector('.body.markup')
         );
+    }
+
+    getPostText() {
+        const el =
+            document.querySelector('article .body.markup') ||
+            document.querySelector('.available-content .body.markup');
+        return el?.innerText?.trim() || '';
+    }
+
+    shouldAutoGeneratePostSummary() {
+        if (!this.getPostId()) return false;
+        if (this.isDedicatedCommentsPage()) {
+            return this.getCommentBlocks().length > 0;
+        }
+        return !!this.getPostText();
+    }
+
+    shouldIncludePostInSummary() {
+        return !this.isDedicatedCommentsPage();
+    }
+
+    supportsServerSummary() {
+        return false;
+    }
+
+    /** Separate cache for article summary vs dedicated comments-page summary. */
+    getPostSummaryCacheId() {
+        return this.isDedicatedCommentsPage() ? 'comments' : 'article';
     }
 
     // ── Comment / block extraction ────────────────────────────────
 
     getCommentBlocks() {
-        // Try selectors in order, return the first that yields results
-        const selectors = [
-            '[data-testid="comment"]',
-            '.post-comment',
-            '.comment',
-            '[class*="Comment"]',
-        ];
+        // Real Substack DOM: `.comment` is the top-level comment wrapper.
+        // (`[data-hn-block-hash]` is only set by us via getBlockId(), so it can't be
+        //  used here — the selector would match zero elements on initial page load.)
+        const all = [...document.querySelectorAll('.comment')];
 
-        for (const selector of selectors) {
-            // Query all matching elements
-            const all = [...document.querySelectorAll(selector)];
-
-            // Filter to top-level only: exclude elements nested inside another comment
-            const topLevel = all.filter((el) => {
-                // Check if this element has an ancestor that is also a comment element
-                return !el.parentElement?.closest(selector);
-            });
-
-            if (topLevel.length > 0) {
-                return topLevel;
-            }
-        }
-
-        return [];
+        // Filter to top-level only: exclude comments nested inside other comments
+        return all.filter((el) => !el.parentElement?.closest('.comment'));
     }
 
     getChildBlocks(block) {
-        // Find all descendant comment elements
-        const descendants = block.querySelectorAll(
-            '[data-testid="comment"], .post-comment, .comment, [class*="Comment"]'
-        );
+        const descendants = block.querySelectorAll('.comment');
 
-        // Filter to only direct children (not grandchildren).
-        // A direct child is one whose parent's closest ancestor comment is *this* block.
+        // Direct children = whose closest `.comment` ancestor is this block
         return [...descendants].filter((child) => {
-            // Walk up parent chain until we hit a block-level ancestor
-            let parent = child.parentElement;
-            while (parent && parent !== block) {
-                const closestComment = parent.closest(
-                    '[data-testid="comment"], .post-comment, .comment, [class*="Comment"]'
-                );
-                if (closestComment) {
-                    // If that ancestor comment is not the block itself, this is a grandchild
-                    return closestComment === block;
-                }
-                parent = parent.parentElement;
-            }
-            // If we never found another comment ancestor, it's a direct child of block
-            return true;
+            const parent = child.parentElement?.closest('.comment');
+            return parent === block;
         });
     }
 
     getBlockId(block) {
-        // Substack has no stable comment IDs.
-        // Generate a hash from author + first 100 chars of text as fallback.
-        if (!block.dataset.hnBlockHash) {
-            const author = this.getBlockAuthor(block);
-            const text = this.getBlockText(block).slice(0, 100);
-            const raw = `${author}:${text}`;
-            let hash = 0;
-            for (let i = 0; i < raw.length; i++) {
-                const chr = raw.charCodeAt(i);
-                hash = ((hash << 5) - hash) + chr;
-                hash |= 0; // Convert to 32bit integer
-            }
-            block.dataset.hnBlockHash = String(hash);
+        const anchor =
+            block.querySelector('.comment-anchor[id^="comment-"]') ||
+            block.querySelector('[id^="comment-"]');
+        if (anchor?.id) {
+            return anchor.id;
         }
-        return block.dataset.hnBlockHash;
+
+        const permalink = this.getBlockPermalink(block);
+        if (permalink) {
+            const match = permalink.match(/\/comment\/(\d+)/);
+            if (match) {
+                return `comment-${match[1]}`;
+            }
+        }
+
+        return null;
     }
 
     getBlockAuthor(block) {
-        const selectors = [
-            '[class*="username"]',
-            '.commenterUsername',
-            'a[href*="/profile/"]',
-        ];
+        // Real DOM: `.comment-author-name a` inside `.comment-content`
+        const el = block.querySelector('.comment-author-name a');
+        if (el) return el.textContent?.trim() || '';
 
-        for (const sel of selectors) {
-            const el = block.querySelector(sel);
-            if (el) {
-                const text = el.textContent?.trim();
-                if (text) return text;
-            }
-        }
-
-        return '';
+        // Fallback: any profile link inside comment-content
+        const fallback = block.querySelector('.comment-content a[href*="/profile/"]');
+        return fallback?.textContent?.trim() || '';
     }
 
     getBlockText(block) {
-        const selectors = [
-            '.post-comment-content',
-            '[class*="CommentBody"]',
-            '[class*="comment-body"]',
-        ];
-
-        for (const sel of selectors) {
-            const el = block.querySelector(sel);
-            if (el) {
-                const text = el.innerText?.trim();
-                if (text) return text;
-            }
-        }
-
-        return '';
+        // Real DOM: `.comment-body` div contains the comment text
+        const el = block.querySelector('.comment-body');
+        return el?.innerText?.trim() || '';
     }
 
     getBlockTime(block) {
@@ -197,8 +198,8 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
     }
 
     getBlockPermalink(block) {
-        const link = block.querySelector('a[href*="#comment-"]') ||
-                     block.querySelector('a[href*="/comment/"]');
+        // Real DOM: timestamp link has href like /p/slug/comment/298895672
+        const link = block.querySelector('a[href*="/comment/"]');
         return link?.href || null;
     }
 
@@ -206,9 +207,7 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
         let level = 0;
         let current = block;
         while (current.parentElement) {
-            const ancestor = current.parentElement.closest(
-                '[data-testid="comment"], .post-comment, .comment, [class*="Comment"]'
-            );
+            const ancestor = current.parentElement.closest('.comment');
             if (ancestor) {
                 level++;
                 current = ancestor;
@@ -227,63 +226,83 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
     // ── Rich text ─────────────────────────────────────────────────
 
     getBlockHTML(block) {
-        const selectors = [
-            '.post-comment-content',
-            '[class*="CommentBody"]',
-            '[class*="comment-body"]',
-        ];
-
-        for (const sel of selectors) {
-            const el = block.querySelector(sel);
-            if (el) {
-                const html = el.innerHTML?.trim();
-                if (html) return html;
-            }
-        }
-
-        return '';
+        const el = block.querySelector('.comment-body');
+        return el?.innerHTML?.trim() || '';
     }
 
     // ── Comment injection ─────────────────────────────────────────
 
     getInjectTarget(block) {
-        return (
-            block.querySelector('[class*="comment-header"]') ||
-            block.querySelector('[class*="CommentHeader"]') ||
-            block.querySelector('div:first-child')
-        );
+        // Real DOM: `.comment-anchor` div is the first child of `.comment`,
+        // above the `.comment-content` div. It's the natural place to add links.
+        // It already contains the comment ID anchor.
+        return block.querySelector('.comment-anchor') || block.firstElementChild;
     }
 
     // ── Page-level injection ───────────────────────────────────────
 
     getPageActionAnchor() {
-        // Substack post subtitle area — look for the subtitle/date line
-        // under the post title, or the post header meta area.
+        // Real DOM: author/date meta line inside `.post-header`
+        // Structure: .single-post > .pencraft > .main-content-wrapper > .hn-content-container
+        //            > article > div[role="region"].post-header
+        // The header contains .byline-wrapper > .meta-<hash> (hash suffix is unstable).
+        // Use semantic .byline-wrapper (or fall back to .post-header itself).
         return (
-            document.querySelector('.subtitle') ||
-            document.querySelector('[class*="post-header"] [class*="meta"]') ||
-            document.querySelector('[class*="PostHeader"]') ||
-            document.querySelector('article .post-header') ||
-            document.querySelector('article header')
+            document.querySelector('.post-header .byline-wrapper') ||
+            document.querySelector('.post-header')
         );
     }
 
     // ── Anchor resolution ─────────────────────────────────────────
 
     resolveBlockByRef(ref) {
-        // If ref is "post", return the post body element
+        if (!ref) return null;
+
         if (ref === 'post') {
             return this.getPostBodyElement();
         }
 
-        // Otherwise interpret ref as a numeric index into the flat block list
-        const index = Number(ref);
-        if (!isNaN(index)) {
-            const flat = this.getAllBlocksFlat();
-            return flat[index] || null;
+        // Tree path from summary (e.g. "1", "1.2", "1.2.3")
+        if (/^\d+(?:\.\d+)*$/.test(ref)) {
+            return this._resolveBlockByPath(ref);
+        }
+
+        // Substack anchor id or numeric comment id
+        const anchorId = ref.startsWith('comment-') ? ref : `comment-${ref}`;
+        const byId = document.getElementById(anchorId);
+        if (byId) {
+            return byId.closest('.comment') || byId;
         }
 
         return null;
+    }
+
+    /**
+     * Walk the comment tree to find the block at a dotted path.
+     * @param {string} path — e.g. "1.2.3" (1-indexed siblings at each level)
+     * @returns {Element|null}
+     */
+    _resolveBlockByPath(path) {
+        const indices = path.split('.').map((part) => parseInt(part, 10));
+        if (indices.some((n) => !n || Number.isNaN(n))) {
+            return null;
+        }
+
+        let blocks = this.getCommentBlocks();
+        let block = null;
+
+        for (let depth = 0; depth < indices.length; depth++) {
+            const idx = indices[depth] - 1;
+            if (idx < 0 || idx >= blocks.length) {
+                return null;
+            }
+            block = blocks[idx];
+            if (depth < indices.length - 1) {
+                blocks = this.getChildBlocks(block);
+            }
+        }
+
+        return block;
     }
 
     // ── Helpers ───────────────────────────────────────────────────
@@ -319,14 +338,23 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
     }
 
     getSystemMessage() {
-        return 'You are an AI assistant specialized in analyzing and summarizing Substack posts and their comment discussions. ' +
-            'Focus on extracting the key arguments, insights, and perspectives from both the article and the comments.';
+        const prompts = HNPrompts.substack;
+        return this.isDedicatedCommentsPage() ? prompts.comments.system : prompts.article.system;
     }
 
     getUserMessageTemplate() {
-        return 'Provide a concise and insightful summary of the following Substack post and its discussion. ' +
-            'Highlight the main thesis, supporting arguments, and the most interesting perspectives from the comments. ' +
-            'Use [#N] notation to reference specific comments where relevant.';
+        const prompts = HNPrompts.substack;
+        return this.isDedicatedCommentsPage() ? prompts.comments.user : prompts.article.user;
+    }
+
+    /** @override */
+    getPostSummarySystemMessage() {
+        return HNPrompts.substack.article.system;
+    }
+
+    /** @override */
+    getPostSummaryUserMessageTemplate() {
+        return HNPrompts.substack.article.user;
     }
 
     // ── Hub panel ─────────────────────────────────────────────────
@@ -342,11 +370,88 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
         ];
     }
 
-    getHubStats() {
-        const commentCount = this.getCommentBlocks().length;
+    /** @override */
+    getHubButtons(enhancer) {
+        const buttons = [];
+
+        if (!this.isDedicatedCommentsPage()) {
+            buttons.push({
+                label: 'Comments',
+                title: 'Open full comments page',
+                onClick: () => {
+                    const url = this.getCommentsPageUrl();
+                    if (url) window.location.href = url;
+                },
+            });
+        }
+
+        buttons.push({
+            label: 'Save',
+            title: 'Bookmark this post for later',
+            onClick: () => {
+                // TODO: implement Substack post bookmarking via HNState
+                console.log('[HN Enhancer] Save post:', enhancer.adapter?.getPostId());
+            },
+        });
+
+        return buttons;
+    }
+
+    /** @override */
+    getHubStats(_enhancer) {
+        if (!this.getPostId()) return [];
+
+        const inlineCount = this.getCommentBlocks().length;
+        // Parse "N more comments..." link to get the off-page count
+        let moreCount = 0;
+        const moreLink = document.querySelector('a.more-comments');
+        if (moreLink) {
+            const match = moreLink.textContent.match(/(\d+)/);
+            if (match) moreCount = parseInt(match[1], 10);
+        }
+        const totalCount = inlineCount + moreCount;
         return [
-            { id: 'comments', label: 'Comments', value: String(commentCount) },
+            { id: 'comments', label: 'Comments', value: String(totalCount) },
         ];
+    }
+
+    /**
+     * Replace Substack's "N more comments..." teaser with a plain Comments link.
+     */
+    enhanceCommentsLink() {
+        if (this.isDedicatedCommentsPage()) return;
+
+        const commentsUrl = this.getCommentsPageUrl();
+        if (!commentsUrl) return;
+
+        const enhance = () => {
+            document.querySelectorAll('a.more-comments').forEach((link) => {
+                if (link.dataset.hnEnhancedComments) return;
+                link.dataset.hnEnhancedComments = 'true';
+                link.href = commentsUrl;
+                link.textContent = 'Comments';
+                link.title = 'Open full comments page';
+            });
+        };
+
+        enhance();
+
+        if (this._commentsLinkObserver) return;
+
+        this._commentsLinkObserver = new MutationObserver(() => enhance());
+        this._commentsLinkObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+        });
+        setTimeout(() => {
+            this._commentsLinkObserver?.disconnect();
+            this._commentsLinkObserver = null;
+        }, 30000);
+    }
+
+    /** @override */
+    initArticlePage(_enhancer) {
+        this.enhanceCommentsLink();
     }
 
     // ── Favorites / bookmarks ─────────────────────────────────────

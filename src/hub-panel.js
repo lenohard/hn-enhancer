@@ -20,6 +20,12 @@ class HubPanel {
     const existingPanel = document.querySelector(".hn-hub-panel");
     if (existingPanel) {
       this.panel = existingPanel;
+      const adapter = this.enhancer?.adapter;
+      if (adapter) {
+        const titleEl = this.panel.querySelector(".hn-hub-title");
+        if (titleEl) titleEl.textContent = adapter.getHubTitle();
+      }
+      this.updateStats();
       return this.panel;
     }
 
@@ -35,16 +41,8 @@ class HubPanel {
         <button type="button" class="hn-hub-collapse-btn" title="Collapse panel" aria-label="Collapse panel">−</button>
       </div>
       <div class="hn-hub-body">
-        <div class="hn-hub-stats">
-          <span class="hn-hub-stat" data-hub-stat="authors">Authors: <strong>0</strong></span>
-          <span class="hn-hub-stat" data-hub-stat="saved">Saved: <strong>0</strong></span>
-        </div>
-        <div class="hn-hub-actions">
-          <button type="button" class="hn-hub-action" data-hub-view="authors">Authors</button>
-          <button type="button" class="hn-hub-action" data-hub-view="saved">Saved comments</button>
-          <button type="button" class="hn-hub-action" data-hub-link="favorites">Favorite HN</button>
-          <button type="button" class="hn-hub-action" data-hub-link="options">Options</button>
-        </div>
+        <div class="hn-hub-stats" data-hub-stats hidden></div>
+        <div class="hn-hub-actions" data-hub-actions></div>
         <div class="hn-hub-list-wrap" hidden>
           <div class="hn-hub-list-header">
             <span class="hn-hub-list-title"></span>
@@ -60,19 +58,52 @@ class HubPanel {
     if (adapter) {
       const titleEl = this.panel.querySelector('.hn-hub-title');
       if (titleEl) titleEl.textContent = adapter.getHubTitle();
-
-      // Show/hide buttons based on adapter capabilities
-      const authorsBtn = this.panel.querySelector('[data-hub-view="authors"]');
-      if (authorsBtn) authorsBtn.hidden = adapter.getSiteKey() !== 'news.ycombinator.com';
-      const favBtn = this.panel.querySelector('[data-hub-link="favorites"]');
-      if (favBtn) favBtn.hidden = !adapter.getFavoritesUrl();
     }
 
+    this.setupHubButtons();
     document.body.appendChild(this.panel);
     this.setupInteractions();
     this.restorePosition();
     this.updateStats();
     return this.panel;
+  }
+
+  setupHubButtons() {
+    const actions = this.panel.querySelector('[data-hub-actions]');
+    if (!actions) return;
+
+    // Universal buttons (all sites)
+    const summaryBtn = document.createElement('button');
+    summaryBtn.type = 'button';
+    summaryBtn.className = 'hn-hub-action';
+    summaryBtn.textContent = 'Summary';
+    summaryBtn.title = 'Summarize post (s)';
+    summaryBtn.addEventListener('click', async () => {
+      await this.enhancer.summarization?.summarizeAllComments();
+    });
+    actions.appendChild(summaryBtn);
+
+    const optionsBtn = document.createElement('button');
+    optionsBtn.type = 'button';
+    optionsBtn.className = 'hn-hub-action';
+    optionsBtn.textContent = 'Options';
+    optionsBtn.addEventListener('click', () => this.openOptionsPage());
+    actions.appendChild(optionsBtn);
+
+    // Site-specific buttons via adapter
+    const siteButtons = this.enhancer.adapter?.getHubButtons?.(this.enhancer);
+    if (siteButtons) {
+      siteButtons.forEach((btn) => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'hn-hub-action';
+        el.textContent = btn.label;
+        if (btn.title) el.title = btn.title;
+        if (btn.hubView) el.dataset.hubView = btn.hubView;
+        el.addEventListener('click', btn.onClick);
+        actions.appendChild(el);
+      });
+    }
   }
 
   setupInteractions() {
@@ -106,20 +137,6 @@ class HubPanel {
         this.toggleView(view);
       });
     });
-
-    this.panel.querySelector('[data-hub-link="favorites"]').addEventListener(
-      "click",
-      () => {
-        this.openFavoritesPage();
-      }
-    );
-
-    this.panel.querySelector('[data-hub-link="options"]').addEventListener(
-      "click",
-      () => {
-        this.openOptionsPage();
-      }
-    );
 
     listCloseBtn.addEventListener("click", () => {
       this.closeList();
@@ -211,17 +228,7 @@ class HubPanel {
   updateStats() {
     if (!this.panel) return;
 
-    const authorsCount =
-      this.enhancer.bookmarkedAuthors instanceof Map
-        ? this.enhancer.bookmarkedAuthors.size
-        : 0;
-    const savedCount =
-      this.enhancer.savedComments instanceof Map
-        ? this.enhancer.savedComments.size
-        : 0;
-
-    this.setStatValue("authors", authorsCount);
-    this.setStatValue("saved", savedCount);
+    this._renderStats();
 
     if (this.activeView === "authors") {
       this.renderAuthorsList();
@@ -230,11 +237,26 @@ class HubPanel {
     }
   }
 
-  setStatValue(name, value) {
-    const stat = this.panel.querySelector(`[data-hub-stat="${name}"] strong`);
-    if (stat) {
-      stat.textContent = String(value);
+  _renderStats() {
+    const container = this.panel?.querySelector("[data-hub-stats]");
+    if (!container) return;
+
+    const stats =
+      this.enhancer?.adapter?.getHubStats?.(this.enhancer) || [];
+
+    if (stats.length === 0) {
+      container.hidden = true;
+      container.innerHTML = "";
+      return;
     }
+
+    container.hidden = false;
+    container.innerHTML = stats
+      .map(
+        (stat) =>
+          `<span class="hn-hub-stat" data-hub-stat="${this.escapeHtml(stat.id)}">${this.escapeHtml(stat.label)}: <strong>${this.escapeHtml(stat.value)}</strong></span>`
+      )
+      .join("");
   }
 
   toggleView(view) {

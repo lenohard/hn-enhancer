@@ -1,7 +1,15 @@
 class SummaryPanel {
-  constructor() {
+  /**
+   * @param {Element} [mountTarget] - Where to attach the panel.
+   *   - Default: `.main-content-wrapper` (flex layout with resizer, ideal for HN).
+   *   - `document.body`: append panel directly to body with `position: fixed`.
+   *     Use this when the article container is too narrow to host a side panel
+   *     (e.g. Substack's `.single-post` constrains to ~700px).
+   */
+  constructor(mountTarget) {
     this.panel = this.createPanel();
     this.resizer = this.createResizer();
+    this.fixed = mountTarget === document.body;
 
     this.isResizing = false;
     this.startX = 0;
@@ -9,20 +17,31 @@ class SummaryPanel {
     this.resizerWidth = 8;
 
     // set up resize handlers at the resizer and at the window level
-    this.setupResizeHandlers();
+    // (skipped for fixed-mounted panels — they have no resizer)
+    if (!this.fixed) {
+      this.setupResizeHandlers();
+    }
     this.setupWindowResizeHandler();
 
-    // Find the main wrapper created by HNEnhancer
-    this.mainWrapper = document.querySelector(".main-content-wrapper");
+    // Resolve mount target: explicit arg → document.querySelector fallback
+    this.mainWrapper =
+      mountTarget || document.querySelector(".main-content-wrapper");
 
-    if (this.mainWrapper) {
-      // Append only if the wrapper exists
-      this.mainWrapper.appendChild(this.resizer);
-      this.mainWrapper.appendChild(this.panel);
-    } else {
+    if (!this.mainWrapper) {
       console.error(
         "SummaryPanel: Could not find .main-content-wrapper to attach panel."
       );
+      return;
+    }
+
+    if (this.fixed) {
+      // Floating side panel: no resizer, fixed positioning handles width
+      this.panel.classList.add("summary-panel-fixed");
+      this.mainWrapper.appendChild(this.panel);
+    } else {
+      // Flex layout: resizer sits between content and panel
+      this.mainWrapper.appendChild(this.resizer);
+      this.mainWrapper.appendChild(this.panel);
     }
   }
 
@@ -157,24 +176,30 @@ class SummaryPanel {
     if (!this.panel) return;
 
     if (!this.isVisible) {
-      const maxAvailableWidth =
-        this.mainWrapper.offsetWidth - this.resizerWidth;
-      const { minWidth } = this.calculatePanelConstraints(maxAvailableWidth);
-      this.panel.style.flexBasis = `${minWidth}px`;
+      if (this.fixed) {
+        this.panel.style.display = "block";
+      } else {
+        const maxAvailableWidth =
+          this.mainWrapper.offsetWidth - this.resizerWidth;
+        const { minWidth } = this.calculatePanelConstraints(maxAvailableWidth);
+        this.panel.style.flexBasis = `${minWidth}px`;
 
-      this.panel.style.display = "block";
-      this.resizer.style.display = "block";
+        this.panel.style.display = "block";
+        this.resizer.style.display = "block";
 
-      const hnTable = document.querySelector("#hnmain");
-      if (hnTable) hnTable.style.minWidth = "0";
+        const hnTable = document.querySelector("#hnmain");
+        if (hnTable) hnTable.style.minWidth = "0";
+      }
     } else {
       this.panel.style.display = "none";
-      this.resizer.style.display = "none";
+      if (!this.fixed) {
+        this.resizer.style.display = "none";
 
-      const hnTable = document.querySelector("#hnmain");
-      if (hnTable) {
-        hnTable.style.removeProperty("min-width");
-        hnTable.style.removeProperty("width");
+        const hnTable = document.querySelector("#hnmain");
+        if (hnTable) {
+          hnTable.style.removeProperty("min-width");
+          hnTable.style.removeProperty("width");
+        }
       }
     }
   }

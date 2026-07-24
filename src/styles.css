@@ -298,6 +298,36 @@
     transition: transform 0.3s ease;
 }
 
+/* Floating variant: panel mounted on body, used on sites where the article
+   container is too narrow to host a flex side panel (e.g. Substack). */
+.summary-panel-fixed {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 400px;
+    max-width: 50vw;
+    height: 100vh;
+    z-index: 9999;
+    overflow-y: auto;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
+    background-color: #f6f6ef;
+    padding: 16px;
+}
+
+.hn-flash-highlight {
+    outline: 2px solid #ff6600 !important;
+    outline-offset: 2px;
+    background-color: rgba(255, 102, 0, 0.14) !important;
+    box-shadow: 0 0 0 3px rgba(255, 102, 0, 0.25);
+    transition: outline-color 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.comment.hn-flash-highlight,
+.comment .comment-content.hn-flash-highlight,
+.comment .comment-body.hn-flash-highlight {
+    border-radius: 6px;
+}
+
 /* Panel content styling */
 .summary-panel-header {
     margin-bottom: 20px;

@@ -41,6 +41,39 @@ window.SiteAdapter = class SiteAdapter {
     /** Return the post body element (the article text), or null. */
     getPostBodyElement() { return null; }
 
+    /**
+     * Plain-text post body for summarization. Override on sites where the
+     * primary content is the article, not the comment thread.
+     * @returns {string|null}
+     */
+    getPostText() { return null; }
+
+    /**
+     * When true, opening the summary panel with no cache auto-starts generation.
+     * @returns {boolean}
+     */
+    shouldAutoGeneratePostSummary() { return false; }
+
+    /**
+     * When true, prepend post body text to thread summaries (alongside comments).
+     * @returns {boolean}
+     */
+    shouldIncludePostInSummary() { return true; }
+
+    /**
+     * Whether the hncompanion.com server cache tab is available for this site.
+     * @returns {boolean}
+     */
+    supportsServerSummary() { return false; }
+
+    /**
+     * Cache key segment for full-page summaries (not a single comment thread).
+     * null → `summary_*_*_post_*`; non-null string → `summary_*_*_{id}_*`.
+     * Override when one post slug has multiple summary scopes (e.g. article vs comments page).
+     * @returns {string|null}
+     */
+    getPostSummaryCacheId() { return null; }
+
     // ── Comment / block extraction ────────────────────────────────
 
     /**
@@ -180,6 +213,29 @@ window.SiteAdapter = class SiteAdapter {
             `Use [#N] notation to reference specific comments.`;
     }
 
+    /**
+     * System message for article body summaries (no comments).
+     * Override in site adapters that support article-page summaries.
+     * @returns {string}
+     */
+    getPostSummarySystemMessage() {
+        return `You are an AI assistant specialized in analyzing and summarizing articles. ` +
+            `Your goal is to help users quickly understand the article's main thesis, key arguments, and structure. ` +
+            `Be concise and clear. When referencing specific parts of the article, use [P#] notation ` +
+            `where # is the paragraph number shown in the input. ` +
+            `Do NOT reference comments or use comment notation [1.2.3].`;
+    }
+
+    /**
+     * User message template for article body summaries.
+     * @returns {string}
+     */
+    getPostSummaryUserMessageTemplate() {
+        return `Provide a concise summary of the following article. ` +
+            `Capture the main thesis, key arguments, and notable evidence. ` +
+            `Use [P#] notation to reference specific paragraphs.`;
+    }
+
     // ── Hub panel ─────────────────────────────────────────────────
 
     /**
@@ -195,8 +251,35 @@ window.SiteAdapter = class SiteAdapter {
      */
     getHubActions() { return []; }
 
-    /** Return stats descriptors: [{ id, label, value }] */
-    getHubStats() { return []; }
+    /**
+     * Return site-specific buttons for the hub panel.
+     * Universal buttons (Summary, Options) are added by HubPanel itself.
+     * @param {object} enhancer — the HNEnhancer instance
+     * @returns {Array<{label: string, title?: string, onClick: Function, hubView?: string}>}
+     */
+    getHubButtons(_enhancer) { return []; }
+
+    /**
+     * Return hub panel stat descriptors for the current site.
+     * @param {object} _enhancer
+     * @returns {Array<{id: string, label: string, value: string}>}
+     */
+    getHubStats(_enhancer) { return []; }
+
+    /**
+     * Whether the current URL is the full comments/discussion page.
+     * Defaults to true for single-page post layouts.
+     * @returns {boolean}
+     */
+    isCommentsPage() {
+        return true;
+    }
+
+    /**
+     * Lightweight init for post/article pages that are not the comments page.
+     * @param {object} _enhancer
+     */
+    initArticlePage(_enhancer) {}
 
     // ── Favorites / bookmarks (site-specific URLs) ────────────────
 

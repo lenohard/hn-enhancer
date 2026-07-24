@@ -57,6 +57,10 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
         return 'Hacker News';
     }
 
+    supportsServerSummary() {
+        return true;
+    }
+
     // ── Post identity ─────────────────────────────────────────────
 
     /**
@@ -367,59 +371,7 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
      * @returns {string}
      */
     getSystemMessage() {
-        return `You are an AI assistant specialized in analyzing and summarizing Hacker News discussions.
-Your goal is to help users quickly understand the key discussions and insights from Hacker News threads without having to read through lengthy comment sections.
-
-Follow these guidelines:
-
-1. Discussion Structure Understanding:
-   Comments are formatted as: [hierarchy_path] (score: X) <replies: Y> {downvotes: Z} Author: Comment
-   - hierarchy_path: Shows the comment's position in the discussion tree
-   - You can cite multiple comments by separating paths with commas, e.g., [1.2, 1.3]
-   - score: A normalized value between 1000 and 1, representing the comment's relative importance
-   - replies: Number of direct responses to this comment
-   - downvotes: Number of downvotes the comment received (exclude comments with 4+ downvotes)
-
-2. Content Prioritization:
-   - Focus on high-scoring comments as they represent valuable community insights
-   - Pay attention to comments with many replies as they sparked discussion
-   - Consider the combination of score, downvotes AND replies to gauge overall importance
-
-3. Theme Identification:
-   - Use top-level comments to identify main discussion themes
-   - Group related comments into thematic clusters
-   -
-
-Track how each theme develops through reply chains
-   - Track recommended resources (books, papers, tools, sites, media) mentioned in comments
-
-4. Quality Assessment:
-   - Prioritize comments that exhibit a combination of high score, low downvotes, substantial replies, and depth of content
-   - Actively identify and highlight expert explanations or in-depth analyses
-   - Capture all recommended resources, especially those praised or endorsed by multiple users
-
-Based on the above instructions, you should summarize the discussion. Your output should be well-structured, informative, and easily digestible for someone who hasn't read the original thread.
-
-Your response should be formatted using markdown and should have the following structure:
-
-# Overview
-Brief summary of the overall discussion in 2-3 sentences.
-
-# Main Themes & Key Insights
-[Bulleted list of themes, ordered by community engagement]
-
-# [Theme 1 title]
-[Summarize key insights with hierarchy_paths for linking back to comments]
-
-# Key Perspectives
-[Present contrasting perspectives with hierarchy_paths and author attribution]
-
-# Notable Side Discussions
-[Interesting tangents that added value with hierarchy_paths]
-
-# Recommendations
-[Extract recommended resources mentioned in comments with hierarchy_paths and author attribution. Include books, papers, tools, github repos, sites, media, etc. Do NOT list everything — select only the most praised and well-received resources (high score, multiple endorsements, or strong praise from credible sources). Max 8-10 items.]
-`;
+        return HNPrompts.hn.system;
     }
 
     /**
@@ -427,17 +379,7 @@ Brief summary of the overall discussion in 2-3 sentences.
      * @returns {string}
      */
     getUserMessageTemplate() {
-        return `Provide a concise and insightful summary of the following Hacker News discussion.
-The goal is to help someone quickly grasp the main discussion points and key perspectives without reading all comments.
-Please focus on extracting the main themes, significant viewpoints, and high-quality contributions.
-The post title and comments are separated by three dashed lines:
----
-Post Title:
-${'{title}'}
----
-Comments:
-${'{text}'}
----`;
+        return HNPrompts.hn.user;
     }
 
     // ── Hub panel ─────────────────────────────────────────────────
@@ -460,6 +402,43 @@ ${'{text}'}
             { id: 'saved', label: 'Saved comments' },
             { id: 'favorites', label: 'Favorite HN', href: this.getFavoritesUrl() },
             { id: 'options', label: 'Options', href: 'options' },
+        ];
+    }
+
+    /** @override */
+    getHubButtons(enhancer) {
+        return [
+            {
+                label: 'Authors',
+                hubView: 'authors',
+                onClick: () => enhancer.hubPanel?.toggleView('authors'),
+            },
+            {
+                label: 'Saved',
+                hubView: 'saved',
+                onClick: () => enhancer.hubPanel?.toggleView('saved'),
+            },
+            {
+                label: 'Favorite HN',
+                title: 'Open your favorites on HN',
+                onClick: () => enhancer.hubPanel?.openFavoritesPage(),
+            },
+        ];
+    }
+
+    /** @override */
+    getHubStats(enhancer) {
+        const authorsCount =
+            enhancer?.bookmarkedAuthors instanceof Map
+                ? enhancer.bookmarkedAuthors.size
+                : 0;
+        const savedCount =
+            enhancer?.savedComments instanceof Map
+                ? enhancer.savedComments.size
+                : 0;
+        return [
+            { id: 'authors', label: 'Authors', value: String(authorsCount) },
+            { id: 'saved', label: 'Saved', value: String(savedCount) },
         ];
     }
 

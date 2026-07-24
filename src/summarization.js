@@ -61,9 +61,16 @@ class Summarization {
     if (!itemId) {
       itemId = this.enhancer.domUtils.getCurrentHNItemId();
     }
-    if (!this._summaryViewState || this._summaryViewState.itemId !== itemId) {
+    const cacheScope = this._effectiveSummaryCacheId(null);
+    const stateKey = `${itemId}:${cacheScope ?? "post"}`;
+    if (
+      !this._summaryViewState ||
+      this._summaryViewState.stateKey !== stateKey
+    ) {
       this._summaryViewState = {
+        stateKey,
         itemId,
+        cacheScope,
         localCache: null,
         serverCache: null,
         generating: null,
@@ -80,12 +87,140 @@ class Summarization {
   }
 
   /**
+   * Resolves the storage key segment for a full-page (non-thread) summary.
+   * @param {string|null} targetCommentId - null for post-level summaries
+   * @returns {string|null}
+   */
+  _effectiveSummaryCacheId(targetCommentId) {
+    if (targetCommentId != null && targetCommentId !== "") {
+      return targetCommentId;
+    }
+    return this.enhancer.adapter?.getPostSummaryCacheId?.() ?? null;
+  }
+
+  /**
+   * Panel title reflecting page mode (post vs comments thread).
+   * @returns {string}
+   */
+  _getSummaryPanelTitle(suffix = "") {
+    const adapter = this.enhancer.adapter;
+    let base = "Summary";
+    if (adapter?.isDedicatedCommentsPage?.()) {
+      base = "Comments Summary";
+    } else if (adapter?.getPostText?.()) {
+      base = "Post Summary";
+    }
+    return suffix ? `${base} (${suffix})` : base;
+  }
+
+  /**
+   * Build display meta from a cached local summary entry.
+   * @param {object|null} local
+   * @returns {object|null}
+   */
+  _metaFromLocalCache(local) {
+    if (!local) return null;
+    const ts = local.metadata?.timestamp || local.timestamp;
+    const provider = local.provider || local.metadata?.provider;
+    const model = local.model || local.metadata?.model;
+    if (!provider && !model && ts == null) return null;
+
+    const cacheAge =
+      ts != null ? Math.round((Date.now() - ts) / (1000 * 60)) : null;
+    return {
+      aiProvider: provider || "AI",
+      model: model || "",
+      language: local.language || local.metadata?.language,
+      duration: local.metadata?.duration,
+      generatedAt: ts,
+      cacheIndicator:
+        cacheAge != null
+          ? `<span class="cache-indicator">📋 Cached (${cacheAge}m ago)</span>`
+          : null,
+    };
+  }
+
+  /**
+   * Pick a visible element to highlight (Substack anchors are empty divs).
+   * @param {Element} target
+   * @returns {Element}
+   */
+  _getSummaryHighlightTarget(target) {
+    if (!target) return target;
+    const comment = target.closest?.(".comment");
+    if (comment) {
+      return (
+        comment.querySelector(".comment-content") ||
+        comment.querySelector(".comment-body") ||
+        comment
+      );
+    }
+    return target;
+  }
+
+  /**
+   * Format post body for LLM: number <p> elements and tag DOM for jump resolution.
+   * @param {Element} bodyEl - The post body element from adapter.getPostBodyElement()
+   * @param {string} postTitle
+   * @returns {{ formattedText: string, paraMap: Map<string, Element> }}
+   */
+  _formatPostBodyForLLM(bodyEl, postTitle) {
+    const paraMap = new Map();
+    if (!bodyEl) {
+      return { formattedText: `[post] ${postTitle || 'Article'}`, paraMap };
+    }
+
+    const paragraphs = bodyEl.querySelectorAll('p');
+    const lines = [`[post] ${postTitle || 'Article'}:`];
+    let idx = 1;
+
+    paragraphs.forEach((p) => {
+      p.dataset.paraIndex = String(idx);
+      const text = p.textContent.trim();
+      if (text) {
+        lines.push(`[P${idx}] ${text}`);
+        paraMap.set(`P${idx}`, p);
+      }
+      idx++;
+    });
+
+    return { formattedText: lines.join('\n'), paraMap };
+  }
+
+  /**
+   * Get post body only (no comments) for article-page summaries.
+   * @returns {Promise<{ formattedComment: string, commentPathToIdMap: Map }>}
+   */
+  async _getPostBodyOnly() {
+    const adapter = this.enhancer.adapter;
+    const bodyEl = adapter.getPostBodyElement?.();
+    const title = adapter.getPostTitle?.() || 'Post';
+    const { formattedText } = this._formatPostBodyForLLM(bodyEl, title);
+    return { formattedComment: formattedText, commentPathToIdMap: new Map([['post', 'post']]) };
+  }
+
+  /**
+   * Scroll to a summary jump target and flash-highlight it.
+   * @param {Element} target
+   */
+  _scrollAndFlashSummaryTarget(target) {
+    const el = this._getSummaryHighlightTarget(target);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("hn-flash-highlight");
+    setTimeout(() => {
+      el.classList.remove("hn-flash-highlight");
+    }, 2500);
+  }
+
+  /**
    * Builds Local / Server tab bar. Local also reflects generating state.
    * @param {object} state
    * @returns {string}
    */
   _buildSourceTabsHtml(state) {
-    const hasServer = !!state.serverCache;
+    const supportsServer = this.enhancer.adapter?.supportsServerSummary?.() ?? false;
+    const hasServer = supportsServer && !!state.serverCache;
     const isStreaming = !!(state.generating && state.generating.isStreaming);
     const active = state.activeView === "server" ? "server" : "local";
 
@@ -96,9 +231,12 @@ class Summarization {
       return `<button type="button" id="${id}" class="cache-toggle-btn source-tab-btn ${activeClass} ${disabledClass} ${extraClass}" data-source-view="${view}" ${disabledAttr}>${label}</button>`;
     };
 
-    // Local always enabled: empty prompt, cache, or live stream (status via label/pulse)
     const localLabel = isStreaming ? "Local…" : "Local";
     const localClass = isStreaming ? "is-generating" : "";
+
+    if (!supportsServer) {
+      return "";
+    }
 
     return `<div class="summary-source-tabs">
       ${tab("source-tab-local", "local", localLabel, true, localClass)}
@@ -128,7 +266,7 @@ class Summarization {
     }
 
     const tabsHtml = this._buildSourceTabsHtml(state);
-    let title = "Summary";
+    let title = this._getSummaryPanelTitle();
     let headerHtml = "";
     let bodyHtml = "";
     let pathMap = state.pathMap || new Map();
@@ -164,18 +302,17 @@ class Summarization {
         }
       } else if (hasLocal) {
         const local = state.localCache;
-        title = "Summary (Local)";
-        headerHtml = `<div class="cached-summary-header"><span class="cached-badge local-cache">LOCAL</span></div>`;
-        if (state.lastMeta) {
-          headerHtml += this._buildGenerateMetaHtml(state.lastMeta);
-        }
+        title = this._getSummaryPanelTitle("Local");
+        const meta = this._metaFromLocalCache(local) || state.lastMeta;
+        const metaLine = this._buildGenerateMetaLine(meta);
+        headerHtml = `<div class="cached-summary-header"><span class="cached-badge local-cache">LOCAL</span>${metaLine}</div>`;
         pathMap = await this._getCommentPathToIdMap(
           state.itemId,
           local.metadata
         );
         bodyHtml = this._formatSummaryHtml(local.summary || "", pathMap);
       } else {
-        title = "Summary";
+        title = this._getSummaryPanelTitle();
         bodyHtml = `<div class="summary-empty-prompt">No local summary yet.</div>
           <div class="summary-actions"><button type="button" class="cache-toggle-btn summary-generate-btn" id="summary-generate-post">Generate</button></div>`;
       }
@@ -214,18 +351,22 @@ class Summarization {
 
   /**
    * @param {object} meta
-   * @returns {string}
+   * @returns {string} inner HTML (span.cached-info), no wrapper div
    */
-  _buildGenerateMetaHtml(meta) {
+  _buildGenerateMetaLine(meta) {
     if (!meta) return "";
-    const { aiProvider, model, language, duration, cacheIndicator } = meta;
+    const { aiProvider, model, language, duration, cacheIndicator, generatedAt } =
+      meta;
     if (!aiProvider) return "";
     const providerText = model
       ? `${aiProvider} / ${model}`
       : `${aiProvider}`;
-    let html = `<div class="cached-summary-header"><span class="cached-info">Summarized using <strong>${providerText}</strong>`;
-    if (duration != null) {
+    let html = `<span class="cached-info">Summarized using <strong>${providerText}</strong>`;
+    if (duration != null && duration !== "") {
       html += ` in <strong>${duration}</strong> secs`;
+    }
+    if (generatedAt) {
+      html += ` · <strong>${new Date(generatedAt).toLocaleString()}</strong>`;
     }
     if (language && language !== "en") {
       html += ` in <strong>${this.getLanguageName(language)}</strong>`;
@@ -233,8 +374,18 @@ class Summarization {
     if (cacheIndicator) {
       html += ` ${cacheIndicator}`;
     }
-    html += `</span></div>`;
+    html += `</span>`;
     return html;
+  }
+
+  /**
+   * @param {object} meta
+   * @returns {string}
+   */
+  _buildGenerateMetaHtml(meta) {
+    const line = this._buildGenerateMetaLine(meta);
+    if (!line) return "";
+    return `<div class="cached-summary-header">${line}</div>`;
   }
 
   _bindSourceTabHandlers() {
@@ -350,7 +501,9 @@ class Summarization {
 
       const [localCache, serverCache] = await Promise.all([
         this.checkLocalCache(itemId),
-        this.enhancer.getCachedSummary(itemId),
+        this.enhancer.adapter?.supportsServerSummary?.()
+          ? this.enhancer.getCachedSummary(itemId)
+          : Promise.resolve(null),
       ]);
 
       const state = this._ensureSummaryViewState(itemId);
@@ -374,6 +527,9 @@ class Summarization {
         state.activeView = "local";
         state.generating = null;
         await this._renderSummaryView();
+        if (this.enhancer.adapter?.shouldAutoGeneratePostSummary?.()) {
+          await this._generatePostSummary();
+        }
       }
     } catch (error) {
       this.handleError("Error opening summary panel", error);
@@ -413,24 +569,39 @@ class Summarization {
 
       const [localCache, serverCache] = await Promise.all([
         this.checkLocalCache(itemId),
-        this.enhancer.getCachedSummary(itemId),
+        this.enhancer.adapter?.supportsServerSummary?.()
+          ? this.enhancer.getCachedSummary(itemId)
+          : Promise.resolve(null),
       ]);
       state.localCache = localCache;
       state.serverCache = serverCache;
 
+      // Detect article page (non-dedicated comments) → post-body-only summary
+      const isPostOnly = this.enhancer.adapter?.isDedicatedCommentsPage?.() === false;
+
+      const summaryLabel = isPostOnly ? "Article Summary" : "Post Summary";
       this.showLoadingMessage(
-        "Post Summary",
+        summaryLabel,
         localCache || serverCache
           ? "Regenerating summary..."
-          : "Analyzing all threads in this post...",
+          : isPostOnly
+            ? "Analyzing the article..."
+            : "Analyzing all threads in this post...",
         aiProvider,
         model
       );
 
-      const { formattedComment, commentPathToIdMap } = await this.getHNThread(
-        itemId
+      const { formattedComment, commentPathToIdMap } = isPostOnly
+        ? await this._getPostBodyOnly()
+        : await this.getHNThread(itemId);
+      await this.summarizeTextWithAI(
+        formattedComment,
+        commentPathToIdMap,
+        null,
+        null,
+        isPostOnly,
+        true
       );
-      await this.summarizeTextWithAI(formattedComment, commentPathToIdMap);
     } catch (error) {
       this.handleError("Error preparing for summarization", error);
     }
@@ -446,7 +617,9 @@ class Summarization {
     try {
       const [localCache, serverCache] = await Promise.all([
         this.checkLocalCache(itemId),
-        this.enhancer.getCachedSummary(itemId),
+        this.enhancer.adapter?.supportsServerSummary?.()
+          ? this.enhancer.getCachedSummary(itemId)
+          : Promise.resolve(null),
       ]);
 
       if (!localCache && !serverCache) return;
@@ -477,6 +650,9 @@ class Summarization {
     const state = this._ensureSummaryViewState(itemId);
     state.localCache = localCache;
     state.serverCache = serverCache;
+    if (localCache) {
+      state.lastMeta = this._metaFromLocalCache(localCache) || state.lastMeta;
+    }
     if (which === "local" || which === "server") {
       state.activeView = which;
     } else {
@@ -532,10 +708,10 @@ class Summarization {
 
     formattedSummary = this._normalizeCommentAnchors(formattedSummary);
 
-    // Replace [#N] and [#post] references with clickable anchor buttons
+    // Replace [#N], [#post], and [P#] (paragraph) references with clickable buttons
     formattedSummary = formattedSummary.replace(
-      /\[#(\d+|post)\]/g,
-      '<button class="hn-summary-ref" data-ref="$1">[#$1]</button>'
+      /\[(#\d+|#post|P\d+)\]/g,
+      '<button class="hn-summary-ref" data-ref="$1">[$1]</button>'
     );
 
     return formattedSummary;
@@ -584,6 +760,15 @@ class Summarization {
       return hashMatch[1];
     }
 
+    const commentMatch = href.match(/\/comment\/(\d+)/);
+    if (commentMatch) {
+      return `comment-${commentMatch[1]}`;
+    }
+
+    if (/^comment-\d+$/.test(href)) {
+      return href;
+    }
+
     if (/^\d+$/.test(href)) {
       return href;
     }
@@ -597,21 +782,34 @@ class Summarization {
    * @returns {HTMLElement|null}
    */
   _resolveCommentFromLink(link) {
+    const adapter = this.enhancer.adapter;
+    const domUtils = this.enhancer.domUtils;
+
     const directId = link.dataset.commentId;
     if (directId) {
+      const viaAdapter = domUtils.findCommentElementById(directId);
+      if (viaAdapter) {
+        return viaAdapter;
+      }
       const byId = document.getElementById(directId);
       if (byId) {
-        return byId;
+        return byId.closest(".comment") || byId;
       }
     }
 
     const path = link.dataset.commentPath || "";
-    if (path && this._summaryPathMap instanceof Map) {
-      const mappedId = this._summaryPathMap.get(path);
-      if (mappedId) {
-        const byMappedId = document.getElementById(String(mappedId));
-        if (byMappedId) {
-          return byMappedId;
+    if (path) {
+      const viaPath = adapter?.resolveBlockByRef?.(path);
+      if (viaPath) {
+        return viaPath;
+      }
+      if (this._summaryPathMap instanceof Map) {
+        const mappedId = this._summaryPathMap.get(path);
+        if (mappedId) {
+          const viaMap = domUtils.findCommentElementById(String(mappedId));
+          if (viaMap) {
+            return viaMap;
+          }
         }
       }
     }
@@ -620,7 +818,7 @@ class Summarization {
     if (href) {
       const commentId = this._extractCommentIdFromHref(href);
       if (commentId) {
-        return document.getElementById(commentId);
+        return domUtils.findCommentElementById(commentId);
       }
     }
 
@@ -644,7 +842,12 @@ class Summarization {
         event.preventDefault();
         const comment = this._resolveCommentFromLink(newLink);
         if (comment) {
-          this.enhancer.navigation.setCurrentComment(comment);
+          this._scrollAndFlashSummaryTarget(comment);
+          const isHN =
+            this.enhancer.adapter?.getSiteKey?.() === "news.ycombinator.com";
+          if (isHN && comment.querySelector(".hnuser")) {
+            this.enhancer.navigation?.setCurrentComment(comment, false);
+          }
         } else {
           console.error(
             "Failed to resolve comment for link:",
@@ -676,38 +879,57 @@ class Summarization {
       bindLink(link);
     });
 
-    // Bind [#N] / [#post] ref buttons from adapter-based summaries
+    // Bind [#N] / [#post] / [P#] ref buttons from adapter-based summaries
     textElement.querySelectorAll(".hn-summary-ref").forEach((btn) => {
       const newBtn = btn.cloneNode(true);
       btn.parentNode.replaceChild(newBtn, btn);
       newBtn.addEventListener("click", (event) => {
         event.preventDefault();
         const ref = newBtn.dataset.ref;
-        const target = this.enhancer.adapter.resolveBlockByRef(ref);
-        if (target) {
-          target.scrollIntoView({ behavior: "smooth", block: "center" });
-          target.classList.add("hn-flash-highlight");
-          setTimeout(() => {
-            target.classList.remove("hn-flash-highlight");
-          }, 2000);
-        } else {
-          // Fallback: try resolving via commentPathToIdMap
-          if (ref !== "post" && this._summaryPathMap) {
-            const mappedId = this._summaryPathMap.get(ref);
-            const el = mappedId ? document.getElementById(String(mappedId)) : null;
-            if (el) {
-              el.scrollIntoView({ behavior: "smooth", block: "center" });
-              el.classList.add("hn-flash-highlight");
-              setTimeout(() => {
-                el.classList.remove("hn-flash-highlight");
-              }, 2000);
-              return;
-            }
-          }
-          console.warn("Could not resolve ref:", ref);
+        if (ref) {
+          this._resolveAndScrollToRef(ref);
         }
       });
     });
+  }
+
+  /**
+   * Resolve a summary ref (e.g. "#1", "post", "P3") to a DOM element and scroll.
+   * @param {string} ref
+   */
+  _resolveAndScrollToRef(ref) {
+    // Paragraph ref: [P1], [P2], etc. → query data-para-index on body element
+    const paraMatch = ref.match(/^P(\d+)$/);
+    if (paraMatch) {
+      const paraEl = this.enhancer.adapter
+        .getPostBodyElement?.()
+        ?.querySelector(`[data-para-index="${paraMatch[1]}"]`);
+      if (paraEl) {
+        this._scrollAndFlashSummaryTarget(paraEl);
+        return;
+      }
+      console.warn("Could not find paragraph:", ref);
+      return;
+    }
+
+    // Strip leading '#' for comment/post refs
+    const cleanRef = ref.startsWith('#') ? ref.slice(1) : ref;
+    const target = this.enhancer.adapter.resolveBlockByRef(cleanRef);
+    if (target) {
+      this._scrollAndFlashSummaryTarget(target);
+    } else {
+      if (cleanRef !== "post" && this._summaryPathMap) {
+        const mappedId = this._summaryPathMap.get(cleanRef);
+        const el = mappedId
+          ? this.enhancer.domUtils.findCommentElementById(String(mappedId))
+          : null;
+        if (el) {
+          this._scrollAndFlashSummaryTarget(el);
+          return;
+        }
+      }
+      console.warn("Could not resolve ref:", ref);
+    }
   }
 
   /**
@@ -812,7 +1034,7 @@ class Summarization {
           })
         );
       }
-      if (!state.serverCache) {
+      if (!state.serverCache && this.enhancer.adapter?.supportsServerSummary?.()) {
         tasks.push(
           this.enhancer.getCachedSummary(itemId).then((cache) => {
             if (cache) state.serverCache = cache;
@@ -923,12 +1145,16 @@ class Summarization {
       }
 
       const siteKey = this.enhancer.adapter ? this.enhancer.adapter.getSiteKey() : "news.ycombinator.com";
+      const cacheCommentId = this._effectiveSummaryCacheId(targetCommentId);
 
       if (postId && aiProvider && model && language && summary) {
         const metadata = {
           duration,
           commentCount: commentPathToIdMap?.size || 0,
           timestamp: Date.now(),
+          provider: aiProvider,
+          model,
+          language,
           commentPathToIdMap:
             commentPathToIdMap instanceof Map
               ? Array.from(commentPathToIdMap.entries())
@@ -938,7 +1164,7 @@ class Summarization {
         HNState.saveSummary(
           siteKey,
           postId,
-          targetCommentId,
+          cacheCommentId,
           aiProvider,
           model,
           language,
@@ -948,7 +1174,7 @@ class Summarization {
 
         this.enhancer.logInfo(
           `Saved summary to cache: ${postId}${
-            targetCommentId ? `_${targetCommentId}` : "_post"
+            cacheCommentId ? `_${cacheCommentId}` : "_post"
           } (provider=${aiProvider}, model=${model}, language=${language})`
         );
 
@@ -975,15 +1201,28 @@ class Summarization {
       const { aiProvider, model, language } = await this.getAIProviderModel();
       if (!aiProvider || !model || !language) return null;
       const siteKey = this.enhancer.adapter ? this.enhancer.adapter.getSiteKey() : "news.ycombinator.com";
+      const cacheCommentId = this._effectiveSummaryCacheId(commentId);
 
-      const cached = await HNState.getSummary(
+      let cached = await HNState.getSummary(
         siteKey,
         postId,
-        commentId,
+        cacheCommentId,
         aiProvider,
         model,
         language
       );
+
+      // Substack article summaries saved before scope split used `_post` key
+      if (!cached && cacheCommentId === "article") {
+        cached = await HNState.getSummary(
+          siteKey,
+          postId,
+          null,
+          aiProvider,
+          model,
+          language
+        );
+      }
 
       if (cached) {
         this.enhancer.logDebug(`Found local cache for post ${postId}`);
@@ -1116,6 +1355,20 @@ class Summarization {
     const adapter = this.enhancer.adapter;
     const commentPathToIdMap = new Map();
     const flatComments = [];
+    const sections = [];
+
+    // Include post body when adapter says so, with numbered paragraphs for LLM
+    if (adapter.shouldIncludePostInSummary?.() !== false) {
+      const bodyEl = adapter.getPostBodyElement?.();
+      if (bodyEl) {
+        const title = adapter.getPostTitle?.() || 'Post';
+        const { formattedText, paraMap } = this._formatPostBodyForLLM(bodyEl, title);
+        sections.push(formattedText + '\n');
+        commentPathToIdMap.set('post', 'post');
+        // Also map paragraph refs for jump resolution
+        paraMap.forEach((_el, key) => commentPathToIdMap.set(key, key));
+      }
+    }
 
     const walkBlocks = (blocks, parentPath = '') => {
       let siblingIndex = 1;
@@ -1153,14 +1406,18 @@ class Summarization {
     const topBlocks = adapter.getCommentBlocks();
     walkBlocks(topBlocks);
 
-    const formattedComment = flatComments
-      .map(
-        (comment) =>
-          `[${comment.path}] (score: ${comment.score}) {downvotes: ${comment.downvotes}} ${comment.author}: ${comment.text}\n`
-      )
-      .join("");
+    if (flatComments.length > 0) {
+      sections.push(
+        flatComments
+          .map(
+            (comment) =>
+              `[${comment.path}] (score: ${comment.score}) {downvotes: ${comment.downvotes}} ${comment.author}: ${comment.text}\n`
+          )
+          .join("")
+      );
+    }
 
-    return { formattedComment, commentPathToIdMap };
+    return { formattedComment: sections.join("\n"), commentPathToIdMap };
   }
 
   /**
@@ -1327,7 +1584,9 @@ class Summarization {
     formattedComment,
     commentPathToIdMap,
     hnItemId = null,
-    targetCommentId = null
+    targetCommentId = null,
+    isPostSummary = false,
+    skipCache = false
   ) {
     try {
       const data = await chrome.storage.sync.get("settings");
@@ -1339,22 +1598,27 @@ class Summarization {
         return;
       }
 
-      // Check for cached summary first
       const postId = this.enhancer.domUtils.getCurrentHNItemId();
-      const cachedSummary = await this.checkCachedSummary(
-        postId,
-        targetCommentId,
-        providerSelection
-      );
 
-      if (cachedSummary) {
-        await this.displayCachedSummary(cachedSummary, commentPathToIdMap);
-        return;
+      if (!skipCache) {
+        const cachedSummary = await this.checkCachedSummary(
+          postId,
+          targetCommentId,
+          providerSelection
+        );
+
+        if (cachedSummary) {
+          await this.displayCachedSummary(cachedSummary, commentPathToIdMap);
+          return;
+        }
       }
 
       // Remove unnecessary anchor tags
       formattedComment =
         this.enhancer.markdownUtils.stripAnchors(formattedComment);
+
+      // Set summary mode so prompts can adapt (post-only vs comments)
+      this._summaryMode = isPostSummary ? 'post' : null;
 
       // Call appropriate AI provider
       await this.callAIProvider(
@@ -1367,6 +1631,8 @@ class Summarization {
       );
     } catch (error) {
       this.handleError("Error fetching settings", error);
+    } finally {
+      this._summaryMode = null;
     }
   }
 
@@ -1381,11 +1647,12 @@ class Summarization {
     );
 
     const siteKey = this.enhancer.adapter ? this.enhancer.adapter.getSiteKey() : "news.ycombinator.com";
+    const cacheCommentId = this._effectiveSummaryCacheId(targetCommentId);
 
     const cachedSummary = await HNState.getSummary(
       siteKey,
       postId,
-      targetCommentId,
+      cacheCommentId,
       providerSelection,
       model,
       language
@@ -1611,10 +1878,39 @@ class Summarization {
    * Prepare prompts for AI
    */
   async preparePrompts(text) {
-    const systemPrompt = this.getSystemMessage();
+    const isPostOnly = this._summaryMode === 'post';
+    const systemPrompt = isPostOnly
+      ? (this.enhancer.adapter.getPostSummarySystemMessage?.() ?? this.getSystemMessage())
+      : this.getSystemMessage();
     const postTitle = this.enhancer.domUtils.getHNPostTitle();
-    const userPrompt = await this.getUserMessage(postTitle, text);
+    const userPrompt = isPostOnly
+      ? await this._getPostSummaryUserMessage(postTitle, text)
+      : await this.getUserMessage(postTitle, text);
     return { systemPrompt, userPrompt };
+  }
+
+  /**
+   * User message template for post-body-only summaries.
+   */
+  async _getPostSummaryUserMessage(title, text) {
+    const { language } = await this.getAIProviderModel();
+    let languageInstruction = '';
+    if (language !== 'en') {
+      languageInstruction =
+        SUMMARIZATION_CONFIG.LANGUAGE_INSTRUCTIONS[language] || '';
+    }
+    const template = this.enhancer.adapter.getPostSummaryUserMessageTemplate?.()
+      ?? `Provide a concise summary of the following article. Capture the main thesis, key arguments, and structure. `
+       + `Use [P#] notation to reference specific paragraphs.`;
+    return `${template}
+
+Article (numbered paragraphs):
+---
+${title}
+---
+${text}
+---
+${languageInstruction}`;
   }
 
   /**
@@ -2052,6 +2348,7 @@ ${languageInstruction}`;
       model,
       language,
       duration: duration ?? "0",
+      generatedAt: Date.now(),
       cacheIndicator,
     };
 

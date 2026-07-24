@@ -168,6 +168,7 @@ function copySrcDirectory(targetDir) {
     "ui-components.js",
     "chat-modal.js",
     "hub-panel.js",
+    "prompts.js",
     "hn-enhancer.js",
   ];
 

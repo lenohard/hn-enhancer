@@ -76,8 +76,8 @@ window.HNEnhancer = class HNEnhancer {
         this.refreshBookmarksDisplay();
         this.navigation.navigateToFirstComment(false);
         this.initChromeBuiltinAI();
-      } else {
-        // Not a home or comments page
+      } else if (typeof this.adapter?.initArticlePage === 'function') {
+        this.adapter.initArticlePage(this);
       }
 
       // Set up keyboard shortcuts
@@ -133,11 +133,13 @@ window.HNEnhancer = class HNEnhancer {
    * @returns {boolean} True if the current page is a comments page
    */
   get isCommentsPage() {
+    if (typeof this.adapter?.isCommentsPage === 'function') {
+      return this.adapter.isCommentsPage();
+    }
     // For HN, check pathname
     if (this.adapter?.getSiteKey() === 'news.ycombinator.com') {
       return window.location.pathname === "/item";
     }
-    // For other sites (Substack, etc.), the single page IS the post
     return true;
   }
 
@@ -176,17 +178,12 @@ window.HNEnhancer = class HNEnhancer {
 
     // Check if wrapper already exists
     let mainWrapper = document.querySelector(".main-content-wrapper");
-    let mainContentEl = null;
 
-    if (!mainWrapper) {
-      mainContentEl = isHN
-        ? document.querySelector("center > table")
-        : (this.adapter?.getPageBodyElement?.()
-          || document.querySelector('article')
-          || document.querySelector('main')
-          || document.querySelector('[role="main"]')
-          || document.body.firstElementChild);
-
+    // HN: wrap content for side-by-side panel layout.
+    // Other sites: skip wrapper to avoid breaking their CSS (Grid/Flex).
+    // SummaryPanel mounts on body with `position: fixed` instead.
+    if (!mainWrapper && isHN) {
+      const mainContentEl = document.querySelector("center > table");
       if (!mainContentEl) {
         this.logDebug("Could not find page content element. Skipping wrapper setup.");
         return;
@@ -204,20 +201,24 @@ window.HNEnhancer = class HNEnhancer {
       this.logDebug("Created .main-content-wrapper for page content.");
     }
 
-    // --- Step 2: Initialize Summary Panel (now that wrapper exists) ---
+    // --- Step 2: Initialize Summary Panel ---
     if (!this.summaryPanel) {
-      if (mainWrapper.querySelector(".summary-panel")) {
+      const existingPanel = document.querySelector(".summary-panel");
+      if (existingPanel) {
         this.logDebug("SummaryPanel already exists in DOM, skipping duplicate.");
       } else {
-        this.summaryPanel = new SummaryPanel();
+        // HN: panel sits inside mainWrapper (flex layout with resizer).
+        // Other sites: mount on body with `position: fixed` to use full viewport.
+        const panelMount = isHN ? undefined : document.body;
+        this.summaryPanel = new SummaryPanel(panelMount);
         this.logDebug("SummaryPanel initialized.");
       }
     }
 
     // --- Step 3: Inject post-level UI elements ---
-    this.uiComponents.injectSummarizePostLink();
-    this.uiComponents.injectChatPostLink();
     if (isHN) {
+      this.uiComponents.injectSummarizePostLink();
+      this.uiComponents.injectChatPostLink();
       this.uiComponents.injectToggleGrandchildrenRootLink();
       this.addCacheIndicators(); // Call without comment parameter for post-level indicators
     }
@@ -285,7 +286,7 @@ window.HNEnhancer = class HNEnhancer {
     } // end if (isHN)
 
     // Auto-open summary panel when cache exists
-    if (isHN) {
+    {
       const postId = this.domUtils.getCurrentHNItemId();
       if (postId && this.summarization) {
         this.summarization.autoOpenSummaryPanel(postId).catch((error) => {
@@ -297,6 +298,11 @@ window.HNEnhancer = class HNEnhancer {
     // Deep-link: item?id=POST#COMMENT_ID → scroll + keyboard focus
     if (isHN) {
       this.focusCommentFromHash();
+    }
+
+    // Site-specific article-page hooks (e.g. Substack enhanceCommentsLink)
+    if (typeof this.adapter?.initArticlePage === 'function') {
+      this.adapter.initArticlePage(this);
     }
   }
 
@@ -1289,6 +1295,12 @@ window.HNEnhancer = class HNEnhancer {
       return; // Skip if navs span not found
     }
 
+    // Dedup check — don't inject if already present
+    if (navsSpan.querySelector(".summarize-thread-link")) {
+      this.logDebug(`Summarize link already exists for comment ${comment.id}`);
+      return;
+    }
+
     const summarizeLink = document.createElement("a");
     summarizeLink.href = "#";
     summarizeLink.textContent = "summarize"; // Shorter text for header
@@ -1846,7 +1858,8 @@ window.HNEnhancer = class HNEnhancer {
    */
   async getCachedSummary(postId) {
     if (!postId) return null;
-    
+    if (this.adapter?.supportsServerSummary?.() === false) return null;
+
     const cacheUrl = `https://app.hncompanion.com/api/posts/${postId}`;
     this.logDebug(`Checking server cache for post ${postId}`);
     
