@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@mozilla/readability':
+        specifier: ^0.6.0
+        version: 0.6.0
     devDependencies:
       '@google/generative-ai':
         specifier: ^0.24.0
@@ -372,6 +376,10 @@ packages:
     resolution: {integrity: sha512-7pJzOWzPm6oJUxml+PCDRzYQ4A1hTMHAciTAHfFK4fkbDZX33nWPVG7Y3vqdKtslcwAzwmrNDc6sXy2nwWnbiw==}
     cpu: [x64]
     os: [win32]
+
+  '@mozilla/readability@0.6.0':
+    resolution: {integrity: sha512-juG5VWh4qAivzTAeMzvY9xs9HY5rAcr2E4I7tiSSCokRFi7XIZCAu92ZkSTsIj1OPceCifL3cpfteP3pDT9/QQ==}
+    engines: {node: '>=14.0.0'}
 
   '@neon-rs/load@0.0.4':
     resolution: {integrity: sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw==}
@@ -2165,6 +2173,8 @@ snapshots:
 
   '@libsql/win32-x64-msvc@0.4.7':
     optional: true
+
+  '@mozilla/readability@0.6.0': {}
 
   '@neon-rs/load@0.0.4': {}
 

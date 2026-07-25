@@ -949,6 +949,20 @@ tr.athing.comtr.noshow .comhead .togg {
     font-size: 12px;
 }
 
+.summary-scope-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.scope-tab-btn.active {
+    background-color: #ff6600;
+    color: #fff;
+    border-color: #ff6600;
+}
+
 .summary-source-tabs {
     display: flex;
     flex-wrap: wrap;

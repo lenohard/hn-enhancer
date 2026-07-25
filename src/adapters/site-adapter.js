@@ -74,6 +74,9 @@ window.SiteAdapter = class SiteAdapter {
      */
     getPostSummaryCacheId() { return null; }
 
+    /** Whether paragraph [P#] anchors are clickable for jump-to-source. */
+    supportsParagraphJump() { return true; }
+
     // ── Comment / block extraction ────────────────────────────────
 
     /**

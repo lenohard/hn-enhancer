@@ -872,6 +872,67 @@ class HNState {
   }
 
   /**
+   * Lists comment IDs that have cached thread summaries for a post (excludes post-level scope).
+   * @param {string} siteKey
+   * @param {string} postId
+   * @param {number} maxAge - Max age in ms (default 24h)
+   * @returns {Promise<string[]>} Newest scopes first
+   */
+  static async listThreadSummaryScopes(
+    siteKey,
+    postId,
+    maxAge = 24 * 60 * 60 * 1000
+  ) {
+    if (!postId) {
+      return [];
+    }
+
+    const prefix = `summary_${siteKey}_${postId}_`;
+    const postPrefix = `summary_${siteKey}_${postId}_post_`;
+    const scopePattern = new RegExp(
+      `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^_]+)_`
+    );
+
+    try {
+      const allData = await chrome.storage.local.get(null);
+      const now = Date.now();
+      const scopes = new Map();
+
+      for (const [storageKey, entry] of Object.entries(allData)) {
+        if (!storageKey.startsWith(prefix) || storageKey.startsWith(postPrefix)) {
+          continue;
+        }
+        if (!entry?.summary) {
+          continue;
+        }
+
+        const match = storageKey.match(scopePattern);
+        const commentId = match?.[1];
+        if (!commentId || commentId === "post" || commentId === "article") {
+          continue;
+        }
+
+        const ts = entry.timestamp || entry.metadata?.timestamp || 0;
+        if (now - ts > maxAge) {
+          continue;
+        }
+
+        const prev = scopes.get(commentId) || 0;
+        if (ts >= prev) {
+          scopes.set(commentId, ts);
+        }
+      }
+
+      return Array.from(scopes.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([commentId]) => commentId);
+    } catch (error) {
+      console.error("Error listing thread summary scopes:", error);
+      return [];
+    }
+  }
+
+  /**
    * Saves a summarization result to cache.
    * @param {string} postId - The ID of the post.
    * @param {string} commentId - The ID of the comment (null for post summaries).

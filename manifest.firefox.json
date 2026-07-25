@@ -93,6 +93,7 @@
         "src/hub-panel.js",
         "src/prompts.js",
         "src/substack-domains.js",
+        "src/lib/readability.js",
         "src/adapters/site-adapter.js",
         "src/adapters/hn-adapter.js",
         "src/adapters/substack-adapter.js",

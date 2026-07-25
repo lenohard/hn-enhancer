@@ -61,35 +61,96 @@ class Summarization {
     this._summaryViewState = null;
   }
 
-  _ensureSummaryViewState(itemId) {
+  _ensureSummaryViewState(itemId, scopeCommentId = undefined) {
     if (!itemId) {
       itemId = this.enhancer.domUtils.getCurrentHNItemId();
     }
-    const cacheScope = this._effectiveSummaryCacheId(null);
+
+    let activeScopeCommentId = null;
+    if (scopeCommentId !== undefined) {
+      activeScopeCommentId = scopeCommentId || null;
+    } else if (this._summaryViewState?.itemId === itemId) {
+      activeScopeCommentId = this._summaryViewState.activeScopeCommentId ?? null;
+    }
+
+    const cacheScope = this._effectiveSummaryCacheId(activeScopeCommentId);
     const stateKey = `${itemId}:${cacheScope ?? "post"}`;
     if (
       !this._summaryViewState ||
       this._summaryViewState.stateKey !== stateKey
     ) {
+      const keepServerCache =
+        this._summaryViewState?.itemId === itemId
+          ? this._summaryViewState.serverCache
+          : null;
       this._summaryViewState = {
         stateKey,
         itemId,
+        activeScopeCommentId,
         cacheScope,
         localCache: null,
         localCaches: [],
         selectedLocalCacheKey: null,
-        serverCache: null,
+        serverCache: keepServerCache,
         generating: null,
         activeView: "local",
         pathMap: new Map(),
         lastMeta: null,
+        threadScopes: [],
       };
+    } else if (scopeCommentId !== undefined) {
+      this._summaryViewState.activeScopeCommentId = activeScopeCommentId;
+      this._summaryViewState.cacheScope = cacheScope;
     }
     // Migrate leftover "generating" view from older sessions in-memory
     if (this._summaryViewState.activeView === "generating") {
       this._summaryViewState.activeView = "local";
     }
     return this._summaryViewState;
+  }
+
+  /**
+   * Whether this page supports post vs thread summary scope tabs (HN comments).
+   * @returns {boolean}
+   */
+  _supportsScopeTabs() {
+    return (
+      this.enhancer.adapter?.getSiteKey?.() === "news.ycombinator.com" &&
+      !!this.enhancer.adapter?.isCommentsPage?.()
+    );
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  _isPostScope(state = this._summaryViewState) {
+    return !state?.activeScopeCommentId;
+  }
+
+  /**
+   * Human-readable label for a thread summary scope tab.
+   * @param {string} commentId
+   * @returns {string}
+   */
+  _getThreadScopeLabel(commentId) {
+    const el = this.enhancer.domUtils.findCommentElementById(commentId);
+    const author = el?.querySelector(".hnuser")?.textContent?.trim();
+    return author ? `Thread (@${author})` : `Thread #${commentId}`;
+  }
+
+  /**
+   * Load cached thread scopes for scope tabs.
+   * @param {string} itemId
+   * @returns {Promise<Array<{commentId: string, label: string}>>}
+   */
+  async _loadThreadScopes(itemId) {
+    const siteKey =
+      this.enhancer.adapter?.getSiteKey?.() ?? "news.ycombinator.com";
+    const commentIds = await HNState.listThreadSummaryScopes(siteKey, itemId);
+    return commentIds.map((commentId) => ({
+      commentId,
+      label: this._getThreadScopeLabel(commentId),
+    }));
   }
 
   /**
@@ -108,11 +169,17 @@ class Summarization {
    * Panel title reflecting page mode (post vs comments thread).
    * @returns {string}
    */
-  _getSummaryPanelTitle(suffix = "") {
+  _getSummaryPanelTitle(suffix = "", state = null) {
+    const viewState = state || this._summaryViewState;
+    if (viewState?.activeScopeCommentId) {
+      const base = this._getThreadScopeLabel(viewState.activeScopeCommentId);
+      return suffix ? `${base} (${suffix})` : base;
+    }
+
     const adapter = this.enhancer.adapter;
-    let base = "Summary";
+    let base = "Full Post Summary";
     if (adapter?.isDedicatedCommentsPage?.()) {
-      base = "Comments Summary";
+      base = "Full Post Summary";
     } else if (adapter?.getPostText?.()) {
       base = "Post Summary";
     }
@@ -169,7 +236,10 @@ class Summarization {
     const { selectKey = null, selectLatest = true } = options;
     const siteKey =
       this.enhancer.adapter?.getSiteKey?.() ?? "news.ycombinator.com";
-    const cacheCommentId = this._effectiveSummaryCacheId(null);
+    const state = this._ensureSummaryViewState(itemId);
+    const cacheCommentId = this._effectiveSummaryCacheId(
+      state.activeScopeCommentId
+    );
 
     let caches = await HNState.listSummaries(siteKey, itemId, cacheCommentId);
 
@@ -178,7 +248,6 @@ class Summarization {
       caches = await HNState.listSummaries(siteKey, itemId, null);
     }
 
-    const state = this._ensureSummaryViewState(itemId);
     state.localCaches = caches;
 
     let selected = null;
@@ -232,16 +301,20 @@ class Summarization {
       return { formattedText: `[post] ${postTitle || 'Article'}`, paraMap };
     }
 
+    const canJump = this.enhancer.adapter?.supportsParagraphJump?.() !== false;
     const paragraphs = bodyEl.querySelectorAll('p');
     const lines = [`[post] ${postTitle || 'Article'}:`];
     let idx = 1;
 
     paragraphs.forEach((p) => {
-      p.dataset.paraIndex = String(idx);
       const text = p.textContent.trim();
-      if (text) {
+      if (!text) return;
+      if (canJump) {
+        p.dataset.paraIndex = String(idx);
         lines.push(`[P${idx}] ${text}`);
         paraMap.set(`P${idx}`, p);
+      } else {
+        lines.push(text);
       }
       idx++;
     });
@@ -277,12 +350,66 @@ class Summarization {
   }
 
   /**
+   * Builds Post / Thread scope tabs (HN comments only).
+   * @param {object} state
+   * @returns {string}
+   */
+  _buildScopeTabsHtml(state) {
+    if (!this._supportsScopeTabs()) {
+      return "";
+    }
+
+    const threadScopes = state.threadScopes || [];
+    const hasThreadScope =
+      !!state.activeScopeCommentId || threadScopes.length > 0;
+    if (!hasThreadScope) {
+      return "";
+    }
+
+    const postActive = this._isPostScope(state) ? "active" : "";
+    const postTab = `<button type="button" class="cache-toggle-btn scope-tab-btn ${postActive}" data-scope="post">Full Post</button>`;
+
+    const seen = new Set();
+    const threadTabs = [];
+
+    if (
+      state.activeScopeCommentId &&
+      !threadScopes.some(
+        (scope) => scope.commentId === state.activeScopeCommentId
+      )
+    ) {
+      threadTabs.push({
+        commentId: state.activeScopeCommentId,
+        label: this._getThreadScopeLabel(state.activeScopeCommentId),
+      });
+    }
+
+    threadScopes.forEach((scope) => {
+      if (seen.has(scope.commentId)) return;
+      seen.add(scope.commentId);
+      threadTabs.push(scope);
+    });
+
+    const threadHtml = threadTabs
+      .map(({ commentId, label }) => {
+        const active =
+          state.activeScopeCommentId === commentId ? "active" : "";
+        return `<button type="button" class="cache-toggle-btn scope-tab-btn ${active}" data-scope="thread" data-comment-id="${commentId}">${label}</button>`;
+      })
+      .join("");
+
+    return `<div class="summary-scope-tabs">${postTab}${threadHtml}</div>`;
+  }
+
+  /**
    * Builds Local / Server tab bar. Local also reflects generating state.
    * @param {object} state
    * @returns {string}
    */
   _buildSourceTabsHtml(state) {
-    const supportsServer = this.enhancer.adapter?.supportsServerSummary?.() ?? false;
+    const supportsServer =
+      (this.enhancer.adapter?.supportsServerSummary?.() ?? false) &&
+      this._isPostScope(state);
     const hasServer = supportsServer && !!state.serverCache;
     const isStreaming = !!(state.generating && state.generating.isStreaming);
     const active = state.activeView === "server" ? "server" : "local";
@@ -351,12 +478,13 @@ class Summarization {
    * @returns {string}
    */
   _buildSummaryMetadataHtml(state) {
+    const scopeTabs = this._buildScopeTabsHtml(state);
     const sourceTabs = this._buildSourceTabsHtml(state);
     const modelTabs = this._buildModelTabsHtml(state);
-    if (!sourceTabs && !modelTabs) {
+    if (!scopeTabs && !sourceTabs && !modelTabs) {
       return "";
     }
-    return `${sourceTabs}${modelTabs}`;
+    return `${scopeTabs}${sourceTabs}${modelTabs}`;
   }
 
   /**
@@ -365,6 +493,10 @@ class Summarization {
   async _renderSummaryView() {
     const state = this._summaryViewState;
     if (!state) return;
+
+    if (this._supportsScopeTabs()) {
+      state.threadScopes = await this._loadThreadScopes(state.itemId);
+    }
 
     const hasLocal = !!state.localCache;
     const hasServer = !!state.serverCache;
@@ -376,12 +508,12 @@ class Summarization {
     }
 
     // Server tab only valid when cache exists; Local may be empty / streaming / cached
-    if (state.activeView === "server" && !hasServer) {
+    if (state.activeView === "server" && (!hasServer || !this._isPostScope(state))) {
       state.activeView = "local";
     }
 
     const tabsHtml = this._buildSummaryMetadataHtml(state);
-    let title = this._getSummaryPanelTitle();
+    let title = this._getSummaryPanelTitle("", state);
     let headerHtml = "";
     let bodyHtml = "";
     let pathMap = state.pathMap || new Map();
@@ -392,7 +524,7 @@ class Summarization {
       const cachedTime = server.created_at
         ? new Date(server.created_at).toLocaleString()
         : "Unknown";
-      title = "Summary (Server)";
+      title = "Full Post Summary (Server)";
       headerHtml = `<div class="cached-summary-header"><span class="cached-badge server-cache">SERVER</span><span class="cached-info">From ${cacheSource} on ${cachedTime}</span></div>`;
       pathMap = await this._getCommentPathToIdMap(state.itemId, null);
       bodyHtml = this._formatSummaryHtml(
@@ -403,7 +535,7 @@ class Summarization {
       // Streaming (or error/loading with no finished local yet) shows under Local
       if (isStreaming || (hasGenerating && !hasLocal)) {
         const gen = state.generating;
-        title = gen.title || "Summary";
+        title = gen.title || this._getSummaryPanelTitle("", state);
         headerHtml = `<div class="cached-summary-header"><span class="cached-badge local-cache">LOCAL</span><span class="cached-info">${isStreaming ? "Generating…" : ""}</span></div>`;
         if (gen.rawText) {
           pathMap = gen.pathMap || pathMap;
@@ -417,7 +549,7 @@ class Summarization {
         }
       } else if (hasLocal) {
         const local = state.localCache;
-        title = this._getSummaryPanelTitle("Local");
+        title = this._getSummaryPanelTitle("Local", state);
         const meta = this._metaFromLocalCache(local) || state.lastMeta;
         const metaLine = this._buildGenerateMetaLine(meta);
         headerHtml = `<div class="cached-summary-header"><span class="cached-badge local-cache">LOCAL</span>${metaLine}</div>`;
@@ -427,8 +559,11 @@ class Summarization {
         );
         bodyHtml = this._formatSummaryHtml(local.summary || "", pathMap);
       } else {
-        title = this._getSummaryPanelTitle();
-        bodyHtml = `<div class="summary-empty-prompt">No local summary yet.</div>
+        title = this._getSummaryPanelTitle("", state);
+        const emptyLabel = this._isPostScope(state)
+          ? "No local summary yet for the full post."
+          : "No local summary yet for this thread.";
+        bodyHtml = `<div class="summary-empty-prompt">${emptyLabel}</div>
           <div class="summary-actions"><button type="button" class="cache-toggle-btn summary-generate-btn" id="summary-generate-post">Generate</button></div>`;
       }
 
@@ -445,10 +580,78 @@ class Summarization {
       text: `${headerHtml}${bodyHtml}`,
     });
 
+    this._bindScopeTabHandlers();
     this._bindSourceTabHandlers();
     this._bindModelTabHandlers();
     this._bindPostSummaryActions();
     this._bindSummaryCommentLinks();
+  }
+
+  _bindScopeTabHandlers() {
+    const state = this._summaryViewState;
+    if (!state) return;
+
+    document.querySelectorAll(".scope-tab-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        const scope = btn.dataset.scope;
+        if (scope === "post") {
+          await this._switchSummaryScope(null);
+        } else if (scope === "thread") {
+          const commentId = btn.dataset.commentId;
+          if (commentId) {
+            await this._switchSummaryScope(commentId);
+          }
+        }
+      });
+    });
+  }
+
+  /**
+   * Switch between full-post and thread summary scopes.
+   * @param {string|null} scopeCommentId - null for full post
+   */
+  async _switchSummaryScope(scopeCommentId) {
+    const state = this._summaryViewState;
+    if (!state) return;
+
+    const normalized = scopeCommentId || null;
+    if (state.activeScopeCommentId === normalized) return;
+
+    this._ensureSummaryViewState(state.itemId, normalized);
+    const newState = this._summaryViewState;
+
+    if (normalized) {
+      newState.activeView = "local";
+    }
+
+    await this.loadLocalCaches(state.itemId);
+
+    if (!normalized && this.enhancer.adapter?.supportsServerSummary?.()) {
+      newState.serverCache = await this.enhancer.getCachedSummary(state.itemId);
+    }
+
+    await this._renderSummaryView();
+  }
+
+  /**
+   * Regenerate summary for the active scope (post or thread).
+   */
+  async _generateActiveScopeSummary() {
+    const state = this._summaryViewState;
+    if (!state) return;
+
+    if (state.activeScopeCommentId) {
+      const comment = this.enhancer.domUtils.findCommentElementById(
+        state.activeScopeCommentId
+      );
+      if (comment) {
+        await this.summarizeThread(comment, true);
+      }
+      return;
+    }
+
+    await this._generatePostSummary();
   }
 
   _bindPostSummaryActions() {
@@ -461,7 +664,7 @@ class Summarization {
     btn.parentNode.replaceChild(newBtn, btn);
     newBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      this._generatePostSummary();
+      this._generateActiveScopeSummary();
     });
   }
 
@@ -559,8 +762,10 @@ class Summarization {
   _switchSummaryView(view) {
     const state = this._summaryViewState;
     if (!state) return;
-    // Local always switchable (empty / cache / stream). Server needs cache.
-    if (view === "server" && !state.serverCache) return;
+    // Local always switchable (empty / cache / stream). Server needs cache and post scope.
+    if (view === "server" && (!state.serverCache || !this._isPostScope(state))) {
+      return;
+    }
     if (state.activeView === view) return;
     state.activeView = view;
     this._renderSummaryView();
@@ -577,6 +782,7 @@ class Summarization {
     );
     if (!metadataElement) return;
     metadataElement.innerHTML = this._buildSummaryMetadataHtml(state);
+    this._bindScopeTabHandlers();
     this._bindSourceTabHandlers();
     this._bindModelTabHandlers();
   }
@@ -584,10 +790,15 @@ class Summarization {
   /**
    * Summarizes a thread starting from a specific comment
    */
-  async summarizeThread(comment) {
+  async summarizeThread(comment, skipCache = false) {
     try {
       const { hnItemId, targetCommentId } = this.extractCommentInfo(comment);
       if (!hnItemId || !targetCommentId) return;
+
+      if (!this.enhancer.summaryPanel.isVisible) {
+        this.enhancer.summaryPanel.toggle();
+      }
+      this._ensureSummaryViewState(hnItemId, targetCommentId);
 
       const { formattedComment, commentPathToIdMap } =
         this.prepareCommentData(comment);
@@ -615,8 +826,9 @@ class Summarization {
         return;
       }
 
+      const state = this._summaryViewState;
       this.showLoadingMessage(
-        "Thread Summary",
+        this._getSummaryPanelTitle("", state),
         `Analyzing discussion in ${highlightedAuthor} thread`,
         aiProvider,
         model
@@ -625,7 +837,9 @@ class Summarization {
         formattedComment,
         commentPathToIdMap,
         hnItemId,
-        targetCommentId
+        targetCommentId,
+        false,
+        skipCache
       );
     } catch (error) {
       this.handleError("Error in thread summarization", error);
@@ -650,6 +864,8 @@ class Summarization {
         this.enhancer.summaryPanel.toggle();
       }
 
+      this._ensureSummaryViewState(itemId, null);
+
       const [{ selected: localCache }, serverCache] = await Promise.all([
         this.loadLocalCaches(itemId),
         this.enhancer.adapter?.supportsServerSummary?.()
@@ -657,7 +873,7 @@ class Summarization {
           : Promise.resolve(null),
       ]);
 
-      const state = this._ensureSummaryViewState(itemId);
+      const state = this._summaryViewState;
       state.serverCache = serverCache;
 
       if (state.generating?.isStreaming) {
@@ -703,7 +919,7 @@ class Summarization {
         this.enhancer.summaryPanel.toggle();
       }
 
-      const state = this._ensureSummaryViewState(itemId);
+      const state = this._ensureSummaryViewState(itemId, null);
 
       if (state.generating?.isStreaming) {
         state.activeView = "local";
@@ -1265,7 +1481,11 @@ class Summarization {
           })
         );
       }
-      if (!state.serverCache && this.enhancer.adapter?.supportsServerSummary?.()) {
+      if (
+        this._isPostScope(state) &&
+        !state.serverCache &&
+        this.enhancer.adapter?.supportsServerSummary?.()
+      ) {
         tasks.push(
           this.enhancer.getCachedSummary(itemId).then((cache) => {
             if (cache) state.serverCache = cache;

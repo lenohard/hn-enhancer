@@ -205,6 +205,23 @@ function copySrcDirectory(targetDir) {
       console.log(`Copied adapters/${file} to dist`);
     });
   }
+
+  // Copy lib directory (e.g. readability.js)
+  const libSourcePath = path.join("src", "lib");
+  const libDestPath = path.join(srcTargetPath, "lib");
+  if (fs.existsSync(libSourcePath)) {
+    if (!fs.existsSync(libDestPath)) {
+      fs.mkdirSync(libDestPath, { recursive: true });
+    }
+    const libFiles = fs.readdirSync(libSourcePath).filter(f => f.endsWith('.js'));
+    libFiles.forEach(file => {
+      fs.copyFileSync(
+        path.join(libSourcePath, file),
+        path.join(libDestPath, file)
+      );
+      console.log(`Copied lib/${file} to dist`);
+    });
+  }
 }
 
 // Run the build

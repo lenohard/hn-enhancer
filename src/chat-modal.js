@@ -2294,21 +2294,22 @@ ${systemPromptIntro}
       }
 
       // --- Build the system message ---
+      const canJump = adapter?.supportsParagraphJump?.() !== false;
       const systemMessageFromAdapter = adapter?.getChatSystemMessage?.();
       const systemPrompt =
         systemMessageFromAdapter ||
-        `You are a reading companion. Use the supplied article (and summary, if provided) to answer the user's questions concisely and accurately. Cite paragraphs with [P#] notation.`;
+        (canJump
+          ? `You are a reading companion. Use the supplied article (and summary, if provided) to answer the user's questions concisely and accurately. Cite paragraphs with [P#] notation.`
+          : `You are a reading companion. Use the supplied article (and summary, if provided) to answer the user's questions concisely and accurately. When quoting, use quotation marks around the relevant text.`);
 
       // --- Build the initial user message that carries the context ---
       const contextSections = [`# Article Title\n${postTitle}`];
 
       if (contextType !== "summary" && postParagraphs.length > 0) {
-        contextSections.push(
-          "# Article Body\n" +
-            postParagraphs
-              .map((para, i) => `[P${i + 1}] ${para}`)
-              .join("\n\n")
-        );
+        const bodyText = canJump
+          ? postParagraphs.map((para, i) => `[P${i + 1}] ${para}`).join("\n\n")
+          : postParagraphs.join("\n\n");
+        contextSections.push(`# Article Body\n${bodyText}`);
       }
 
       if (summaryEntry?.summary) {
@@ -2318,7 +2319,9 @@ ${systemPromptIntro}
       }
 
       contextSections.push(
-        "# Instructions\nAnswer the user's questions using the materials above. Cite the article with [P#] notation when relevant. Reply in the user's language."
+        canJump
+          ? "# Instructions\nAnswer the user's questions using the materials above. Cite the article with [P#] notation when relevant. Reply in the user's language."
+          : "# Instructions\nAnswer the user's questions using the materials above. When quoting, use quotation marks. Reply in the user's language."
       );
 
       const initialUserMessage = contextSections.join("\n\n---\n\n");

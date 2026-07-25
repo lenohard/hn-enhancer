@@ -220,13 +220,15 @@ window.HNEnhancer = class HNEnhancer {
       document.body.appendChild(fab);
     }
 
-    document.addEventListener('mouseup', () => setTimeout(showFab, 10));
+    document.addEventListener('mouseup', (e) => {
+      if (fab && fab.contains(e.target)) return; // clicking inside fab
+      setTimeout(showFab, 10);
+    });
     document.addEventListener('keyup', (e) => {
       if (e.key === 'Shift' || e.key.startsWith('Arrow')) {
         setTimeout(showFab, 10);
       }
     });
-    // Dismiss on click elsewhere
     document.addEventListener('mousedown', (e) => {
       if (fab && !fab.contains(e.target)) removeFab();
     });

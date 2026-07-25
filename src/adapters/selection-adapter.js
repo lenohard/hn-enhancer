@@ -36,9 +36,21 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
         const selected = selection ? selection.toString().trim() : '';
         if (selected.length > 20) return selected;
 
+        // Try Readability.js for clean article extraction
+        try {
+            const docClone = document.cloneNode(true);
+            const reader = new window.Readability(docClone);
+            const article = reader.parse();
+            if (article?.textContent?.length > 50) {
+                return article.textContent.trim().slice(0, 50000);
+            }
+        } catch (e) {
+            // Readability failed, continue to fallbacks
+        }
+
         // Fallback: try common article containers
-        const article = document.querySelector('article, [role="main"], main, .post-content, .article-content, .entry-content');
-        if (article) return article.innerText.trim().slice(0, 50000);
+        const el = document.querySelector('article, [role="main"], main, .post-content, .article-content, .entry-content');
+        if (el) return el.innerText.trim().slice(0, 50000);
 
         return document.body.innerText.trim().slice(0, 50000);
     }
@@ -47,7 +59,7 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
     getCommentBlocks() { return []; }
 
     getSystemMessage() {
-        return `You are a helpful reading companion. Summarize the provided text clearly and concisely. Use [P#] to reference specific paragraphs when citing.`;
+        return `You are a helpful reading companion. Summarize the provided text clearly and concisely. When quoting, use quotation marks around the relevant text.`;
     }
 
     getUserMessageTemplate() {
@@ -60,13 +72,16 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
 
     shouldAutoGeneratePostSummary() { return true; }
 
+    /** Paragraphs can't be jumped to — original page DOM is untouched. */
+    supportsParagraphJump() { return false; }
+
     getPostBodyElement() {
         const text = this.getPostText();
         if (!text) return null;
         const div = document.createElement('div');
-        text.split(/\n+/).filter(Boolean).forEach((line, i) => {
+        text.split(/\n+/).filter(Boolean).forEach((line) => {
             const p = document.createElement('p');
-            p.textContent = `[P${i + 1}] ${line}`;
+            p.textContent = line;
             div.appendChild(p);
         });
         return div;
@@ -79,6 +94,6 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
     }
 
     getChatSystemMessage() {
-        return `You are a helpful reading companion. Answer questions about the provided text clearly and concisely. Use [P#] to reference specific paragraphs when citing.`;
+        return `You are a helpful reading companion. Answer questions about the provided text clearly and concisely. When quoting, use quotation marks around the relevant text.`;
     }
 };
