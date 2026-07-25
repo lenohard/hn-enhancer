@@ -369,16 +369,23 @@ window.HNEnhancer = class HNEnhancer {
     }, true);
   }
 
+  _captureSelectionForAdapter() {
+    const sel = window.getSelection()?.toString().trim() || '';
+    if (sel.length >= 20 && this.adapter?.setSelectionOverride) {
+      this.adapter.setSelectionOverride(sel);
+    }
+  }
+
   _summarizeSelection() {
+    this._captureSelectionForAdapter();
     if (this.summarization) {
       this.summarization.summarizeAllComments();
     }
   }
 
   _chatSelection() {
-    if (this.chatModal) {
-      this.chatModal.openForPost();
-    }
+    this._captureSelectionForAdapter();
+    this.openPostChatModal();
   }
 
   initHomePageNavigation() {

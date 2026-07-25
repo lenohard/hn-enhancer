@@ -27,11 +27,31 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
     isCommentsPage() { return false; }
 
     /**
+     * Text captured when the user opens chat/summary from the selection FAB.
+     * Selection can be cleared before the modal reads the page body.
+     * @type {string|null}
+     */
+    _selectionOverride = null;
+
+    /**
+     * @param {string|null} text
+     */
+    setSelectionOverride(text) {
+        this._selectionOverride = text && text.length >= 20 ? text : null;
+    }
+
+    /**
      * Return the currently selected text as the "post text" for summarization.
      * Falls back to the page's main content area text.
      * @returns {string}
      */
     getPostText() {
+        if (this._selectionOverride && this._selectionOverride.length >= 20) {
+            const text = this._selectionOverride;
+            this._selectionOverride = null;
+            return text;
+        }
+
         const selection = window.getSelection();
         const selected = selection ? selection.toString().trim() : '';
         if (selected.length > 20) return selected;
@@ -99,8 +119,49 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
 
     // ---- Chat flow hooks ----
 
-    getChatContextOptions() {
-        return [{ id: 'selection', label: 'Selection', group: 'post' }];
+    /** Cache scope for page-level summaries (used by chat + summary cache). */
+    getPostSummaryCacheId() {
+        return 'page';
+    }
+
+    /**
+     * Return the most recent cached page summary, or null.
+     * @param {object} enhancer
+     * @returns {Promise<object|null>}
+     */
+    async getCachedPostSummary(enhancer) {
+        const postId = this.getPostId();
+        if (!postId || !enhancer?.hnState?.listSummaries) return null;
+        const scope = this.getPostSummaryCacheId();
+        const entries = await enhancer.hnState.listSummaries(
+            this.getSiteKey(),
+            postId,
+            scope
+        );
+        return entries && entries.length > 0 ? entries[0] : null;
+    }
+
+    /**
+     * Post-body chat: page content, optional cached summary, or both.
+     * @param {object} enhancer
+     * @returns {Promise<Array<{id: string, label: string, group: string}>>}
+     */
+    async getChatContextOptions(enhancer) {
+        const options = [
+            { id: 'post', label: 'Post', group: 'post' },
+        ];
+
+        const cached = await this.getCachedPostSummary(enhancer);
+        if (cached) {
+            options.push({ id: 'summary', label: 'Summary', group: 'post' });
+            options.push({
+                id: 'post-summary',
+                label: 'Post + Summary',
+                group: 'post',
+            });
+        }
+
+        return options;
     }
 
     getChatSystemMessage() {
@@ -112,7 +173,14 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
 
     /** @override */
     getHubButtons(enhancer) {
-        return this.getSaveHubButtons(enhancer);
+        return [
+            {
+                label: 'Chat',
+                title: 'Open a chat about this page',
+                onClick: () => enhancer.openPostChatModal(),
+            },
+            ...this.getSaveHubButtons(enhancer),
+        ];
     }
 
 };
