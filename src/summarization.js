@@ -883,62 +883,17 @@ class Summarization {
   }
 
   /**
-   * Replace paragraph refs in raw summary text with private-use tokens (survives markdown escape).
-   * Handles [P11], (P11), （P11）, and ranges like (P12–14).
-   * @param {string} text
-   * @returns {{ text: string, tokens: string[][] }}
+   * @deprecated Use MarkdownUtils.tokenizeParagraphRefs instead.
    */
   _tokenizeParagraphRefs(text) {
-    const tokens = [];
-    const emit = (refs) => {
-      const token = `\uE000${tokens.length}\uE001`;
-      tokens.push(refs);
-      return token;
-    };
-
-    // Ranges first: (P12–14), [P12-14], （P12–14）
-    text = text.replace(
-      /(?:\[|\(|（)\s*P(\d+)\s*[-–—~至]\s*P?(\d+)\s*(?:\]|）|\))/gi,
-      (match, startStr, endStr) => {
-        const start = parseInt(startStr, 10);
-        const end = parseInt(endStr, 10);
-        if (!start || !end || end < start || end - start > 30) {
-          return match;
-        }
-        const refs = [];
-        for (let i = start; i <= end; i++) {
-          refs.push(`P${i}`);
-        }
-        return emit(refs);
-      }
-    );
-
-    // Single refs: [P11], (P11), （P11）
-    text = text.replace(
-      /(?:\[|\(|（)\s*(P\d+)\s*(?:\]|）|\))/gi,
-      (match, ref) => emit([ref])
-    );
-
-    return { text, tokens };
+    return MarkdownUtils.tokenizeParagraphRefs(text);
   }
 
   /**
-   * Restore paragraph-ref tokens as clickable jump buttons.
-   * @param {string} html
-   * @param {string[][]} tokens
-   * @returns {string}
+   * @deprecated Use MarkdownUtils.restoreParagraphRefTokens instead.
    */
   _restoreParagraphRefTokens(html, tokens) {
-    const makeBtn = (ref) =>
-      `<button type="button" class="hn-summary-ref" data-ref="${ref}">[${ref}]</button>`;
-
-    tokens.forEach((refs, index) => {
-      const token = `\uE000${index}\uE001`;
-      const buttons = refs.map(makeBtn).join("");
-      html = html.split(token).join(buttons);
-    });
-
-    return html;
+    return MarkdownUtils.restoreParagraphRefTokens(html, tokens);
   }
 
   /**

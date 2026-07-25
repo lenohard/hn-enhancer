@@ -449,7 +449,8 @@
     cursor: pointer;
 }
 
-.summary-text .hn-summary-ref {
+.summary-text .hn-summary-ref,
+.chat-message-llm .hn-summary-ref {
     display: inline;
     padding: 0;
     margin: 0 1px;
@@ -461,7 +462,8 @@
     cursor: pointer;
 }
 
-.summary-text .hn-summary-ref:hover {
+.summary-text .hn-summary-ref:hover,
+.chat-message-llm .hn-summary-ref:hover {
     color: #e55a00;
 }
 

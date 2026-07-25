@@ -491,13 +491,18 @@ class ChatModal {
       const updatedMarkdown = existingMarkdown + text;
       textElement.dataset.rawMarkdown = updatedMarkdown;
 
-      textElement.innerHTML =
-        this.enhancer.markdownUtils.replacePathsWithCommentLinks(
-          this.enhancer.markdownUtils.convertMarkdownToHTML(updatedMarkdown),
-          this.commentPathToIdMap
-        );
+      const { text: tokenizedText, tokens: paraTokens } =
+        MarkdownUtils.tokenizeParagraphRefs(updatedMarkdown);
+
+      let html = this.enhancer.markdownUtils.replacePathsWithCommentLinks(
+        this.enhancer.markdownUtils.convertMarkdownToHTML(tokenizedText),
+        this.commentPathToIdMap
+      );
+      html = MarkdownUtils.restoreParagraphRefTokens(html, paraTokens);
+      textElement.innerHTML = html;
 
       this._addCommentLinkHandlers(textElement);
+      this._addParagraphRefHandlers(textElement);
 
       // Scroll to bottom after updating the streaming content
       this.conversationArea.scrollTop = this.conversationArea.scrollHeight;
@@ -516,12 +521,16 @@ class ChatModal {
 
     // 根据发送者类型处理文本
     if (sender === "llm") {
-      // 处理LLM回复中的评论引用
-      textElement.innerHTML =
-        this.enhancer.markdownUtils.replacePathsWithCommentLinks(
-          this.enhancer.markdownUtils.convertMarkdownToHTML(text),
-          this.commentPathToIdMap
-        );
+      // 处理LLM回复中的评论引用和段落引用
+      const { text: tokenizedText, tokens: paraTokens } =
+        MarkdownUtils.tokenizeParagraphRefs(text);
+
+      let html = this.enhancer.markdownUtils.replacePathsWithCommentLinks(
+        this.enhancer.markdownUtils.convertMarkdownToHTML(tokenizedText),
+        this.commentPathToIdMap
+      );
+      html = MarkdownUtils.restoreParagraphRefTokens(html, paraTokens);
+      textElement.innerHTML = html;
     } else {
       // 普通Markdown渲染
       let processedText = text;
@@ -563,13 +572,33 @@ class ChatModal {
 
     this.currentLlmMessageElement = null; // Reset if not streaming LLM
 
-    // 为LLM消息中的评论链接添加点击事件
+    // 为LLM消息中的评论链接和段落引用添加点击事件
     if (sender === "llm") {
       this._addCommentLinkHandlers(textElement);
+      this._addParagraphRefHandlers(textElement);
     }
 
     // Scroll to bottom
     this.conversationArea.scrollTop = this.conversationArea.scrollHeight;
+  }
+
+  /**
+   * 为段落引用按钮添加点击事件处理器
+   * @param {HTMLElement} container - 包含段落引用的容器元素
+   * @private
+   */
+  _addParagraphRefHandlers(container) {
+    container.querySelectorAll(".hn-summary-ref").forEach((btn) => {
+      if (btn.dataset.chatRefBound) return;
+      btn.dataset.chatRefBound = "true";
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const ref = btn.dataset.ref;
+        if (ref && this.enhancer.summarization) {
+          this.enhancer.summarization._resolveAndScrollToRef(ref);
+        }
+      });
+    });
   }
 
   /**
