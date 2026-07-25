@@ -354,13 +354,25 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
     // ── Anchor resolution ─────────────────────────────────────────
 
     /**
-     * Given a ref string (comment ID), return the corresponding DOM element.
-     * @param {string} ref — typically the comment's numeric ID string
+     * Given a ref string (comment ID or tree path), return the DOM element.
+     * @param {string} ref — numeric comment ID (e.g. "41055752") or path ("1.2.3")
      * @returns {HTMLElement|null}
      */
     resolveBlockByRef(ref) {
         if (!ref) return null;
-        return document.getElementById(ref);
+
+        if (/^\d+(?:\.\d+)*$/.test(ref) && ref.includes('.')) {
+            return this.resolveCommentElementByPath(ref);
+        }
+
+        const byId = document.getElementById(ref);
+        if (byId) return byId;
+
+        if (/^\d+$/.test(ref)) {
+            return this.resolveCommentElementByPath(ref);
+        }
+
+        return null;
     }
 
     // ── Prompt templates ───────────────────────────────────────────
@@ -975,7 +987,9 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
     }
 
     /**
-     * Whether this comment row is collapsed (toggle shows [+]).
+     * Whether this comment row is collapsed.
+     * HN native: expanded shows "[–]" (en-dash), collapsed shows "[N more]".
+     * Extension temp override: collapsed shows "[+]".
      * @param {HTMLElement} block
      * @returns {boolean}
      */
@@ -983,11 +997,17 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
         const row = this._normalizeBlock(block);
         if (!row) return false;
 
+        // Only this row's own collapse — not noshow (hidden because an ancestor
+        // collapsed). Use isBlockHidden() for visibility.
         if (row.classList.contains('coll')) return true;
 
         const toggleLink = row.querySelector('.togg');
-        const toggleText = toggleLink?.textContent || '';
-        return Boolean(toggleLink) && !toggleText.includes('[-]');
+        if (!toggleLink) return false;
+
+        const toggleText = toggleLink.textContent || '';
+        // Check FOR collapsed indicators instead of assuming what the expanded
+        // indicator looks like — avoids character-encoding mismatch (en-dash vs hyphen).
+        return toggleText.includes('more]') || toggleText.includes('[+]');
     }
 
     /**
@@ -1017,6 +1037,9 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
         }
 
         for (const node of chain) {
+            // Hidden by a collapsed ancestor — expand the ancestor first, not this row.
+            if (node.classList.contains('noshow')) continue;
+
             if (this.isBlockCollapsed(node)) {
                 const toggleLink = node.querySelector('.togg');
                 if (toggleLink) {

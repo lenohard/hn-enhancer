@@ -2070,18 +2070,22 @@ window.HNEnhancer = class HNEnhancer {
   _isCommentCollapsed(commentElement) {
     if (!commentElement) {
       console.warn("[HNE] _isCommentCollapsed: commentElement is null");
-      return false; // Or handle as appropriate, maybe true? Defaulting to not collapsed.
+      return false;
     }
-    const toggleLink = commentElement.querySelector(".togg");
     const parentRow = commentElement?.closest("tr");
 
-    const hasNoshow = parentRow?.classList.contains("noshow");
-    const isCollapsedViaClass = parentRow?.style.display === "none";
-    const toggleText = toggleLink?.textContent || "";
-    const isCollapsed =
-      hasNoshow || isCollapsedViaClass || !toggleText.includes("[-]");
+    // Class-based checks are the most reliable collapsed indicators
+    if (parentRow?.classList.contains("noshow")) return true;
+    if (parentRow?.style.display === "none") return true;
 
-    return isCollapsed;
+    // Fallback to toggle text: check FOR collapsed indicators instead of
+    // assuming what the expanded indicator looks like (HN uses en-dash [–]
+    // for expanded, not ASCII hyphen [-]).
+    const toggleLink = commentElement.querySelector(".togg");
+    if (!toggleLink) return false;
+    const toggleText = toggleLink.textContent || "";
+    // HN native collapsed: "[N more]"; extension temp override collapsed: "[+]"
+    return toggleText.includes("more]") || toggleText.includes("[+]");
   }
 
   /**
@@ -2091,11 +2095,8 @@ window.HNEnhancer = class HNEnhancer {
    * @private
    */
   _toggleComment(commentElement) {
-    // Reverted: Simply find and click the native toggle link.
-    // The actual collapse logic (potentially overridden) will be in window.collapse.
     const toggleLink = commentElement?.querySelector(".togg");
     if (toggleLink) {
-      // We assume window.collapse exists and handles the event/id correctly when triggered by click()
       toggleLink.click();
       return true;
     }
@@ -2104,7 +2105,7 @@ window.HNEnhancer = class HNEnhancer {
       commentElement?.id
     );
     return false;
-  } // <-- Added semicolon here
+  }
 
   /**
    * Gets cached summary from hncompanion.com server
