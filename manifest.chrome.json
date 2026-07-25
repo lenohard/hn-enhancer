@@ -61,6 +61,41 @@
         "content.js"
       ],
       "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "exclude_matches": [
+        "https://news.ycombinator.com/*",
+        "https://*.substack.com/*"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "src/hn-state.js",
+        "src/api-client.js",
+        "src/markdown-utils.js",
+        "src/dom-utils.js",
+        "src/summary-panel.js",
+        "src/navigation.js",
+        "src/summarization.js",
+        "src/author-tracking.js",
+        "src/ui-components.js",
+        "src/chat-modal.js",
+        "src/hub-panel.js",
+        "src/prompts.js",
+        "src/substack-domains.js",
+        "src/adapters/site-adapter.js",
+        "src/adapters/hn-adapter.js",
+        "src/adapters/substack-adapter.js",
+        "src/adapters/selection-adapter.js",
+        "src/adapters/adapter-registry.js",
+        "src/hn-enhancer.js",
+        "content.js"
+      ],
+      "run_at": "document_end"
     }
   ],
   "web_accessible_resources": [

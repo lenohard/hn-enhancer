@@ -42,8 +42,10 @@ class AdapterRegistryClass {
 // Singleton
 window.AdapterRegistry = new AdapterRegistryClass();
 
-// Register built-in adapters (order = priority: HN first, then Substack).
-// The HnAdapter and SubstackAdapter are imported above; they register
-// themselves via their constructors (or we can explicitly register here).
+// Register built-in adapters (order = priority: HN first, Substack, then universal fallback).
+// SelectionAdapter is registered LAST so site-specific adapters take priority.
 window.AdapterRegistry.register(new HnAdapter());
 window.AdapterRegistry.register(new SubstackAdapter());
+if (typeof SelectionAdapter !== 'undefined') {
+    window.AdapterRegistry.register(new SelectionAdapter());
+}

@@ -888,6 +888,155 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
     }
 
     /**
+     * Normalize a comment element to its top-level TR row.
+     * @param {HTMLElement} block
+     * @returns {HTMLElement|null}
+     * @private
+     */
+    _normalizeBlock(block) {
+        if (!block) return null;
+        return block.closest('tr.athing.comtr') || block;
+    }
+
+    /**
+     * Return all comment rows in document order (includes collapsed / noshow).
+     * @returns {HTMLElement[]}
+     */
+    getAllCommentRows() {
+        return Array.from(document.querySelectorAll('tr.athing.comtr'));
+    }
+
+    /**
+     * Parent comment by DOM indent (ignores HN next/prev nav links).
+     * @param {HTMLElement} block
+     * @returns {HTMLElement|null}
+     */
+    getBlockParent(block) {
+        const row = this._normalizeBlock(block);
+        if (!row) return null;
+
+        const indent = this.getBlockIndentLevel(row);
+        if (indent === null || indent <= 0) return null;
+
+        const allRows = this.getAllCommentRows();
+        const index = allRows.indexOf(row);
+        if (index < 0) return null;
+
+        for (let i = index - 1; i >= 0; i--) {
+            if (this.getBlockIndentLevel(allRows[i]) === indent - 1) {
+                return allRows[i];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Next or previous sibling at the same indent level (full DOM order).
+     * @param {HTMLElement} block
+     * @param {'next'|'prev'} direction
+     * @returns {HTMLElement|null}
+     */
+    getBlockSibling(block, direction) {
+        const row = this._normalizeBlock(block);
+        if (!row) return null;
+
+        const indent = this.getBlockIndentLevel(row);
+        if (indent === null) return null;
+
+        const allRows = this.getAllCommentRows();
+        const index = allRows.indexOf(row);
+        if (index < 0) return null;
+
+        if (direction === 'next') {
+            for (let i = index + 1; i < allRows.length; i++) {
+                if (this.getBlockIndentLevel(allRows[i]) === indent) {
+                    return allRows[i];
+                }
+            }
+        } else {
+            for (let i = index - 1; i >= 0; i--) {
+                if (this.getBlockIndentLevel(allRows[i]) === indent) {
+                    return allRows[i];
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Root (indent 0) ancestor of a comment.
+     * @param {HTMLElement} block
+     * @returns {HTMLElement|null}
+     */
+    getBlockRoot(block) {
+        const row = this._normalizeBlock(block);
+        if (!row) return null;
+
+        const allRows = this.getAllCommentRows();
+        const index = allRows.indexOf(row);
+        if (index < 0) return null;
+
+        for (let i = index; i >= 0; i--) {
+            if (this.getBlockIndentLevel(allRows[i]) === 0) {
+                return allRows[i];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether this comment row is collapsed (toggle shows [+]).
+     * @param {HTMLElement} block
+     * @returns {boolean}
+     */
+    isBlockCollapsed(block) {
+        const row = this._normalizeBlock(block);
+        if (!row) return false;
+
+        if (row.classList.contains('coll')) return true;
+
+        const toggleLink = row.querySelector('.togg');
+        const toggleText = toggleLink?.textContent || '';
+        return Boolean(toggleLink) && !toggleText.includes('[-]');
+    }
+
+    /**
+     * Whether this comment is hidden due to collapse (self or ancestor).
+     * @param {HTMLElement} block
+     * @returns {boolean}
+     */
+    isBlockHidden(block) {
+        const row = this._normalizeBlock(block);
+        if (!row) return false;
+        return row.classList.contains('noshow') || row.classList.contains('coll');
+    }
+
+    /**
+     * Expand collapsed ancestors (and self) so the comment is visible.
+     * @param {HTMLElement} block
+     */
+    ensureBlockVisible(block) {
+        const row = this._normalizeBlock(block);
+        if (!row) return;
+
+        const chain = [];
+        let current = row;
+        while (current) {
+            chain.unshift(current);
+            current = this.getBlockParent(current);
+        }
+
+        for (const node of chain) {
+            if (this.isBlockCollapsed(node)) {
+                const toggleLink = node.querySelector('.togg');
+                if (toggleLink) {
+                    toggleLink.click();
+                }
+            }
+        }
+    }
+
+    /**
      * Resolves a comment element from a hierarchical path string.
      * @param {string} path — structured path (e.g. "3.2.2")
      * @returns {HTMLElement|null}

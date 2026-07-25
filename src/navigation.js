@@ -138,10 +138,22 @@ class Navigation {
     getNavElementByName(comment, elementName) {
         if (!comment) return;
 
-        // Get HN's default navigation panel and locate the nav element by the given name ('root', 'parent', 'next' or 'prev').
+        const adapter = this.enhancer.adapter;
+
+        if (elementName === 'next' || elementName === 'prev') {
+            const sibling = adapter?.getBlockSibling?.(comment, elementName);
+            if (sibling) return sibling;
+        } else if (elementName === 'parent') {
+            const parent = adapter?.getBlockParent?.(comment);
+            if (parent) return parent;
+        } else if (elementName === 'root') {
+            const root = adapter?.getBlockRoot?.(comment);
+            if (root) return root;
+        }
+
+        // Fallback: HN server-rendered nav links (may omit collapsed subtrees).
         const hyperLinks = comment.querySelectorAll('.comhead .navs a');
         if (hyperLinks) {
-            // Find the <a href> with text that matches the given name
             const hyperLink = Array.from(hyperLinks).find(a => a.textContent.trim() === elementName);
             if (hyperLink) {
                 const commentId = hyperLink.hash.split('#')[1];
@@ -158,6 +170,8 @@ class Navigation {
      */
     setCurrentComment(comment, scrollIntoView = true) {
         if (!comment) return;
+
+        this.enhancer.adapter?.ensureBlockVisible?.(comment);
 
         // Un-highlight the current comment's author before updating the current comment.
         //  Note: when this method is called the first time, this.currentComment will be null and it is ok.

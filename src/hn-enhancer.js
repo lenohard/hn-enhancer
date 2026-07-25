@@ -64,6 +64,12 @@ window.HNEnhancer = class HNEnhancer {
 
       this.initializeBookmarks();
 
+      // Universal mode: lightweight init for selection-based summary/chat
+      if (this.adapter?.isUniversal) {
+        this.initUniversalMode();
+        return;
+      }
+
       // Initialize based on page type
       if (this.isHomePage) {
         this.currentPostIndex = -1;
@@ -148,6 +154,94 @@ window.HNEnhancer = class HNEnhancer {
 
   toggleHelpModal(show) {
     this.helpModal.style.display = show ? "flex" : "none";
+  }
+
+  initUniversalMode() {
+    this.summaryPanel = new SummaryPanel(document.body);
+    this.summarization = new Summarization(this);
+    this._setupSelectionListener();
+    this.logDebug('Universal mode initialized');
+  }
+
+  _setupSelectionListener() {
+    let fab = null;
+    const self = this;
+
+    function removeFab() {
+      if (fab) { fab.remove(); fab = null; }
+    }
+
+    function showFab() {
+      const sel = window.getSelection();
+      const text = sel ? sel.toString().trim() : '';
+      if (text.length < 20) { removeFab(); return; }
+
+      // Don't re-create if already showing for same selection
+      if (fab && fab.dataset.selText === text) return;
+      removeFab();
+
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+
+      fab = document.createElement('div');
+      fab.className = 'hn-selection-fab';
+      fab.dataset.selText = text;
+
+      const sumBtn = document.createElement('button');
+      sumBtn.className = 'hn-selection-fab-btn';
+      sumBtn.textContent = 'Summarize';
+      sumBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        self._summarizeSelection();
+        removeFab();
+      });
+
+      const chatBtn = document.createElement('button');
+      chatBtn.className = 'hn-selection-fab-btn';
+      chatBtn.textContent = 'Chat';
+      chatBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        self._chatSelection();
+        removeFab();
+      });
+
+      fab.appendChild(sumBtn);
+      fab.appendChild(chatBtn);
+
+      // Position above the selection end, clamped to viewport
+      const top = Math.max(8, rect.top - 44);
+      const left = Math.min(
+        window.innerWidth - 200,
+        Math.max(8, rect.left + rect.width / 2 - 100)
+      );
+      fab.style.top = `${top + window.scrollY}px`;
+      fab.style.left = `${left + window.scrollX}px`;
+
+      document.body.appendChild(fab);
+    }
+
+    document.addEventListener('mouseup', () => setTimeout(showFab, 10));
+    document.addEventListener('keyup', (e) => {
+      if (e.key === 'Shift' || e.key.startsWith('Arrow')) {
+        setTimeout(showFab, 10);
+      }
+    });
+    // Dismiss on click elsewhere
+    document.addEventListener('mousedown', (e) => {
+      if (fab && !fab.contains(e.target)) removeFab();
+    });
+  }
+
+  _summarizeSelection() {
+    if (this.summarization) {
+      this.summarization.summarizeAllComments();
+    }
+  }
+
+  _chatSelection() {
+    if (this.chatModal) {
+      this.chatModal.openForPost();
+    }
   }
 
   initHomePageNavigation() {
@@ -911,8 +1005,7 @@ window.HNEnhancer = class HNEnhancer {
   getCommentsPageKeyboardShortcuts() {
     return {
       j: () => {
-        // Next comment at same depth
-        // Find the 'next' hyperlink in the HN nav panel and set that as the current comment.
+        // Next comment at same depth (full DOM order, includes collapsed)
         const nextComment = this.navigation.getNavElementByName(
           this.currentComment,
           "next"
@@ -922,8 +1015,7 @@ window.HNEnhancer = class HNEnhancer {
         }
       },
       k: () => {
-        // Previous comment at same depth (same as 'prev' hyperlink)
-        // Find the 'prev' hyperlink in the HN nav panel and set that as the current comment.
+        // Previous comment at same depth (full DOM order, includes collapsed)
         const prevComment = this.navigation.getNavElementByName(
           this.currentComment,
           "prev"
@@ -937,8 +1029,7 @@ window.HNEnhancer = class HNEnhancer {
         this.navigation.navigateToChildComment();
       },
       h: () => {
-        // Parent comment (same as 'parent' hyperlink)
-        // Find the 'parent' hyperlink in the HN nav panel and set that as the current comment.
+        // Parent comment (DOM indent, not HN nav links)
         const parentComment = this.navigation.getNavElementByName(
           this.currentComment,
           "parent"
@@ -948,7 +1039,7 @@ window.HNEnhancer = class HNEnhancer {
         }
       },
       r: () => {
-        // Find the 'root' hyperlink in the HN nav panel and set that as the current comment.
+        // Root comment (DOM indent, not HN nav links)
         const rootComment = this.navigation.getNavElementByName(
           this.currentComment,
           "root"

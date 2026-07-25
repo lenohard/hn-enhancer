@@ -700,3 +700,17 @@ Extended the chat modal so sites that summarize an *article body* (not a comment
 **Other small fixes from this pass:**
 - `src/hn-enhancer.js`: `openPostChatModal()` now uses `this.adapter?.getPostId?.()` instead of `domUtils.getCurrentHNItemId()` (so it works on Substack too).
 - `src/hn-enhancer.js`: `injectChatPostLink()` is no longer gated behind `isHN` — universal.
+
+### Chat History siteKey Fix (2026-07-25)
+
+**Problem**: `HNState.getChatHistory` / `saveChatHistory` require `siteKey` as the first argument, but several `chat-modal.js` call sites still used the legacy 3-arg form. Backward-compat in `hn-state.js` only shifts params when the first arg looks like a numeric HN post ID — Substack slugs (e.g. `"my-article"`) were misread as `siteKey`, corrupting storage keys and breaking chat history on non-HN sites.
+
+**Fix**: Added `ChatModal._getChatSiteKey()` (`adapter.getSiteKey()` with HN fallback). All `getChatHistory` / `saveChatHistory` call sites now pass `siteKey` explicitly:
+- `_gatherContextAndInitiateChat` (comment chat load)
+- `_gatherPostContextAndInitiateChat` (HN post chat load)
+- `_gatherPostBodyContextAndInitiateChat` (Substack post-body load — was partially correct, now uses shared helper)
+- `_sendMessageToAI` (save after AI response, both Chrome AI and background paths)
+
+**Storage key shape**: `chatHistory_${siteKey}_${postId}_${commentId}_${contextType}` — consistent across HN, Substack, and future adapters.
+
+**Note**: History is saved only after the first successful AI response; failed calls leave nothing persisted. `hide()` preserves in-memory session; reopen via chat link re-runs `_dispatchGather` and reloads from storage.

@@ -787,6 +787,15 @@ class ChatModal {
   }
 
   /**
+   * Site key for chat history storage (adapter-driven, HN fallback).
+   * @returns {string}
+   * @private
+   */
+  _getChatSiteKey() {
+    return this.enhancer.adapter?.getSiteKey?.() || "news.ycombinator.com";
+  }
+
+  /**
    * Refreshes provider/model from synced settings and updates indicator state.
    * @private
    * @returns {Promise<{aiProvider: string|null, model: string|null, providerChanged: boolean, modelChanged: boolean}|null>}
@@ -986,6 +995,7 @@ class ChatModal {
     try {
       // --- Try Loading History First ---
       const storedHistoryEntry = await this.enhancer.hnState.getChatHistory(
+        this._getChatSiteKey(),
         postId,
         commentId,
         contextType
@@ -1479,6 +1489,7 @@ ${systemPromptIntro}
         ? "post" 
         : this.enhancer.domUtils.getCommentId(this.targetCommentElement);
         await this.enhancer.hnState.saveChatHistory(
+          this._getChatSiteKey(),
           this.currentPostId,
           commentId,
           this.currentContextType,
@@ -1600,6 +1611,7 @@ ${systemPromptIntro}
         ? "post" 
         : this.enhancer.domUtils.getCommentId(this.targetCommentElement);
       await this.enhancer.hnState.saveChatHistory(
+        this._getChatSiteKey(),
         this.currentPostId,
         commentId,
         this.currentContextType,
@@ -1773,6 +1785,7 @@ ${systemPromptIntro}
     try {
       // --- Try Loading History First ---
       const storedHistoryEntry = await this.enhancer.hnState.getChatHistory(
+        this._getChatSiteKey(),
         this.currentPostId,
         "post",
         contextType
@@ -2181,7 +2194,7 @@ ${systemPromptIntro}
 
     const postId = this.currentPostId;
     const adapter = this.enhancer.adapter;
-    const siteKey = adapter?.getSiteKey?.() || "news.ycombinator.com";
+    const siteKey = this._getChatSiteKey();
 
     this.enhancer.logInfo(
       `Initiating post-body chat for ${siteKey} post ${postId}, context: ${contextType}`

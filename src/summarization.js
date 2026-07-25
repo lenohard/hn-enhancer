@@ -266,6 +266,7 @@ class Summarization {
    * @param {Element} target
    */
   _scrollAndFlashSummaryTarget(target) {
+    this.enhancer.adapter?.ensureBlockVisible?.(target);
     const el = this._getSummaryHighlightTarget(target);
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1651,12 +1652,10 @@ class Summarization {
 
     let skippedComments = 0;
     commentRows.forEach((commentRow, index) => {
-      const commentFlagged =
-        commentRow.classList.contains("coll") ||
-        commentRow.classList.contains("noshow");
       const commentTextDiv = commentRow.querySelector(".commtext");
 
-      if (commentFlagged || !commentTextDiv) {
+      // Include collapsed (coll/noshow) comments — text remains in the DOM.
+      if (!commentTextDiv) {
         skippedComments++;
         return;
       }
@@ -1673,7 +1672,7 @@ class Summarization {
     });
 
     this.enhancer.logDebug(
-      `Comments from DOM:: Total: ${commentRows.length}. Skipped (flagged): ${skippedComments}. Remaining: ${commentsInDOM.size}`
+      `Comments from DOM:: Total: ${commentRows.length}. Skipped (no text): ${skippedComments}. Remaining: ${commentsInDOM.size}`
     );
 
     return commentsInDOM;
