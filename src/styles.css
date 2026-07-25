@@ -1328,3 +1328,43 @@ tr.athing.comtr.noshow .comhead .togg {
     background: #ff6600;
     color: #fff;
 }
+
+.hn-save-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(12px);
+    z-index: 2147483647;
+    background: #1a1a1b;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+}
+
+.hn-save-toast.is-visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.hn-saved-type-badge {
+    flex-shrink: 0;
+    font-size: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #ff6600;
+    border: 1px solid #ff6600;
+    border-radius: 3px;
+    padding: 1px 4px;
+    line-height: 1.2;
+}
+
+.hn-hub-list-page {
+    color: #666;
+}

@@ -99,8 +99,12 @@ class HubPanel {
         el.className = 'hn-hub-action';
         el.textContent = btn.label;
         if (btn.title) el.title = btn.title;
-        if (btn.hubView) el.dataset.hubView = btn.hubView;
-        el.addEventListener('click', btn.onClick);
+        if (btn.hubView) {
+          el.dataset.hubView = btn.hubView;
+          el.addEventListener('click', () => this.toggleView(btn.hubView));
+        } else if (btn.onClick) {
+          el.addEventListener('click', btn.onClick);
+        }
         actions.appendChild(el);
       });
     }
@@ -129,13 +133,6 @@ class HubPanel {
     collapseBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       this.setCollapsed(!this.isCollapsed);
-    });
-
-    this.panel.querySelectorAll("[data-hub-view]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const view = button.dataset.hubView;
-        this.toggleView(view);
-      });
     });
 
     listCloseBtn.addEventListener("click", () => {
@@ -280,7 +277,7 @@ class HubPanel {
       title.textContent = "Bookmarked authors";
       this.renderAuthorsList();
     } else if (view === "saved") {
-      title.textContent = "Saved comments";
+      title.textContent = "Saved items";
       this.renderSavedCommentsList();
     }
   }
@@ -348,7 +345,7 @@ class HubPanel {
 
     if (entries.length === 0) {
       list.innerHTML =
-        '<div class="hn-hub-empty">No saved comments yet. Click <strong>save</strong> on a comment.</div>';
+        '<div class="hn-hub-empty">Nothing saved yet. Use <strong>Save</strong> on the hub, <strong>save</strong> on HN comments, or the selection FAB (Summarize / Chat / Save).</div>';
       return;
     }
 
@@ -357,17 +354,30 @@ class HubPanel {
     list.innerHTML = entries
       .map((entry) => {
         const commentId = this.escapeHtml(entry.commentId);
-        const title = this.escapeHtml(
-          entry.postTitle || `Post ${entry.postId || "?"}`
-        );
-        const author = this.escapeHtml(entry.author || "unknown");
+        const type = entry.type || "comment";
+        const typeLabel = this.escapeHtml(HNState.getSavedItemTypeLabel(type));
+        const title = this.escapeHtml(HNState.getSavedItemDisplayTitle(entry));
+        const author =
+          type === "comment"
+            ? this.escapeHtml(entry.author || "unknown")
+            : this.escapeHtml(entry.siteKey || "");
         const snippet = this.escapeHtml(this.truncateText(entry.text, 100));
+        const pageHint =
+          type !== "comment" && entry.pageUrl
+            ? `<div class="hn-hub-list-meta hn-hub-list-page">${this.escapeHtml(this.truncateText(entry.pageUrl, 80))}</div>`
+            : "";
+        const metaLine =
+          type === "comment"
+            ? `<div class="hn-hub-list-meta">by ${author}</div>`
+            : `<div class="hn-hub-list-meta">${author}</div>`;
         return `<div class="hn-hub-list-item" data-comment-id="${commentId}">
           <div class="hn-hub-list-row">
+            <span class="hn-saved-type-badge">${typeLabel}</span>
             <button type="button" class="hn-hub-list-link hn-hub-open-saved" data-comment-id="${commentId}">${title}</button>
             <button type="button" class="hn-hub-list-unsave" data-comment-id="${commentId}" title="Unsave">×</button>
           </div>
-          <div class="hn-hub-list-meta">by ${author}</div>
+          ${metaLine}
+          ${pageHint}
           <div class="hn-hub-list-snippet">${snippet || "(no text stored)"}</div>
         </div>`;
       })
@@ -382,7 +392,9 @@ class HubPanel {
 
         const currentPostId = this.enhancer.domUtils.getCurrentHNItemId?.();
         const targetPostId = entry?.postId ? String(entry.postId) : null;
+        const isCommentEntry = !entry.type || entry.type === "comment";
         const onSamePost =
+          isCommentEntry &&
           this.enhancer.isCommentsPage &&
           currentPostId &&
           targetPostId &&

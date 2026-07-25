@@ -59,11 +59,21 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
     getCommentBlocks() { return []; }
 
     getSystemMessage() {
-        return `You are a helpful reading companion. Summarize the provided text clearly and concisely. When quoting, use quotation marks around the relevant text.`;
+        return HNPrompts.substack.article.system;
     }
 
     getUserMessageTemplate() {
-        return `Summarize the following text:\n\n`;
+        return HNPrompts.substack.article.user;
+    }
+
+    /** @override */
+    getPostSummarySystemMessage() {
+        return HNPrompts.substack.article.system;
+    }
+
+    /** @override */
+    getPostSummaryUserMessageTemplate() {
+        return HNPrompts.substack.article.user;
     }
 
     // ---- Summary flow hooks ----
@@ -94,6 +104,15 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
     }
 
     getChatSystemMessage() {
-        return `You are a helpful reading companion. Answer questions about the provided text clearly and concisely. When quoting, use quotation marks around the relevant text.`;
+        return HNPrompts.substack.chat.system;
     }
+
+    /** @override */
+    supportsSelectionFab() { return true; }
+
+    /** @override */
+    getHubButtons(enhancer) {
+        return this.getSaveHubButtons(enhancer);
+    }
+
 };

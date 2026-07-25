@@ -146,6 +146,25 @@ class ChatModal {
     // Send button
     this.sendButton.addEventListener("click", () => this._handleSendMessage());
 
+    // Enter to send, Shift+Enter for newline; ignore Enter during IME composition
+    let isComposing = false;
+    this.inputElement.addEventListener("compositionstart", () => {
+      isComposing = true;
+    });
+    this.inputElement.addEventListener("compositionend", () => {
+      isComposing = false;
+    });
+    this.inputElement.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.shiftKey) {
+        return;
+      }
+      if (isComposing || e.isComposing || e.keyCode === 229) {
+        return;
+      }
+      e.preventDefault();
+      this._handleSendMessage();
+    });
+
     // Context selector — delegated so dynamically-added radios also work.
     this.contextSelectorContainer.addEventListener("change", (e) => {
       const target = e.target;
@@ -890,7 +909,7 @@ class ChatModal {
    * @returns {boolean}
    */
   _providerSupportsStreaming(provider) {
-    return ["openai", "anthropic", "openai-router"].includes(provider);
+    return provider === "openai-router";
   }
 
   /**
@@ -914,13 +933,7 @@ class ChatModal {
         const chunk = message.data;
         let content = "";
 
-        if (provider === "anthropic") {
-          if (chunk.type === "content_block_delta") {
-            content = chunk.delta?.text || "";
-          }
-        } else {
-          content = chunk.choices?.[0]?.delta?.content || "";
-        }
+        content = chunk.choices?.[0]?.delta?.content || "";
 
         if (content) {
           accumulatedText += content;
@@ -1550,16 +1563,13 @@ ${systemPromptIntro}
     try {
       const messageType = "HN_CHAT_REQUEST";
       const requestData = {
-        provider: aiProvider,
-        model: model,
         messages: conversationHistory, // Send the full history
       };
 
-      // Add URL for openai-router provider
-      if (aiProvider === "openai-router") {
-        const settings = await this.enhancer.apiClient.sendBackgroundMessage("FETCH_AI_SETTINGS");
-        requestData.url = settings.routerUrl || "http://127.0.0.1:4000";
-      }
+      // Always get the router URL from settings
+      const settings = await this.enhancer.apiClient.sendBackgroundMessage("FETCH_AI_SETTINGS");
+      requestData.url = settings.routerUrl || "http://127.0.0.1:4000";
+      requestData.model = model;
 
       // Log the exact messages being sent
       this.enhancer.logDebug(

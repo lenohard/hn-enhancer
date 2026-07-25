@@ -10,6 +10,7 @@ class HNState {
   static USER_INFO_KEY = "userInfoCache";
   static USER_INFO_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
   static SAVED_COMMENT_TEXT_MAX = 10000;
+  /** @typedef {'comment'|'text'|'link'|'image'} SavedItemType */
 
   /**
    * Saves user info to persistent storage.
@@ -339,10 +340,13 @@ class HNState {
       }
       normalized.set(id, {
         commentId: id,
+        type: entry?.type || "comment",
         siteKey: entry?.siteKey || "news.ycombinator.com",
         author: entry?.author || entry?.username || null,
         text,
         permalink: entry?.permalink || null,
+        pageUrl: entry?.pageUrl || null,
+        imageUrl: entry?.imageUrl || null,
         postId: entry?.postId || null,
         postTitle: entry?.postTitle || null,
         savedAt: entry?.savedAt || Date.now(),
@@ -372,10 +376,13 @@ class HNState {
       }
       serialized[id] = {
         commentId: id,
+        type: value?.type || "comment",
         siteKey: value?.siteKey || "news.ycombinator.com",
         author: value?.author || null,
         text,
         permalink: value?.permalink || null,
+        pageUrl: value?.pageUrl || null,
+        imageUrl: value?.imageUrl || null,
         postId: value?.postId || null,
         postTitle: value?.postTitle || null,
         savedAt: value?.savedAt || Date.now(),
@@ -411,10 +418,13 @@ class HNState {
       }
       saved.set(commentId, {
         commentId,
+        type: commentData?.type || "comment",
         siteKey: commentData?.siteKey || "news.ycombinator.com",
         author: commentData?.author || null,
         text,
         permalink: commentData?.permalink || null,
+        pageUrl: commentData?.pageUrl || null,
+        imageUrl: commentData?.imageUrl || null,
         postId: commentData?.postId || null,
         postTitle: commentData?.postTitle || null,
         savedAt: Date.now(),
@@ -443,12 +453,97 @@ class HNState {
   }
 
   /**
+   * Stable id for a saved item from type + key parts.
+   * @param {string} type
+   * @param {...string} parts
+   * @returns {string}
+   */
+  static makeSaveId(type, ...parts) {
+    let hash = 0;
+    const str = [type, ...parts].join("|");
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return `${type}_${Math.abs(hash).toString(36)}`;
+  }
+
+  /**
+   * Save an item (upsert). Does not toggle off when the id already exists.
+   * @param {object} itemData
+   * @returns {Promise<Map<string, object>>}
+   */
+  static async saveItem(itemData) {
+    const commentId = String(itemData?.commentId || "");
+    if (!commentId) {
+      console.error("saveItem: Missing commentId.", itemData);
+      return new Map();
+    }
+    let text = itemData?.text || "";
+    if (text.length > this.SAVED_COMMENT_TEXT_MAX) {
+      text = text.slice(0, this.SAVED_COMMENT_TEXT_MAX);
+    }
+    const saved = await this.getSavedComments();
+    saved.set(commentId, {
+      commentId,
+      type: itemData?.type || "link",
+      siteKey: itemData?.siteKey || location.hostname.replace(/^www\./, ""),
+      author: itemData?.author || null,
+      text,
+      permalink: itemData?.permalink || null,
+      pageUrl: itemData?.pageUrl || null,
+      imageUrl: itemData?.imageUrl || null,
+      postId: itemData?.postId || null,
+      postTitle: itemData?.postTitle || null,
+      savedAt: Date.now(),
+    });
+    await this.saveSavedComments(saved);
+    return saved;
+  }
+
+  /**
+   * @param {SavedItemType} type
+   * @returns {string}
+   */
+  static getSavedItemTypeLabel(type) {
+    const labels = {
+      comment: "Comment",
+      text: "Text",
+      link: "Link",
+      image: "Image",
+    };
+    return labels[type] || "Saved";
+  }
+
+  static getSavedItemDisplayTitle(entry) {
+    if (!entry) return "Saved item";
+    const type = entry.type || "comment";
+    if (type === "text") {
+      const snippet = String(entry.text || "").replace(/\s+/g, " ").trim();
+      return snippet ? snippet.slice(0, 80) : "Saved text";
+    }
+    if (type === "image") {
+      return entry.text || "Saved image";
+    }
+    if (type === "link") {
+      return entry.postTitle || entry.text || entry.pageUrl || "Saved link";
+    }
+    return entry.postTitle || `Post ${entry.postId || "?"}`;
+  }
+
+  /**
    * Build a permalink that opens the post and focuses the comment via hash.
    * @param {object} entry
    * @returns {string|null}
    */
   static getSavedCommentOpenUrl(entry) {
     if (!entry) return null;
+    if (entry.type === "image" && entry.imageUrl) return entry.imageUrl;
+    if (entry.type === "image" && entry.pageUrl) return entry.pageUrl;
+    if (entry.type === "text" && entry.pageUrl) return entry.pageUrl;
+    if (entry.type === "link" && (entry.permalink || entry.pageUrl)) {
+      return entry.permalink || entry.pageUrl;
+    }
     if (entry.permalink) return entry.permalink;
     const postId = entry.postId;
     const commentId = entry.commentId;
@@ -500,10 +595,6 @@ class HNState {
     }
 
     const providerKeys = [
-      "openai",
-      "anthropic",
-      "gemini",
-      "deepseek",
       "openai-router",
     ];
 

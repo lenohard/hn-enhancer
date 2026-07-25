@@ -70,6 +70,12 @@ window.HNEnhancer = class HNEnhancer {
         return;
       }
 
+      // Selection FAB on sites that opt in (e.g. Substack)
+      if (this.adapter?.supportsSelectionFab?.()) {
+        this._setupSelectionListener();
+        this._setupImageSaveListener();
+      }
+
       // Initialize based on page type
       if (this.isHomePage) {
         this.currentPostIndex = -1;
@@ -160,7 +166,107 @@ window.HNEnhancer = class HNEnhancer {
     this.summaryPanel = new SummaryPanel(document.body);
     this.summarization = new Summarization(this);
     this._setupSelectionListener();
+    this._setupImageSaveListener();
     this.logDebug('Universal mode initialized');
+  }
+
+  _getPageSaveContext() {
+    const pageUrl = location.href;
+    return {
+      siteKey: this.adapter?.getSiteKey?.() || location.hostname.replace(/^www\./, ""),
+      pageUrl,
+      postTitle: document.title?.trim() || pageUrl,
+      postId: this.adapter?.getPostId?.() || null,
+    };
+  }
+
+  _showSaveToast(message) {
+    let toast = document.querySelector(".hn-save-toast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.className = "hn-save-toast";
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add("is-visible");
+    clearTimeout(this._saveToastTimer);
+    this._saveToastTimer = setTimeout(() => {
+      toast.classList.remove("is-visible");
+    }, 2200);
+  }
+
+  async savePageLink() {
+    const ctx = this._getPageSaveContext();
+    const commentId = HNState.makeSaveId("link", ctx.pageUrl);
+    try {
+      this.savedComments = await this.hnState.saveItem({
+        commentId,
+        type: "link",
+        siteKey: ctx.siteKey,
+        text: ctx.postTitle,
+        permalink: ctx.pageUrl,
+        pageUrl: ctx.pageUrl,
+        postId: ctx.postId,
+        postTitle: ctx.postTitle,
+      });
+      this.hubPanel?.updateStats();
+      this._showSaveToast("Page link saved");
+    } catch (error) {
+      console.error("Error saving page link:", error);
+      this._showSaveToast("Failed to save link");
+    }
+  }
+
+  async saveSelectedText(text) {
+    const trimmed = String(text || "").trim();
+    if (trimmed.length < 20) return;
+
+    const ctx = this._getPageSaveContext();
+    const commentId = HNState.makeSaveId("text", ctx.pageUrl, trimmed.slice(0, 200));
+    try {
+      this.savedComments = await this.hnState.saveItem({
+        commentId,
+        type: "text",
+        siteKey: ctx.siteKey,
+        text: trimmed,
+        permalink: ctx.pageUrl,
+        pageUrl: ctx.pageUrl,
+        postId: ctx.postId,
+        postTitle: ctx.postTitle,
+      });
+      this.hubPanel?.updateStats();
+      this._showSaveToast("Text saved");
+    } catch (error) {
+      console.error("Error saving text:", error);
+      this._showSaveToast("Failed to save text");
+    }
+  }
+
+  async saveImage(imageEl) {
+    if (!imageEl?.src) return;
+
+    const ctx = this._getPageSaveContext();
+    const imageUrl = imageEl.currentSrc || imageEl.src;
+    const alt = imageEl.alt?.trim() || imageUrl;
+    const commentId = HNState.makeSaveId("image", ctx.pageUrl, imageUrl);
+    try {
+      this.savedComments = await this.hnState.saveItem({
+        commentId,
+        type: "image",
+        siteKey: ctx.siteKey,
+        text: alt,
+        imageUrl,
+        permalink: ctx.pageUrl,
+        pageUrl: ctx.pageUrl,
+        postId: ctx.postId,
+        postTitle: ctx.postTitle,
+      });
+      this.hubPanel?.updateStats();
+      this._showSaveToast("Image saved");
+    } catch (error) {
+      console.error("Error saving image:", error);
+      this._showSaveToast("Failed to save image");
+    }
   }
 
   _setupSelectionListener() {
@@ -205,14 +311,25 @@ window.HNEnhancer = class HNEnhancer {
         removeFab();
       });
 
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'hn-selection-fab-btn';
+      saveBtn.textContent = 'Save';
+      saveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        self.saveSelectedText(text);
+        removeFab();
+      });
+
       fab.appendChild(sumBtn);
       fab.appendChild(chatBtn);
+      fab.appendChild(saveBtn);
 
       // Position above the selection end, clamped to viewport
+      const fabWidth = 280;
       const top = Math.max(8, rect.top - 44);
       const left = Math.min(
-        window.innerWidth - 200,
-        Math.max(8, rect.left + rect.width / 2 - 100)
+        window.innerWidth - fabWidth,
+        Math.max(8, rect.left + rect.width / 2 - fabWidth / 2)
       );
       fab.style.top = `${top + window.scrollY}px`;
       fab.style.left = `${left + window.scrollX}px`;
@@ -220,18 +337,36 @@ window.HNEnhancer = class HNEnhancer {
       document.body.appendChild(fab);
     }
 
+    const scheduleShowFab = () => {
+      requestAnimationFrame(showFab);
+    };
+
     document.addEventListener('mouseup', (e) => {
-      if (fab && fab.contains(e.target)) return; // clicking inside fab
-      setTimeout(showFab, 10);
-    });
+      if (fab && fab.contains(e.target)) return;
+      scheduleShowFab();
+    }, true);
+    document.addEventListener('selectionchange', scheduleShowFab);
     document.addEventListener('keyup', (e) => {
       if (e.key === 'Shift' || e.key.startsWith('Arrow')) {
-        setTimeout(showFab, 10);
+        scheduleShowFab();
       }
     });
     document.addEventListener('mousedown', (e) => {
       if (fab && !fab.contains(e.target)) removeFab();
     });
+  }
+
+  _setupImageSaveListener() {
+    document.addEventListener('click', (e) => {
+      if (!e.shiftKey) return;
+      const img = e.target.closest('img');
+      if (!img?.src || img.closest('.hn-selection-fab, .hn-hub-panel, .hn-save-toast')) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      this.saveImage(img);
+    }, true);
   }
 
   _summarizeSelection() {
@@ -1902,9 +2037,12 @@ window.HNEnhancer = class HNEnhancer {
     try {
       this.savedComments = await this.hnState.toggleSavedComment({
         commentId,
+        type: "comment",
+        siteKey: this.adapter?.getSiteKey?.() || "news.ycombinator.com",
         author: this.domUtils.getCommentAuthor(comment),
         text: this.domUtils.getCommentText(comment),
         permalink: this.domUtils.getCommentPermalink(comment),
+        pageUrl: location.href,
         postId: this.domUtils.getCurrentHNItemId(),
         postTitle: this.domUtils.getHNPostTitle(),
       });

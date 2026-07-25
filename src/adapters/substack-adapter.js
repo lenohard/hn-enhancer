@@ -396,20 +396,16 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
             onClick: () => enhancer.openPostChatModal(),
         });
 
-        buttons.push({
-            label: 'Save',
-            title: 'Bookmark this post for later',
-            onClick: () => {
-                // TODO: implement Substack post bookmarking via HNState
-                console.log('[HN Enhancer] Save post:', enhancer.adapter?.getPostId());
-            },
-        });
+        buttons.push(...this.getSaveHubButtons(enhancer));
 
         return buttons;
     }
 
     /** @override */
-    getHubStats(_enhancer) {
+    supportsSelectionFab() { return true; }
+
+    /** @override */
+    getHubStats(enhancer) {
         if (!this.getPostId()) return [];
 
         const inlineCount = this.getCommentBlocks().length;

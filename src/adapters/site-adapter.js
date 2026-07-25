@@ -264,6 +264,27 @@ window.SiteAdapter = class SiteAdapter {
     getHubButtons(_enhancer) { return []; }
 
     /**
+     * Save page link + open saved list (shared by Universal, Substack, etc.).
+     * @param {object} enhancer
+     * @returns {Array<{label: string, title?: string, onClick: Function, hubView?: string}>}
+     */
+    getSaveHubButtons(enhancer) {
+        return [
+            {
+                label: 'Save',
+                title: 'Save this page link',
+                onClick: () => enhancer.savePageLink(),
+            },
+        ];
+    }
+
+    /**
+     * Whether to show the selection FAB (Summarize / Chat / Save on text select).
+     * @returns {boolean}
+     */
+    supportsSelectionFab() { return false; }
+
+    /**
      * Return hub panel stat descriptors for the current site.
      * @param {object} _enhancer
      * @returns {Array<{id: string, label: string, value: string}>}

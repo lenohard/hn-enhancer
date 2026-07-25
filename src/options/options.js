@@ -1,22 +1,5 @@
 // Save settings to Chrome storage
 async function saveSettings() {
-  const selectedProvider = document.querySelector(
-    'input[name="provider-selection"]:checked'
-  );
-
-  // 如果没有选中任何提供商，默认选择第一个
-  if (!selectedProvider) {
-    const firstProvider = document.querySelector(
-      'input[name="provider-selection"]'
-    );
-    if (firstProvider) {
-      firstProvider.checked = true;
-    }
-  }
-
-  const providerSelection =
-    document.querySelector('input[name="provider-selection"]:checked')?.id ||
-    "openai";
   const language = document.getElementById("language-select").value;
   const streamingEnabled = document.getElementById("streaming-enabled").checked;
   const maxTokens =
@@ -24,27 +7,11 @@ async function saveSettings() {
   const temperature =
     parseFloat(document.getElementById("temperature").value) || 0.7;
   const settings = {
-    providerSelection,
+    providerSelection: "openai-router",
     language,
     streamingEnabled,
     maxTokens,
     temperature,
-    openai: {
-      apiKey: document.getElementById("openai-key").value,
-      model: document.getElementById("openai-model").value,
-    },
-    anthropic: {
-      apiKey: document.getElementById("anthropic-key").value,
-      model: document.getElementById("anthropic-model").value,
-    },
-    gemini: {
-      apiKey: document.getElementById("gemini-key").value,
-      model: document.getElementById("gemini-model").value,
-    },
-    deepseek: {
-      apiKey: document.getElementById("deepseek-key").value,
-      model: document.getElementById("deepseek-model").value,
-    },
     "openai-router": {
       apiKey: document.getElementById("router-key").value,
       model: document.getElementById("router-model").value,
@@ -88,70 +55,6 @@ async function sendBackgroundMessage(type, data) {
   }
 
   return response.data;
-}
-
-// Fetch Gemini models from API
-async function fetchGeminiModels() {
-  try {
-    // Get the API key from the input field
-    const apiKey = document.getElementById("gemini-key").value;
-
-    if (!apiKey) {
-      throw new Error("请先输入Gemini API密钥");
-    }
-
-    const data = await sendBackgroundMessage("FETCH_GEMINI_MODELS", {
-      apiKey: apiKey,
-    });
-
-    const selectElement = document.getElementById("gemini-model");
-    // Clear existing options
-    selectElement.innerHTML = "";
-
-    // Add models to select element
-    data.models.forEach((model) => {
-      const option = document.createElement("option");
-      // Use the model name (like "models/gemini-2.0-flash-lite") as value
-      option.value = model.name;
-      // Use display name for the text, fallback to name if no display name
-      option.textContent = model.displayName || model.name;
-      // Add description as title for tooltip
-      if (model.description) {
-        option.title = model.description;
-      }
-      selectElement.appendChild(option);
-    });
-
-    // If no models found, add a placeholder option
-    if (data.models.length === 0) {
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "未找到可用模型";
-      selectElement.appendChild(option);
-    }
-
-    // Store the fetched models in chrome storage for future use
-    await chrome.storage.local.set({
-      geminiModels: {
-        models: data.models,
-        timestamp: Date.now(),
-      },
-    });
-
-    console.log(`成功获取 ${data.models.length} 个Gemini模型`);
-  } catch (error) {
-    console.log("获取Gemini模型列表时出错:", error);
-    // Handle error by adding an error option
-    const selectElement = document.getElementById("gemini-model");
-    selectElement.innerHTML = "";
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = `错误: ${error.message}`;
-    selectElement.appendChild(option);
-
-    // Show error to user
-    alert(`获取Gemini模型列表失败: ${error.message}`);
-  }
 }
 
 // Function to filter OpenAI Router models based on search term
@@ -324,44 +227,6 @@ async function fetchOpenAIRouterModels() {
   }
 }
 
-// Load Gemini models from storage or use defaults
-async function loadGeminiModels() {
-  try {
-    // Try to load cached models from storage
-    const cachedData = await chrome.storage.local.get("geminiModels");
-    const geminiModels = cachedData.geminiModels;
-
-    const selectElement = document.getElementById("gemini-model");
-
-    // Check if we have cached models and they're not too old (24 hours)
-    const isDataFresh =
-      geminiModels &&
-      geminiModels.timestamp &&
-      Date.now() - geminiModels.timestamp < 24 * 60 * 60 * 1000;
-
-    if (isDataFresh && geminiModels.models && geminiModels.models.length > 0) {
-      // Use cached models
-      selectElement.innerHTML = "";
-      geminiModels.models.forEach((model) => {
-        const option = document.createElement("option");
-        option.value = model.name;
-        option.textContent = model.displayName || model.name;
-        if (model.description) {
-          option.title = model.description;
-        }
-        selectElement.appendChild(option);
-      });
-      console.log(`加载了 ${geminiModels.models.length} 个缓存的Gemini模型`);
-    } else {
-      // Use default models if no cached data or data is stale
-      console.log("使用默认Gemini模型列表");
-    }
-  } catch (error) {
-    console.error("加载Gemini模型时出错:", error);
-    // Keep default models in case of error
-  }
-}
-
 // Load OpenAI Router models from storage or keep as input
 async function loadOpenAIRouterModels() {
   try {
@@ -480,44 +345,6 @@ async function loadSettings() {
         document.getElementById("temperature").value = 0.7; // Default value
       }
 
-      // Set provider selection
-      const providerRadio = document.getElementById(settings.providerSelection);
-      if (providerRadio) providerRadio.checked = true;
-
-      // Set OpenAI settings
-      if (settings.openai) {
-        document.getElementById("openai-key").value =
-          settings.openai.apiKey || "";
-        document.getElementById("openai-model").value =
-          settings.openai.model || "gpt-4";
-      }
-
-      // Set Anthropic settings
-      if (settings.anthropic) {
-        document.getElementById("anthropic-key").value =
-          settings.anthropic.apiKey || "";
-        document.getElementById("anthropic-model").value =
-          settings.anthropic.model || "claude-3-opus";
-      }
-
-      // Set Gemini settings
-      if (settings.gemini) {
-        document.getElementById("gemini-key").value =
-          settings.gemini.apiKey || "";
-        // Load Gemini models first, then set the selected model
-        await loadGeminiModels();
-        document.getElementById("gemini-model").value =
-          settings.gemini.model || "gemini-2.0-flash-lite";
-      }
-
-      // Set DeepSeek settings
-      if (settings.deepseek) {
-        document.getElementById("deepseek-key").value =
-          settings.deepseek.apiKey || "";
-        document.getElementById("deepseek-model").value =
-          settings.deepseek.model || "deepseek-chat";
-      }
-
       // Set OpenAI Router settings
       if (settings["openai-router"]) {
         document.getElementById("router-key").value =
@@ -542,15 +369,6 @@ async function loadSettings() {
 
 // Test the current provider configuration
 async function testProviderConnection() {
-  // Get the currently selected provider
-  const selectedProvider = document.querySelector(
-    'input[name="provider-selection"]:checked'
-  )?.id;
-  if (!selectedProvider) {
-    showTestResult("请先选择一个AI提供商", "error");
-    return;
-  }
-
   // Get the test button and change its text
   const testButton = document.getElementById("test-connection");
   const originalText = testButton.textContent;
@@ -558,83 +376,23 @@ async function testProviderConnection() {
   testButton.disabled = true;
 
   try {
-    // Prepare test data based on the selected provider
-    let testData = {};
     let testMessage = '这是一条测试消息，请回复"测试成功"';
 
-    switch (selectedProvider) {
-      case "openai":
-        testData = {
-          apiKey: document.getElementById("openai-key").value,
-          model: document.getElementById("openai-model").value,
-          streaming: true,
-          include_usage: true,
-          messages: [
-            { role: "system", content: "You are a helpful assistant." },
-            { role: "user", content: testMessage },
-          ],
-        };
-        break;
-      case "anthropic":
-        testData = {
-          apiKey: document.getElementById("anthropic-key").value,
-          model: document.getElementById("anthropic-model").value,
-          streaming: true,
-          include_usage: true,
-          messages: [{ role: "user", content: testMessage }],
-        };
-        break;
-      case "gemini":
-        testData = {
-          apiKey: document.getElementById("gemini-key").value,
-          model: document.getElementById("gemini-model").value,
-          systemPrompt: "You are a helpful assistant.",
-          userPrompt: testMessage,
-        };
-        break;
-      case "deepseek":
-        testData = {
-          apiKey: document.getElementById("deepseek-key").value,
-          model: document.getElementById("deepseek-model").value,
-          streaming: true,
-          include_usage: true,
-          messages: [
-            { role: "system", content: "You are a helpful assistant." },
-            { role: "user", content: testMessage },
-          ],
-        };
-        break;
-      case "ollama":
-        testData = {
-          model: document.getElementById("ollama-model").value,
-          streaming: true,
-          include_usage: true,
-          messages: [
-            { role: "system", content: "You are a helpful assistant." },
-            { role: "user", content: testMessage },
-          ],
-        };
-        break;
-      case "openai-router":
-        testData = {
-          apiKey: document.getElementById("router-key").value,
-          model: document.getElementById("router-model").value,
-          url: document.getElementById("router-url").value,
-          streaming: true,
-          include_usage: true,
-          messages: [
-            { role: "system", content: "You are a helpful assistant." },
-            { role: "user", content: testMessage },
-          ],
-        };
-        break;
-      default:
-        throw new Error(`未知的提供商: ${selectedProvider}`);
-    }
+    const testData = {
+      apiKey: document.getElementById("router-key").value,
+      model: document.getElementById("router-model").value,
+      url: document.getElementById("router-url").value,
+      streaming: true,
+      include_usage: true,
+      messages: [
+        { role: "system", content: "You are a helpful assistant." },
+        { role: "user", content: testMessage },
+      ],
+    };
 
     // Send test request to background script
     const response = await sendBackgroundMessage(
-      `${selectedProvider.toUpperCase()}_API_REQUEST`,
+      "OPENAI_ROUTER_API_REQUEST",
       testData
     );
 
@@ -649,28 +407,8 @@ async function testProviderConnection() {
     if (response) {
       let responseText = "";
 
-      // Extract response text based on provider
-      switch (selectedProvider) {
-        case "gemini":
-          if (
-            response.candidates &&
-            response.candidates[0]?.content?.parts[0]?.text
-          ) {
-            responseText = response.candidates[0].content.parts[0].text;
-          }
-          break;
-        case "anthropic":
-          if (response.content && response.content[0]?.text) {
-            responseText = response.content[0].text;
-          }
-          break;
-        case "openai":
-        case "deepseek":
-        case "openai-router":
-          if (response.choices && response.choices[0]?.message?.content) {
-            responseText = response.choices[0].message.content;
-          }
-          break;
+      if (response.choices && response.choices[0]?.message?.content) {
+        responseText = response.choices[0].message.content;
       }
 
       if (responseText) {
@@ -824,29 +562,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const testButton = document.getElementById("test-connection");
   testButton.addEventListener("click", testProviderConnection);
 
-  // Add refresh Gemini models button event listener
-  const refreshGeminiButton = document.getElementById("refresh-gemini-models");
-  refreshGeminiButton.addEventListener("click", async () => {
-    const originalText = refreshGeminiButton.textContent;
-    refreshGeminiButton.textContent = "刷新中...";
-    refreshGeminiButton.disabled = true;
-
-    try {
-      await fetchGeminiModels();
-      refreshGeminiButton.textContent = "已刷新";
-      setTimeout(() => {
-        refreshGeminiButton.textContent = originalText;
-      }, 2000);
-    } catch (error) {
-      refreshGeminiButton.textContent = "刷新失败";
-      setTimeout(() => {
-        refreshGeminiButton.textContent = originalText;
-      }, 3000);
-    } finally {
-      refreshGeminiButton.disabled = false;
-    }
-  });
-
   // Update OpenAI Router URL preview update
   const routerUrlInput = document.getElementById("router-url");
   const fullUrlPreview = document.getElementById("full-url-preview");
@@ -995,28 +710,44 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (entries.length === 0) {
         savedCommentsList.innerHTML =
-          `<div class="text-gray-500 px-1 py-2">No saved comments yet. On HN, click <strong>save</strong> on a comment.</div>`;
+          `<div class="text-gray-500 px-1 py-2">Nothing saved yet. Save HN comments, page links (hub Save), or selected text via the FAB.</div>`;
         return;
       }
 
       savedCommentsList.innerHTML = entries
         .map((entry) => {
           const openUrl = HNState.getSavedCommentOpenUrl(entry);
-          const title = entry.postTitle || `Post ${entry.postId || "?"}`;
+          const type = entry.type || "comment";
+          const typeLabel = HNState.getSavedItemTypeLabel(type);
+          const title = HNState.getSavedItemDisplayTitle(entry);
           const author = entry.author || "unknown";
           const snippet = truncateText(entry.text, 180);
           const savedAt = entry.savedAt
             ? new Date(entry.savedAt).toLocaleString()
             : "";
+          const pageLine =
+            type !== "comment" && entry.pageUrl
+              ? `<div class="mt-1 text-xs text-gray-400">${escapeHtml(truncateText(entry.pageUrl, 120))}</div>`
+              : "";
+          const openLabel =
+            type === "comment" ? "Open &amp; focus" : "Open";
+          const metaLine =
+            type === "comment"
+              ? `by ${escapeHtml(author)}${savedAt ? ` · ${escapeHtml(savedAt)}` : ""}`
+              : `${escapeHtml(entry.siteKey || "")}${savedAt ? ` · ${escapeHtml(savedAt)}` : ""}`;
           const openAttr = openUrl
             ? `href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer"`
             : `href="#" aria-disabled="true"`;
           return `<div class="saved-comment-item mb-2 rounded-md border border-gray-200 bg-white p-3" data-comment-id="${escapeHtml(entry.commentId)}">
-            <div class="font-medium text-gray-900"><a class="text-indigo-700 hover:underline" ${openAttr}>${escapeHtml(title)}</a></div>
-            <div class="mt-1 text-xs text-gray-500">by ${escapeHtml(author)}${savedAt ? ` · ${escapeHtml(savedAt)}` : ""}</div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="inline-flex rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">${escapeHtml(typeLabel)}</span>
+              <div class="font-medium text-gray-900"><a class="text-indigo-700 hover:underline" ${openAttr}>${escapeHtml(title)}</a></div>
+            </div>
+            <div class="mt-1 text-xs text-gray-500">${metaLine}</div>
+            ${pageLine}
             <div class="mt-2 text-gray-700">${escapeHtml(snippet) || "(no text stored)"}</div>
             <div class="mt-3 flex flex-wrap items-center gap-3">
-              <a class="text-indigo-600 hover:text-indigo-500 font-medium" ${openAttr}>Open &amp; focus</a>
+              <a class="text-indigo-600 hover:text-indigo-500 font-medium" ${openAttr}>${openLabel}</a>
               <button type="button" class="unsave-comment-btn text-red-600 hover:text-red-500 font-medium" data-comment-id="${escapeHtml(entry.commentId)}">Unsave</button>
             </div>
           </div>`;
@@ -1129,63 +860,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Add cancel button event listener
   const cancelButton = document.querySelector(
-    'button[type="button"]:not(#test-connection):not(#refresh-gemini-models):not(#refresh-router-models):not(#view-cache-stats):not(#clear-cache):not(#add-substack-domain):not(#export-bookmarks):not(#import-bookmarks):not(#refresh-saved-comments):not(.unsave-comment-btn):not(.remove-substack-domain)'
+    'button[type="button"]:not(#test-connection):not(#refresh-router-models):not(#view-cache-stats):not(#clear-cache):not(#add-substack-domain):not(#export-bookmarks):not(#import-bookmarks):not(#refresh-saved-comments):not(.unsave-comment-btn):not(.remove-substack-domain)'
   );
   cancelButton.addEventListener("click", () => {
     window.close();
   });
 
-  // Add radio button change listeners to enable/disable corresponding inputs
-  const radioButtons = document.querySelectorAll(
-    'input[name="provider-selection"]'
-  );
-  radioButtons.forEach((radio) => {
-    radio.addEventListener("change", () => {
-      // Enable/disable input fields based on selection
-      const openaiInputs = document.querySelectorAll(
-        "#openai-key, #openai-model"
-      );
-      const anthropicInputs = document.querySelectorAll(
-        "#anthropic-key, #anthropic-model"
-      );
-      const geminiInputs = document.querySelectorAll(
-        "#gemini-key, #gemini-model"
-      );
-      const deepseekInputs = document.querySelectorAll(
-        "#deepseek-key, #deepseek-model"
-      );
-      const routerInputs = document.querySelectorAll(
-        "#router-key, #router-model"
-      );
 
-      openaiInputs.forEach((input) => (input.disabled = radio.id !== "openai"));
-      anthropicInputs.forEach(
-        (input) => (input.disabled = radio.id !== "anthropic")
-      );
-      geminiInputs.forEach((input) => (input.disabled = radio.id !== "gemini"));
-      deepseekInputs.forEach(
-        (input) => (input.disabled = radio.id !== "deepseek")
-      );
-      routerInputs.forEach(
-        (input) => (input.disabled = radio.id !== "openai-router")
-      );
-    });
-  });
-
-  // Initial trigger of radio button change event to set initial state
-  const checkedRadio = document.querySelector(
-    'input[name="provider-selection"]:checked'
-  );
-  if (checkedRadio) {
-    checkedRadio.dispatchEvent(new Event("change"));
-  } else {
-    // 如果没有选中任何提供商，默认选择第一个
-    const firstProvider = document.querySelector(
-      'input[name="provider-selection"]'
-    );
-    if (firstProvider) {
-      firstProvider.checked = true;
-      firstProvider.dispatchEvent(new Event("change"));
-    }
-  }
 });

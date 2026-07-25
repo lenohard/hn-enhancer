@@ -2158,56 +2158,9 @@ class Summarization {
     );
 
     const providers = {
-      openai: () =>
-        this.summarizeUsingProvider(
-          providerSelection,
-          "OPENAI_API_REQUEST",
-          formattedComment,
-          model,
-          apiKey,
-          commentPathToIdMap,
-          streamingEnabled,
-          targetCommentId,
-          false,
-          language
-        ),
-      anthropic: () =>
-        this.summarizeUsingProvider(
-          providerSelection,
-          "ANTHROPIC_API_REQUEST",
-          formattedComment,
-          model,
-          apiKey,
-          commentPathToIdMap,
-          streamingEnabled,
-          targetCommentId,
-          true,
-          language
-        ),
-      deepseek: () =>
-        this.summarizeUsingProvider(
-          providerSelection,
-          "DEEPSEEK_API_REQUEST",
-          formattedComment,
-          model,
-          apiKey,
-          commentPathToIdMap,
-          false,
-          targetCommentId,
-          false,
-          language
-        ),
-      gemini: () =>
-        this.summarizeUsingGemini(
-          formattedComment,
-          model,
-          commentPathToIdMap,
-          targetCommentId,
-          language
-        ),
       "openai-router": () =>
         this.summarizeUsingProvider(
-          providerSelection,
+          "openai-router",
           "OPENAI_ROUTER_API_REQUEST",
           formattedComment,
           model,
@@ -2221,7 +2174,7 @@ class Summarization {
         ),
       none: () =>
         this.showSummaryInPanel(formattedComment, commentPathToIdMap, 0, {
-          aiProvider: providerSelection,
+          aiProvider: "openai-router",
           model,
           language,
         }),
@@ -2247,16 +2200,10 @@ class Summarization {
     commentPathToIdMap,
     streamingEnabled = false,
     targetCommentId = null,
-    isAnthropic = false,
     language = "en",
     isRouter = false
   ) {
-    // Validate required parameters
-    const requiredParams =
-      isAnthropic || isRouter
-        ? [text, model]
-        : [text, model, apiKey];
-    if (requiredParams.some((param) => !param)) {
+    if (!text || !model) {
       this.showError("Missing API configuration");
       return;
     }
@@ -2276,12 +2223,11 @@ class Summarization {
         apiKey,
         maxTokens,
         streamingEnabled,
-        isAnthropic,
         isRouter,
         routerUrl
       );
 
-      if (streamingEnabled && messageType !== "DEEPSEEK_API_REQUEST") {
+      if (streamingEnabled) {
         await this.handleStreamingResponse(
           messageType,
           requestData,
@@ -2294,7 +2240,7 @@ class Summarization {
           messageType,
           requestData
         );
-        const summary = this.extractSummaryFromResponse(response, isAnthropic);
+        const summary = this.extractSummaryFromResponse(response);
 
         await this.saveSummaryToCache(
           summary,
@@ -2365,7 +2311,6 @@ ${languageInstruction}`;
     apiKey,
     maxTokens,
     streamingEnabled,
-    isAnthropic,
     isRouter = false,
     routerUrl = "http://127.0.0.1:4000"
   ) {
@@ -2373,43 +2318,27 @@ ${languageInstruction}`;
       apiKey,
       model,
       streaming: streamingEnabled,
-      ...(messageType !== "OPENAI_ROUTER_API_REQUEST" && { max_tokens: maxTokens }),
-      ...(isRouter && { url: routerUrl }),
+      url: routerUrl,
       include_usage: true,
     };
 
-    if (isAnthropic) {
-      return {
-        ...baseData,
-        messages: [{ role: "user", content: userPrompt }],
-        system: systemPrompt,
-      };
-    } else {
-      return {
-        ...baseData,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      };
-    }
+    return {
+      ...baseData,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    };
   }
 
   /**
    * Extract summary from API response
    */
-  extractSummaryFromResponse(response, isAnthropic = false) {
-    if (isAnthropic) {
-      if (!response?.content?.[0]?.text) {
-        throw new Error("No summary generated from API response");
-      }
-      return response.content[0].text;
-    } else {
-      if (!response?.choices?.[0]?.message?.content) {
-        throw new Error("No summary generated from API response");
-      }
-      return response.choices[0].message.content;
+  extractSummaryFromResponse(response) {
+    if (!response?.choices?.[0]?.message?.content) {
+      throw new Error("No summary generated from API response");
     }
+    return response.choices[0].message.content;
   }
 
   /**
@@ -2441,73 +2370,6 @@ ${languageInstruction}`;
     }
 
     this.showError(errorMessage);
-  }
-
-  /**
-   * Summarizes text using Gemini (special handling)
-   */
-  async summarizeUsingGemini(
-    text,
-    model,
-    commentPathToIdMap,
-    targetCommentId = null,
-    language = "en"
-  ) {
-    const data = await chrome.storage.sync.get("settings");
-    const apiKey = data.settings?.gemini?.apiKey;
-
-    if (!text || !model || !apiKey) {
-      this.showError("Missing API configuration for Gemini");
-      return;
-    }
-
-    try {
-      const { maxTokens } = await this.getAIProviderModel();
-      const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
-      const { systemPrompt, userPrompt } = await this.preparePrompts(
-        tokenLimitText
-      );
-
-      const response = await this.enhancer.apiClient.sendBackgroundMessage(
-        "GEMINI_API_REQUEST",
-        {
-          apiKey,
-          model,
-          systemPrompt,
-          userPrompt,
-          max_tokens: maxTokens,
-        }
-      );
-
-      if (!response) {
-        throw new Error("No response from Gemini API");
-      }
-
-      let summary;
-      if (response.choices?.[0]?.message?.content) {
-        summary = response.choices[0].message.content;
-      } else if (response.candidates?.[0]?.content?.parts?.[0]?.text) {
-        summary = response.candidates[0].content.parts[0].text;
-      } else {
-        throw new Error("Invalid response format from Gemini API");
-      }
-
-      await this.saveSummaryToCache(
-        summary,
-        commentPathToIdMap,
-        response.duration,
-        targetCommentId,
-        { aiProvider: "gemini", model, language }
-      );
-      await this.showSummaryInPanel(
-        summary,
-        commentPathToIdMap,
-        response.duration,
-        { aiProvider: "gemini", model, language }
-      );
-    } catch (error) {
-      this.handleProviderError(error, "GEMINI_API_REQUEST", model);
-    }
   }
 
   /**
@@ -2629,15 +2491,8 @@ ${languageInstruction}`;
           const chunk = message.data;
           let content = "";
 
-          if (
-            messageType === "OPENAI_API_REQUEST" ||
-            messageType === "OPENAI_ROUTER_API_REQUEST"
-          ) {
+          if (messageType === "OPENAI_ROUTER_API_REQUEST") {
             content = chunk.choices?.[0]?.delta?.content || "";
-          } else if (messageType === "ANTHROPIC_API_REQUEST") {
-            if (chunk.type === "content_block_delta") {
-              content = chunk.delta?.text || "";
-            }
           }
 
           if (content) {

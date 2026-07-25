@@ -411,13 +411,8 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
             {
                 label: 'Authors',
                 hubView: 'authors',
-                onClick: () => enhancer.hubPanel?.toggleView('authors'),
             },
-            {
-                label: 'Saved',
-                hubView: 'saved',
-                onClick: () => enhancer.hubPanel?.toggleView('saved'),
-            },
+            ...this.getSaveHubButtons(enhancer),
             {
                 label: 'Favorite HN',
                 title: 'Open your favorites on HN',
@@ -432,13 +427,8 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
             enhancer?.bookmarkedAuthors instanceof Map
                 ? enhancer.bookmarkedAuthors.size
                 : 0;
-        const savedCount =
-            enhancer?.savedComments instanceof Map
-                ? enhancer.savedComments.size
-                : 0;
         return [
             { id: 'authors', label: 'Authors', value: String(authorsCount) },
-            { id: 'saved', label: 'Saved', value: String(savedCount) },
         ];
     }
 
