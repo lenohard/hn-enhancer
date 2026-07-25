@@ -714,3 +714,28 @@ Extended the chat modal so sites that summarize an *article body* (not a comment
 **Storage key shape**: `chatHistory_${siteKey}_${postId}_${commentId}_${contextType}` — consistent across HN, Substack, and future adapters.
 
 **Note**: History is saved only after the first successful AI response; failed calls leave nothing persisted. `hide()` preserves in-memory session; reopen via chat link re-runs `_dispatchGather` and reloads from storage.
+
+### Universal Selection Mode (2026-07-25)
+
+**Feature**: On any webpage (not just HN/Substack), users can select text and get a floating action button (FAB) to **Summarize** or **Chat** with the selection.
+
+**Architecture**:
+- `src/adapters/selection-adapter.js` — fallback `SiteAdapter` subclass with `isUniversal = true`, matches all URLs, registered **last** in `AdapterRegistry` so HN/Substack take priority.
+- `src/hn-enhancer.js` — `initUniversalMode()`: lightweight init creating only `SummaryPanel` + `Summarization` + selection listener. Guarded by `if (this.adapter?.isUniversal)` early in the constructor.
+- `manifest.*.json` — second `content_scripts` entry: `matches: ["<all_urls>"]`, `exclude_matches` for HN/Substack, includes `selection-adapter.js` before `adapter-registry.js`.
+
+**Key design decisions**:
+- **No hub panel, no help icon, no keyboard shortcuts** in universal mode — minimal footprint on arbitrary pages.
+- **FAB positioning**: absolute, above selection end, clamped to viewport. Auto-dismisses on click elsewhere.
+- **`getPostText()`**: selection > article container > `document.body.innerText` (capped at 50k chars).
+- **`getPostId()`**: hash of `location.href` for cache keying (stable per page, not per selection).
+- **No caching of summaries** in universal mode (selections are ephemeral); chat history is keyed by site + URL hash.
+
+**Files changed**:
+| File | What |
+|---|---|
+| `src/adapters/selection-adapter.js` | New — fallback adapter |
+| `src/adapters/adapter-registry.js` | Register SelectionAdapter last |
+| `src/hn-enhancer.js` | `initUniversalMode()`, `_setupSelectionListener()`, `_summarizeSelection()`, `_chatSelection()` |
+| `src/styles.css` | `.hn-selection-fab`, `.hn-selection-fab-btn` |
+| `manifest.chrome.json` / `manifest.firefox.json` | Second `content_scripts` entry |
