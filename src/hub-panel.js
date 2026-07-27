@@ -51,6 +51,7 @@ class HubPanel {
       <div class="hn-hub-body">
         <div class="hn-hub-stats" data-hub-stats hidden></div>
         <div class="hn-hub-actions" data-hub-actions></div>
+        <div class="hn-hub-model-picker" data-hub-model-picker></div>
         <div class="hn-hub-toggles" data-hub-toggles hidden></div>
         <div class="hn-hub-list-wrap" hidden>
           <div class="hn-hub-list-header">
@@ -136,6 +137,191 @@ class HubPanel {
         actions.appendChild(el);
       });
     }
+
+    this.setupHubModelPicker();
+  }
+
+  setupHubModelPicker() {
+    const container = this.panel.querySelector('[data-hub-model-picker]');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="hn-hub-model-row">
+        <label for="hn-hub-model-select">Model</label>
+        <select id="hn-hub-model-select" aria-label="Active AI model"></select>
+        <button type="button" class="hn-hub-model-refresh" title="Refresh models" aria-label="Refresh models">↻</button>
+      </div>
+      <div class="hn-hub-model-status" role="status"></div>
+    `;
+
+    const select = container.querySelector('.hn-hub-model-row select');
+    const refreshButton = container.querySelector('.hn-hub-model-refresh');
+    const status = container.querySelector('.hn-hub-model-status');
+    let modelsByName = new Map();
+
+    const normalizeUrl = (url) =>
+      (url || 'http://127.0.0.1:4000').trim().replace(/\/$/, '');
+    const cacheKey = 'openai-router-models-cache';
+
+    const readSettings = async () => {
+      const data = await chrome.storage.sync.get('settings');
+      return data.settings || {};
+    };
+
+    const readCachedModels = async (url) => {
+      const data = await chrome.storage.local.get(cacheKey);
+      const cache = data[cacheKey] || {};
+      const entry = cache[normalizeUrl(url)];
+      if (Array.isArray(entry?.models)) return entry.models;
+      return Array.isArray(cache.models) ? cache.models : [];
+    };
+
+    const writeCachedModels = async (url, models) => {
+      const data = await chrome.storage.local.get(cacheKey);
+      const cache = data[cacheKey] || {};
+      const normalizedUrl = normalizeUrl(url);
+      const previousFlags = new Map(
+        (cache[normalizedUrl]?.models || []).map((model) => [
+          model.name,
+          model.supportsImages === true,
+        ])
+      );
+      const merged = (models || []).map((model) => ({
+        ...model,
+        supportsImages:
+          typeof model.supportsImages === 'boolean'
+            ? model.supportsImages
+            : previousFlags.get(model.name) === true,
+      }));
+      cache[normalizedUrl] = { models: merged, timestamp: Date.now() };
+      await chrome.storage.local.set({ [cacheKey]: cache });
+      return merged;
+    };
+
+    const renderModels = (models, settings, message = '') => {
+      const provider = settings.providerSelection || 'openai-router';
+      const providerSettings = settings[provider] || {};
+      const currentModel = providerSettings.model || '';
+      const sortedModels = [...(models || [])].sort((a, b) =>
+        (a.displayName || a.name || '').localeCompare(
+          b.displayName || b.name || ''
+        )
+      );
+      modelsByName = new Map(
+        sortedModels.filter((model) => model?.name).map((model) => [model.name, model])
+      );
+      if (currentModel && !modelsByName.has(currentModel)) {
+        modelsByName.set(currentModel, {
+          name: currentModel,
+          displayName: currentModel,
+          supportsImages: providerSettings.supportsImages === true,
+        });
+      }
+
+      select.replaceChildren();
+      if (modelsByName.size === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No model configured';
+        select.appendChild(option);
+      } else {
+        modelsByName.forEach((model) => {
+          const option = document.createElement('option');
+          option.value = model.name;
+          option.textContent = model.displayName || model.name;
+          select.appendChild(option);
+        });
+      }
+      select.value = currentModel;
+      select.title = currentModel || 'Select an AI model';
+      select.disabled = provider !== 'openai-router' || modelsByName.size === 0;
+      refreshButton.disabled = provider !== 'openai-router';
+
+      const selected = modelsByName.get(currentModel);
+      const capability = selected?.supportsImages === true
+        ? 'Vision'
+        : currentModel
+          ? 'Text only'
+          : '';
+      status.textContent = message || capability;
+      status.classList.toggle('supports-images', capability === 'Vision');
+    };
+
+    const loadModels = async ({ refresh = false } = {}) => {
+      select.disabled = true;
+      refreshButton.disabled = true;
+      status.textContent = refresh ? 'Refreshing…' : 'Loading…';
+      try {
+        const settings = await readSettings();
+        const provider = settings.providerSelection || 'openai-router';
+        const providerSettings = settings[provider] || {};
+        let models = await readCachedModels(providerSettings.url);
+        if (refresh && provider === 'openai-router') {
+          const response = await this.enhancer.apiClient.sendBackgroundMessage(
+            'FETCH_OPENAI_ROUTER_MODELS',
+            {
+              apiKey: providerSettings.apiKey || undefined,
+              url: providerSettings.url,
+            }
+          );
+          models = await writeCachedModels(
+            providerSettings.url,
+            response?.models || []
+          );
+        }
+        renderModels(
+          models,
+          settings,
+          !models.length && provider === 'openai-router'
+            ? 'Use ↻ to load models'
+            : ''
+        );
+      } catch (error) {
+        console.error('Failed to load Hub models:', error);
+        const settings = await readSettings().catch(() => ({}));
+        renderModels([], settings, 'Could not load models');
+      }
+    };
+
+    select.addEventListener('change', async () => {
+      const modelName = select.value;
+      const model = modelsByName.get(modelName);
+      if (!modelName || !model) return;
+      select.disabled = true;
+      status.textContent = 'Applying…';
+      try {
+        const settings = await readSettings();
+        const provider = settings.providerSelection || 'openai-router';
+        const nextSettings = {
+          ...settings,
+          [provider]: {
+            ...(settings[provider] || {}),
+            model: modelName,
+            supportsImages: model.supportsImages === true,
+          },
+        };
+        await chrome.storage.sync.set({ settings: nextSettings });
+        await this.enhancer.chatModal?._refreshProviderAndModel?.();
+        renderModels(
+          [...modelsByName.values()],
+          nextSettings,
+          `Applied · ${model.supportsImages === true ? 'Vision' : 'Text only'}`
+        );
+      } catch (error) {
+        console.error('Failed to apply Hub model:', error);
+        status.textContent = 'Could not apply';
+        select.disabled = false;
+      }
+    });
+
+    refreshButton.addEventListener('click', () => loadModels({ refresh: true }));
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== 'sync' || !changes.settings?.newValue) return;
+      const settings = changes.settings.newValue;
+      renderModels([...modelsByName.values()], settings);
+    });
+
+    loadModels();
   }
 
   setupHubToggles() {

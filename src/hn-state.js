@@ -879,9 +879,12 @@ class HNState {
       return;
     }
     const key = this._getChatHistoryKey(siteKey, postId, commentId, contextType);
-    chrome.storage.local.remove(key).catch((error) => {
+    try {
+      await chrome.storage.local.remove(key);
+    } catch (error) {
       console.error(`Error clearing chat history for ${key}:`, error);
-    });
+      throw error;
+    }
     // console.log(`[HNState] Cleared history for ${key}`); // Optional debug log
   }
 

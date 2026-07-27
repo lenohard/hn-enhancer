@@ -52,6 +52,9 @@ class ChatModal {
       this.modelIndicatorElement = this.modalElement.querySelector(
         ".chat-model-indicator"
       );
+      this._ensureClearButton(
+        this.modalElement.querySelector(".chat-session-meta")
+      );
       return; // Avoid creating duplicates
     }
 
@@ -88,6 +91,7 @@ class ChatModal {
     this.modelIndicatorElement.className = "chat-model-indicator";
     this.modelIndicatorElement.textContent = "Model: —";
     sessionMeta.appendChild(this.modelIndicatorElement);
+    this._ensureClearButton(sessionMeta);
 
     this.conversationArea = document.createElement("div");
     this.conversationArea.className = "chat-conversation-area";
@@ -115,6 +119,94 @@ class ChatModal {
 
     document.body.appendChild(this.modalElement);
     this.enhancer.logDebug("Chat modal element created and appended.");
+  }
+
+  _ensureClearButton(sessionMeta) {
+    if (!sessionMeta) return;
+    this.clearButton = sessionMeta.querySelector(".chat-clear-button");
+    if (!this.clearButton) {
+      this.clearButton = document.createElement("button");
+      this.clearButton.type = "button";
+      this.clearButton.className = "chat-clear-button";
+      this.clearButton.textContent = "Clear chat";
+      this.clearButton.title = "Clear chat history for the current context";
+      sessionMeta.appendChild(this.clearButton);
+    }
+    if (this.clearButton.dataset.listenerAdded !== "true") {
+      this.clearButton.addEventListener("click", () =>
+        this._clearCurrentChatHistory()
+      );
+      this.clearButton.dataset.listenerAdded = "true";
+    }
+  }
+
+  async _clearCurrentChatHistory() {
+    if (!this.currentPostId) return;
+    if (this.currentLlmMessageElement) {
+      this._displayMessage(
+        "Wait for the current response to finish before clearing this chat.",
+        "system"
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Clear this chat history for the “${this.currentContextType}” context?`
+    );
+    if (!confirmed) return;
+
+    const commentId = this.isPostChat
+      ? "post"
+      : this.enhancer.domUtils.getCommentId(this.targetCommentElement);
+    if (!commentId) return;
+
+    this.clearButton.disabled = true;
+    this.inputElement.disabled = true;
+    this.sendButton.disabled = true;
+    try {
+      await this.enhancer.hnState.clearChatHistory(
+        this._getChatSiteKey(),
+        this.currentPostId,
+        commentId,
+        this.currentContextType
+      );
+      this.conversationHistory = [];
+      this.commentPathToIdMap = new Map();
+      this.currentLlmMessageElement = null;
+      this.historyProvider = null;
+      this.historyModel = null;
+      this.activeScreenshot = null;
+      this.conversationArea.replaceChildren();
+      this._updateModelIndicator(this.currentAiProvider, this.currentModel);
+
+      if (this.isPostChat) {
+        const indicators = document.querySelector(
+          ".subtext .subline .cache-indicators"
+        );
+        indicators?.querySelector(".chat-indicator")?.remove();
+        if (indicators && indicators.children.length === 0) {
+          const separator = indicators.previousSibling;
+          indicators.remove();
+          if (separator?.nodeType === Node.TEXT_NODE && separator.textContent === " | ") {
+            separator.remove();
+          }
+        }
+      } else {
+        await this.updateCacheIndicatorsForComment(commentId);
+      }
+
+      await this._dispatchGather(this.currentContextType);
+    } catch (error) {
+      console.error("Could not clear current chat history:", error);
+      this._displayMessage(
+        `Could not clear chat history: ${error.message}`,
+        "system"
+      );
+      this.inputElement.disabled = false;
+      this.sendButton.disabled = false;
+    } finally {
+      this.clearButton.disabled = false;
+    }
   }
 
   /**
