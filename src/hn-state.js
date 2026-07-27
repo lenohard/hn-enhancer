@@ -1435,7 +1435,7 @@ class HNState {
 
   /**
    * Retrieves persisted hub panel position and collapse state.
-   * @returns {Promise<{left?: number, top?: number, collapsed?: boolean}|null>}
+   * @returns {Promise<{left?: number, top?: number, bottom?: number, anchorBottom?: boolean, collapsed?: boolean}|null>}
    */
   static async getHubPanelPosition() {
     try {
@@ -1453,7 +1453,7 @@ class HNState {
 
   /**
    * Saves hub panel position and collapse state.
-   * @param {{left: number, top: number, collapsed?: boolean}} position
+   * @param {{left: number, top?: number, bottom?: number, anchorBottom?: boolean, collapsed?: boolean}} position
    */
   static async saveHubPanelPosition(position) {
     if (!position || typeof position !== "object") {
@@ -1464,6 +1464,8 @@ class HNState {
         [this.HUB_PANEL_POSITION_KEY]: {
           left: position.left,
           top: position.top,
+          bottom: position.bottom,
+          anchorBottom: Boolean(position.anchorBottom),
           collapsed: Boolean(position.collapsed),
         },
       });

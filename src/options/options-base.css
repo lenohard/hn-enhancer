@@ -1,3 +1,128 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+    .options-body {
+        min-height: 100vh;
+        min-width: 480px;
+        background: #f3f4f6;
+    }
+
+    .options-page {
+        width: 100%;
+        max-width: none;
+        min-height: 100vh;
+        box-sizing: border-box;
+        padding: 1.5rem 1.25rem 2rem;
+        background: #fff;
+    }
+
+    @media (min-width: 640px) {
+        .options-page {
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+    }
+
+    @media (min-width: 1024px) {
+        .options-page {
+            padding-left: 2.5rem;
+            padding-right: 2.5rem;
+        }
+    }
+
+    @media (min-width: 1280px) {
+        .options-page {
+            padding-left: 3rem;
+            padding-right: 3rem;
+        }
+    }
+
+    .options-layout {
+        display: block;
+    }
+
+    .options-sidebar {
+        margin-top: 2rem;
+        padding-top: 1.5rem;
+        padding-left: 0;
+        border-top: 3px solid #cbd5e1;
+        border-left: none;
+        position: static;
+    }
+
+    .options-section-heading h2 {
+        color: #111827;
+        font-size: 1rem;
+        font-weight: 650;
+        line-height: 1.5rem;
+    }
+
+    .options-section-heading p {
+        margin-top: 0.25rem;
+        color: #4b5563;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+    }
+
+    .options-sidebar .options-sidebar-list {
+        max-height: none;
+        overflow-y: visible;
+    }
+
+    .saved-comment-item {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .options-params-row {
+        display: grid;
+        gap: 1.5rem;
+    }
+
+    @media (min-width: 768px) {
+        .options-params-row {
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+    }
+
+    .router-model-suggestion:hover,
+    .router-model-suggestion.is-active {
+        background: #eef2ff;
+    }
+
+    .router-model-img-badge {
+        flex-shrink: 0;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: #9ca3af;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .router-model-img-badge:hover {
+        color: #4f46e5;
+    }
+
+    .router-model-img-badge.is-on {
+        color: #ff6600;
+    }
+
+    .router-model-img-badge svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .router-model-img-badge:focus-visible {
+        outline: 2px solid #4f46e5;
+        outline-offset: 1px;
+        border-radius: 4px;
+    }
+}

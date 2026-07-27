@@ -2,6 +2,12 @@
 async function saveSettings() {
   const language = document.getElementById("language-select").value;
   const streamingEnabled = document.getElementById("streaming-enabled").checked;
+  const bodyEnabled = document.getElementById("body-enabled").checked;
+  const imagesEnabled = document.getElementById("images-enabled").checked;
+  const screenshotEnabled = document.getElementById("screenshot-enabled").checked;
+  const modelSupportsImages = document.getElementById(
+    "router-model-supports-images"
+  ).checked;
   const maxTokens =
     parseInt(document.getElementById("max-tokens").value) || 100000;
   const temperature =
@@ -10,17 +16,29 @@ async function saveSettings() {
     providerSelection: "openai-router",
     language,
     streamingEnabled,
+    bodyEnabled,
+    imagesEnabled,
+    screenshotEnabled,
     maxTokens,
     temperature,
     "openai-router": {
       apiKey: document.getElementById("router-key").value,
       model: document.getElementById("router-model").value,
       url: document.getElementById("router-url").value,
+      supportsImages: modelSupportsImages,
     },
   };
 
   try {
     await chrome.storage.sync.set({ settings });
+    try {
+      await routerModelPicker?.setModelSupportsImages(
+        settings["openai-router"].model,
+        modelSupportsImages
+      );
+    } catch (error) {
+      console.warn("Could not update cached model capabilities:", error);
+    }
     // Optional: Show save confirmation
     const saveButton = document.querySelector('button[type="submit"]');
     const originalText = saveButton.textContent;
@@ -57,12 +75,25 @@ async function sendBackgroundMessage(type, data) {
   return response.data;
 }
 
-// Function to filter OpenAI Router models based on search term
-function filterOpenAIRouterModels(searchTerm, allModels) {
+const ROUTER_MODELS_CACHE_KEY = "openai-router-models-cache";
+const ROUTER_MODEL_SUGGESTION_LIMIT = 80;
+
+function normalizeRouterUrl(url) {
+  return (url || "").trim().replace(/\/$/, "");
+}
+
+function sortRouterModels(models) {
+  return [...models].sort((a, b) => {
+    const nameA = (a.displayName || a.name).toLowerCase();
+    const nameB = (b.displayName || b.name).toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
+}
+
+function filterRouterModels(searchTerm, allModels) {
   if (!searchTerm) {
     return allModels;
   }
-
   const lowerSearchTerm = searchTerm.toLowerCase();
   return allModels.filter((model) => {
     const name = (model.displayName || model.name).toLowerCase();
@@ -73,246 +104,424 @@ function filterOpenAIRouterModels(searchTerm, allModels) {
   });
 }
 
-// Function to update OpenAI Router model dropdown options
-function updateOpenAIRouterModelOptions(models, selectElement, currentValue) {
-  selectElement.innerHTML = "";
-
-  // Sort models alphabetically by display name
-  const sortedModels = models.sort((a, b) => {
-    const nameA = (a.displayName || a.name).toLowerCase();
-    const nameB = (b.displayName || b.name).toLowerCase();
-    return nameA.localeCompare(nameB);
-  });
-
-  // Add models to select element
-  sortedModels.forEach((model) => {
-    const option = document.createElement("option");
-    option.value = model.name;
-    option.textContent = model.displayName || model.name;
-    if (model.description) {
-      option.title = model.description;
-    }
-    selectElement.appendChild(option);
-  });
-
-  // Restore the previous value if it exists in the options
-  if (currentValue) {
-    selectElement.value = currentValue;
+function formatRouterModelCacheAge(timestamp) {
+  if (!timestamp) {
+    return "";
   }
-
-  // If no models found, add a "no results" option
-  if (sortedModels.length === 0) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No models found";
-    option.disabled = true;
-    selectElement.appendChild(option);
+  const ageMs = Date.now() - timestamp;
+  const minutes = Math.floor(ageMs / 60000);
+  if (minutes < 1) {
+    return "just now";
   }
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) {
+    return `${hours}h ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
-// Function to fetch available OpenAI Router models
-async function fetchOpenAIRouterModels() {
-  try {
-    // Get the API key from the input field (optional for OpenAI Router)
-    const apiKey = document.getElementById("router-key").value;
-    const url = document.getElementById("router-url").value;
+class RouterModelPicker {
+  constructor() {
+    this.input = document.getElementById("router-model");
+    this.list = document.getElementById("router-model-suggestions");
+    this.status = document.getElementById("router-model-status");
+    this.urlInput = document.getElementById("router-url");
+    this.keyInput = document.getElementById("router-key");
+    this.allModels = [];
+    this.cacheTimestamp = null;
+    this.highlightIndex = -1;
+    this.isOpen = false;
 
-    const data = await sendBackgroundMessage("FETCH_OPENAI_ROUTER_MODELS", {
-      apiKey: apiKey || undefined,
-      url: url,
-    });
-
-    const inputElement = document.getElementById("router-model");
-
-    // If models are returned, show them in a select dropdown instead of text input
-    if (data.models && data.models.length > 0) {
-      // Check if we need to replace the input with a select
-      if (inputElement.tagName.toLowerCase() === "input") {
-        // Store the current value before replacing the element
-        const currentValue = inputElement.value;
-
-        const selectElement = document.createElement("select");
-        selectElement.id = "router-model";
-        selectElement.name = "router-model";
-        selectElement.className = inputElement.className;
-
-        // Replace input with select
-        inputElement.parentNode.replaceChild(selectElement, inputElement);
-
-        // Show search container
-        const searchContainer = document.getElementById(
-          "router-search-container"
-        );
-        if (searchContainer) {
-          searchContainer.classList.remove("hidden");
-        }
-
-        // Store all models for filtering
-        selectElement.allModels = data.models;
-
-        // Update options with all models
-        updateOpenAIRouterModelOptions(data.models, selectElement, currentValue);
-
-        // Add the dropdown arrow
-        const container = selectElement.parentNode;
-        if (!container.querySelector("svg")) {
-          const svg = document.createElement("div");
-          svg.innerHTML = `<svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
-                        <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                    </svg>`;
-          container.appendChild(svg.firstElementChild);
-        }
-
-        // Setup search functionality
-        const searchInput = document.getElementById("router-model-search");
-        if (searchInput) {
-          searchInput.addEventListener("input", (e) => {
-            const searchTerm = e.target.value;
-            const filteredModels = filterOpenAIRouterModels(searchTerm, data.models);
-            updateOpenAIRouterModelOptions(
-              filteredModels,
-              selectElement,
-              selectElement.value
-            );
-          });
-        }
-      } else {
-        // Already a select, just update options but preserve current value
-        const currentValue = inputElement.value;
-
-        // Show search container
-        const searchContainer = document.getElementById(
-          "router-search-container"
-        );
-        if (searchContainer) {
-          searchContainer.classList.remove("hidden");
-        }
-
-        // Store all models for filtering
-        inputElement.allModels = data.models;
-
-        // Update options with all models
-        updateOpenAIRouterModelOptions(data.models, inputElement, currentValue);
-
-        // Setup search functionality if not already setup
-        const searchInput = document.getElementById("router-model-search");
-        if (searchInput && !searchInput.hasAttribute("data-setup")) {
-          searchInput.setAttribute("data-setup", "true");
-          searchInput.addEventListener("input", (e) => {
-            const searchTerm = e.target.value;
-            const filteredModels = filterOpenAIRouterModels(searchTerm, data.models);
-            updateOpenAIRouterModelOptions(
-              filteredModels,
-              inputElement,
-              inputElement.value
-            );
-          });
-        }
-      }
-
-      console.log(`加载了 ${data.models.length}  OpenAI Router models`);
-    } else {
-      console.log("No OpenAI Router models found");
+    if (!this.input || !this.list) {
+      return;
     }
 
-    // Cache the models data
-    const modelsToCache = {
-      models: data.models,
+    this.setupEvents();
+  }
+
+  getCacheKey() {
+    return normalizeRouterUrl(this.urlInput?.value);
+  }
+
+  updateStatus(extraMessage) {
+    if (!this.status) {
+      return;
+    }
+    if (extraMessage) {
+      this.status.textContent = extraMessage;
+      return;
+    }
+    if (!this.allModels.length) {
+      this.status.textContent =
+        "No cached model list. Click 刷新 to fetch models from your router.";
+      return;
+    }
+    const age = formatRouterModelCacheAge(this.cacheTimestamp);
+    this.status.textContent = `${this.allModels.length} cached models (${age}). Type to filter, or click 刷新 for the latest list.`;
+  }
+
+  async readCacheEntry() {
+    const cachedData = await chrome.storage.local.get(ROUTER_MODELS_CACHE_KEY);
+    const cache = cachedData[ROUTER_MODELS_CACHE_KEY] || {};
+    const cacheKey = this.getCacheKey();
+
+    if (cache[cacheKey]?.models?.length) {
+      return cache[cacheKey];
+    }
+
+    // Migrate legacy flat cache shape: { models, timestamp }
+    if (Array.isArray(cache.models) && cache.models.length) {
+      const migrated = {
+        models: cache.models,
+        timestamp: cache.timestamp || Date.now(),
+      };
+      await this.writeCacheEntry(migrated.models);
+      return migrated;
+    }
+
+    return null;
+  }
+
+  async writeCacheEntry(models) {
+    const cachedData = await chrome.storage.local.get(ROUTER_MODELS_CACHE_KEY);
+    const cache = cachedData[ROUTER_MODELS_CACHE_KEY] || {};
+    const cacheKey = this.getCacheKey();
+    // Preserve previously-set `supportsImages` flags by model name when refreshing.
+    const previousFlags = new Map(
+      (cache[cacheKey]?.models || []).map((m) => [m.name, m.supportsImages])
+    );
+    const merged = (models || []).map((m) => ({
+      ...m,
+      supportsImages:
+        typeof m.supportsImages === "boolean"
+          ? m.supportsImages
+          : previousFlags.get(m.name) === true,
+    }));
+    cache[cacheKey] = {
+      models: merged,
       timestamp: Date.now(),
     };
-    chrome.storage.local.set({ "openai-router-models-cache": modelsToCache });
-  } catch (error) {
-    console.error("Error fetching OpenAI Router models:", error);
-    alert(`Failed to fetch OpenAI Router models: ${error.message}`);
+    await chrome.storage.local.set({ [ROUTER_MODELS_CACHE_KEY]: cache });
+    return merged;
+  }
+
+  async toggleSupportsImages(modelName) {
+    const idx = this.allModels.findIndex((m) => m.name === modelName);
+    if (idx === -1) return;
+    const model = this.allModels[idx];
+    await this.setModelSupportsImages(modelName, !model.supportsImages);
+    if (this.input.value.trim() === modelName) {
+      this._notifyModelImageSupport?.(modelName);
+    }
+    this.renderSuggestions(this.input.value, { forceOpen: true });
+  }
+
+  async setModelSupportsImages(modelName, supportsImages) {
+    const model = this.allModels.find((entry) => entry.name === modelName);
+    if (!model) return;
+    model.supportsImages = supportsImages === true;
+    this.allModels = sortRouterModels(
+      await this.writeCacheEntry(this.allModels)
+    );
+  }
+
+  getModelSupportsImages(modelName) {
+    if (!modelName) return false;
+    const model = this.allModels.find((m) => m.name === modelName);
+    return model?.supportsImages === true;
+  }
+
+  setModels(models, timestamp) {
+    this.allModels = sortRouterModels(models || []);
+    this.cacheTimestamp = timestamp || null;
+    this.updateStatus();
+  }
+
+  async loadFromCache() {
+    try {
+      const entry = await this.readCacheEntry();
+      if (entry?.models?.length) {
+        this.setModels(entry.models, entry.timestamp);
+        return true;
+      }
+      this.setModels([], null);
+      return false;
+    } catch (error) {
+      console.error("Error loading cached router models:", error);
+      this.updateStatus("Could not load cached model list.");
+      return false;
+    }
+  }
+
+  async fetchModels() {
+    const apiKey = this.keyInput?.value;
+    const url = this.urlInput?.value;
+    const data = await sendBackgroundMessage("FETCH_OPENAI_ROUTER_MODELS", {
+      apiKey: apiKey || undefined,
+      url,
+    });
+    const models = data.models || [];
+    const cachedModels = await this.writeCacheEntry(models);
+    this.setModels(cachedModels, Date.now());
+    this.renderSuggestions(this.input.value, { forceOpen: true });
+    return models;
+  }
+
+  getFilteredModels(term) {
+    const filtered = filterRouterModels(term, this.allModels);
+    return filtered.slice(0, ROUTER_MODEL_SUGGESTION_LIMIT);
+  }
+
+  renderSuggestions(term, { forceOpen = false } = {}) {
+    if (!this.list) {
+      return;
+    }
+
+    const models = this.getFilteredModels(term);
+    this.highlightIndex = -1;
+    this.list.innerHTML = "";
+
+    if (!this.allModels.length) {
+      this.closeSuggestions();
+      return;
+    }
+
+    if (!models.length) {
+      const empty = document.createElement("li");
+      empty.className = "px-3 py-2 text-sm text-gray-500";
+      empty.textContent = term ? "No matching models" : "No models available";
+      empty.setAttribute("role", "option");
+      empty.setAttribute("aria-disabled", "true");
+      this.list.appendChild(empty);
+      this.openSuggestions();
+      return;
+    }
+
+    models.forEach((model, index) => {
+      const item = document.createElement("li");
+      item.className =
+        "router-model-suggestion flex items-start gap-2 px-3 py-2 text-sm cursor-pointer";
+      item.setAttribute("role", "option");
+      item.dataset.modelName = model.name;
+      item.dataset.index = String(index);
+
+      const body = document.createElement("div");
+      body.className = "flex-1 min-w-0";
+
+      const label = document.createElement("div");
+      label.className = "font-medium text-gray-900 truncate";
+      label.textContent = model.displayName || model.name;
+      body.appendChild(label);
+
+      if (model.description && model.description !== label.textContent) {
+        const desc = document.createElement("div");
+        desc.className = "text-xs text-gray-500 truncate";
+        desc.textContent = model.description;
+        body.appendChild(desc);
+      }
+
+      item.appendChild(body);
+
+      // Image-support toggle badge
+      const imgBadge = document.createElement("button");
+      imgBadge.type = "button";
+      const supportsImages = model.supportsImages === true;
+      imgBadge.className = supportsImages
+        ? "router-model-img-badge is-on"
+        : "router-model-img-badge";
+      imgBadge.title = supportsImages
+        ? "Supports images — click to mark as not supporting"
+        : "Click to mark this model as supporting images";
+      imgBadge.setAttribute(
+        "aria-label",
+        supportsImages
+          ? "Mark as not supporting images"
+          : "Mark as supporting images"
+      );
+      imgBadge.innerHTML =
+        '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3Zm1 0v7.586l2.293-2.293a1 1 0 0 1 1.414 0L9 10.586l1.293-1.293a1 1 0 0 1 1.414 0L13 10.586V3H3Zm0 9.414L4.414 11 5 11.586 4.414 12 3 12.414ZM5.5 7a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>';
+      imgBadge.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleSupportsImages(model.name);
+      });
+      item.appendChild(imgBadge);
+
+      item.addEventListener("mousedown", (event) => {
+        if (event.target.closest(".router-model-img-badge")) return;
+        event.preventDefault();
+        this.selectModel(model.name);
+      });
+
+      this.list.appendChild(item);
+    });
+
+    if (forceOpen || document.activeElement === this.input) {
+      this.openSuggestions();
+    }
+  }
+
+  setHighlightedIndex(nextIndex) {
+    const items = [...this.list.querySelectorAll(".router-model-suggestion")];
+    if (!items.length) {
+      this.highlightIndex = -1;
+      return;
+    }
+
+    this.highlightIndex = Math.max(0, Math.min(nextIndex, items.length - 1));
+    items.forEach((item, index) => {
+      item.classList.toggle("is-active", index === this.highlightIndex);
+      if (index === this.highlightIndex) {
+        item.scrollIntoView({ block: "nearest" });
+      }
+    });
+  }
+
+  selectModel(modelName) {
+    this.input.value = modelName;
+    this.closeSuggestions();
+    this.input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  /** Wire a callback fired whenever the selected model changes. */
+  onModelImageSupportChange(fn) {
+    this._notifyModelImageSupport = (modelName) =>
+      fn(modelName, this.getModelSupportsImages(modelName));
+  }
+
+  openSuggestions() {
+    if (!this.allModels.length) {
+      return;
+    }
+    this.list.classList.remove("hidden");
+    this.input.setAttribute("aria-expanded", "true");
+    this.isOpen = true;
+  }
+
+  closeSuggestions() {
+    this.list.classList.add("hidden");
+    this.input.setAttribute("aria-expanded", "false");
+    this.highlightIndex = -1;
+    this.isOpen = false;
+    this.list
+      .querySelectorAll(".router-model-suggestion.is-active")
+      .forEach((item) => item.classList.remove("is-active"));
+  }
+
+  setupEvents() {
+    this.input.addEventListener("input", () => {
+      this.renderSuggestions(this.input.value, { forceOpen: true });
+    });
+
+    this.input.addEventListener("change", () => {
+      this._notifyModelImageSupport?.(this.input.value.trim());
+    });
+
+    this.input.addEventListener("focus", () => {
+      this.renderSuggestions(this.input.value, { forceOpen: true });
+    });
+
+    this.input.addEventListener("keydown", (event) => {
+      const items = this.list.querySelectorAll(".router-model-suggestion");
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        if (!this.isOpen) {
+          this.renderSuggestions(this.input.value, { forceOpen: true });
+        }
+        this.setHighlightedIndex(this.highlightIndex + 1);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        if (!this.isOpen) {
+          this.renderSuggestions(this.input.value, { forceOpen: true });
+        }
+        this.setHighlightedIndex(
+          this.highlightIndex <= 0 ? items.length - 1 : this.highlightIndex - 1
+        );
+        return;
+      }
+      if (event.key === "Enter" && this.isOpen && this.highlightIndex >= 0) {
+        event.preventDefault();
+        const active = items[this.highlightIndex];
+        if (active?.dataset.modelName) {
+          this.selectModel(active.dataset.modelName);
+        }
+        return;
+      }
+      if (event.key === "Escape") {
+        this.closeSuggestions();
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      if (
+        !this.input.contains(event.target) &&
+        !this.list.contains(event.target)
+      ) {
+        this.closeSuggestions();
+      }
+    });
+
+    this.urlInput?.addEventListener("change", async () => {
+      await this.loadFromCache();
+      this.renderSuggestions(this.input.value);
+    });
   }
 }
 
-// Load OpenAI Router models from storage or keep as input
-async function loadOpenAIRouterModels() {
-  try {
-    // Try to load cached models from storage
-    const cachedData = await chrome.storage.local.get("openai-router-models-cache");
-    const routerModels = cachedData["openai-router-models-cache"];
+let routerModelPicker;
 
-    const inputElement = document.getElementById("router-model");
-
-    // Check if we have cached models and they're not too old (24 hours)
-    const isDataFresh =
-      routerModels &&
-      routerModels.timestamp &&
-      Date.now() - routerModels.timestamp < 24 * 60 * 60 * 1000;
-
-    if (
-      isDataFresh &&
-      routerModels.models &&
-      routerModels.models.length > 0
-    ) {
-      // Replace input with select if we have cached models
-      if (inputElement.tagName.toLowerCase() === "input") {
-        const currentValue = inputElement.value;
-
-        const selectElement = document.createElement("select");
-        selectElement.id = "router-model";
-        selectElement.name = "router-model";
-        selectElement.className = inputElement.className;
-
-        // Replace input with select
-        inputElement.parentNode.replaceChild(selectElement, inputElement);
-
-        // Show search container
-        const searchContainer = document.getElementById(
-          "router-search-container"
-        );
-        if (searchContainer) {
-          searchContainer.classList.remove("hidden");
-        }
-
-        // Store all models for filtering
-        selectElement.allModels = routerModels.models;
-
-        // Update options with all models
-        updateOpenAIRouterModelOptions(
-          routerModels.models,
-          selectElement,
-          currentValue
-        );
-
-        // Add the dropdown arrow
-        const container = selectElement.parentNode;
-        if (!container.querySelector("svg")) {
-          const svg = document.createElement("div");
-          svg.innerHTML = `<svg class="pointer-events-none col-start-1 row-start-1 mr-2 size-5 self-center justify-self-end text-gray-500 sm:size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" data-slot="icon">
-                        <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                    </svg>`;
-          container.appendChild(svg.firstElementChild);
-        }
-
-        // Setup search functionality
-        const searchInput = document.getElementById("router-model-search");
-        if (searchInput) {
-          searchInput.addEventListener("input", (e) => {
-            const searchTerm = e.target.value;
-            const filteredModels = filterOpenAIRouterModels(
-              searchTerm,
-              routerModels.models
-            );
-            updateOpenAIRouterModelOptions(
-              filteredModels,
-              selectElement,
-              selectElement.value
-            );
-          });
-        }
-      }
-      console.log(`加载了 ${routerModels.models.length}  cached OpenAI Router models`);
-    } else {
-      // Keep as input field if no cached data or data is stale
-      console.log("Using OpenAI Router text input");
+async function initRouterModelPicker() {
+  routerModelPicker = new RouterModelPicker();
+  await routerModelPicker.loadFromCache();
+  const supportsImagesInput = document.getElementById(
+    "router-model-supports-images"
+  );
+  routerModelPicker.onModelImageSupportChange((_modelName, supportsImages) => {
+    if (supportsImagesInput) {
+      supportsImagesInput.checked = supportsImages;
     }
-  } catch (error) {
-    console.error("Error loading OpenAI Router models:", error);
-    // Keep as input field in case of error
+  });
+
+  supportsImagesInput?.addEventListener("change", () => {
+    routerModelPicker
+      .setModelSupportsImages(
+        routerModelPicker.input.value.trim(),
+        supportsImagesInput.checked
+      )
+      .catch((error) => {
+        console.warn("Could not update cached model capabilities:", error);
+      });
+  });
+}
+
+async function fetchOpenAIRouterModels() {
+  if (!routerModelPicker) {
+    routerModelPicker = new RouterModelPicker();
   }
+  try {
+    const models = await routerModelPicker.fetchModels();
+    console.log(`Loaded ${models.length} OpenAI Router models`);
+    routerModelPicker.updateStatus(
+      `Refreshed ${models.length} models from router.`
+    );
+    return models;
+  } catch (error) {
+    console.error("Error fetching OpenAI Router models:", error);
+    throw error;
+  }
+}
+
+async function loadOpenAIRouterModels() {
+  if (!routerModelPicker) {
+    routerModelPicker = new RouterModelPicker();
+  }
+  await routerModelPicker.loadFromCache();
 }
 async function loadSettings() {
   try {
@@ -330,6 +539,19 @@ async function loadSettings() {
         document.getElementById("streaming-enabled").checked =
           settings.streamingEnabled;
       }
+
+      if (settings.imagesEnabled !== undefined) {
+        document.getElementById("images-enabled").checked =
+          settings.imagesEnabled;
+      } else {
+        document.getElementById("images-enabled").checked = false;
+      }
+
+      document.getElementById("body-enabled").checked =
+        settings.bodyEnabled !== false;
+
+      document.getElementById("screenshot-enabled").checked =
+        settings.screenshotEnabled === true;
 
       // Set max tokens setting
       if (settings.maxTokens !== undefined) {
@@ -351,16 +573,23 @@ async function loadSettings() {
           settings["openai-router"].apiKey || "";
         document.getElementById("router-url").value =
           settings["openai-router"].url || "http://127.0.0.1:4000";
-        // Load OpenAI Router models first, then set the selected model
-        await loadOpenAIRouterModels();
-        const routerModelElement = document.getElementById("router-model");
-        if (routerModelElement) {
-          routerModelElement.value = settings["openai-router"].model || "gpt-3.5-turbo";
-        }
-      } else {
-        // Even if no settings exist, try to load cached models
-        await loadOpenAIRouterModels();
       }
+
+      await initRouterModelPicker();
+      const routerModelElement = document.getElementById("router-model");
+      if (routerModelElement && settings["openai-router"]?.model) {
+        routerModelElement.value = settings["openai-router"].model;
+      }
+      const savedSupportsImages =
+        settings["openai-router"]?.supportsImages === true;
+      document.getElementById("router-model-supports-images").checked =
+        savedSupportsImages;
+      await routerModelPicker?.setModelSupportsImages(
+        settings["openai-router"]?.model,
+        savedSupportsImages
+      );
+    } else {
+      await initRouterModelPicker();
     }
   } catch (error) {
     console.error("Error loading settings:", error);
@@ -589,6 +818,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }, 2000);
     } catch (error) {
       refreshRouterButton.textContent = "刷新失败";
+      alert(`Failed to fetch OpenAI Router models: ${error.message}`);
       setTimeout(() => {
         refreshRouterButton.textContent = originalText;
       }, 3000);

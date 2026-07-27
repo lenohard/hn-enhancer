@@ -11,14 +11,15 @@
     <script src="options.js" defer></script>
 </head>
 
-<body class="flex items-center justify-center bg-gray-100" style="min-width: 480px">
-    <div class="m-6 p-6 bg-white rounded-lg shadow-md mx-auto " style="min-width: 420px; max-width: 640px; width: 100%">
+<body class="options-body">
+    <div class="options-page">
         <form>
             <fieldset>
                 <legend class="text-sm/6 font-semibold text-gray-900">Hacker News Companion Settings</legend>
                 <p class="mt-1 text-sm/6 text-gray-600">Select the LLM provider for summarization.</p>
 
-                <div class="mt-6 space-y-6">
+                <div class="options-layout mt-6">
+                    <div class="options-main space-y-5">
                     <!-- Language Selection -->
                     <div class="space-y-3">
                         <div class="flex items-center">
@@ -68,6 +69,55 @@
                         </div>
                     </div>
 
+                    <!-- Article Body -->
+                    <div class="space-y-3">
+                        <div>
+                            <label for="body-enabled" class="block text-sm font-medium text-gray-900">Article
+                                Body</label>
+                            <p class="mt-1 text-sm text-gray-600">Include extracted article text in post summaries and
+                                chat. Disable it to send only selected images, screenshots, and your prompt.</p>
+                        </div>
+                        <div class="flex items-center">
+                            <input id="body-enabled" name="body-enabled" type="checkbox" checked
+                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                            <label for="body-enabled" class="ml-3 block text-sm font-medium text-gray-900">Include
+                                extracted article body</label>
+                        </div>
+                    </div>
+
+                    <!-- Image Attachments -->
+                    <div class="space-y-3">
+                        <div>
+                            <label for="images-enabled" class="block text-sm font-medium text-gray-900">Article
+                                Images</label>
+                            <p class="mt-1 text-sm text-gray-600">Attach up to 8 article images to post summaries and
+                                chat. Vision models can cite them as clickable [I#] references (OpenAI Router only).</p>
+                        </div>
+                        <div class="flex items-center">
+                            <input id="images-enabled" name="images-enabled" type="checkbox"
+                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                            <label for="images-enabled" class="ml-3 block text-sm font-medium text-gray-900">Attach
+                                article images to summaries and chat</label>
+                        </div>
+                    </div>
+
+                    <!-- Full Webpage Screenshot -->
+                    <div class="space-y-3">
+                        <div>
+                            <label for="screenshot-enabled" class="block text-sm font-medium text-gray-900">Webpage
+                                Screenshot</label>
+                            <p class="mt-1 text-sm text-gray-600">Attach a full-page screenshot when creating
+                                an article summary or chat request. The screenshot is sent to your configured Router and
+                                may contain private information visible on screen.</p>
+                        </div>
+                        <div class="flex items-center">
+                            <input id="screenshot-enabled" name="screenshot-enabled" type="checkbox"
+                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                            <label for="screenshot-enabled" class="ml-3 block text-sm font-medium text-gray-900">Attach
+                                full-page webpage screenshot</label>
+                        </div>
+                    </div>
+
                     <!-- Cache Management -->
                     <div class="space-y-3">
                         <div>
@@ -85,107 +135,42 @@
                         <div id="cache-stats" class="hidden mt-2 p-3 bg-gray-50 rounded-md text-sm text-gray-700"></div>
                     </div>
 
-                    <!-- Substack custom domains -->
-                    <div class="space-y-3">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-900">Substack Custom Domains</label>
-                            <p class="mt-1 text-sm text-gray-600">
-                                Substack newsletters and podcasts on custom domains (e.g. stratechery.com).
-                                Enable from the extension popup on a post page, or add a domain manually below.
-                            </p>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <input type="text" id="substack-domain-input" placeholder="example.com"
-                                class="block flex-1 min-w-[160px] rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
-                            <button type="button" id="add-substack-domain"
-                                class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
-                                Add domain
-                            </button>
-                        </div>
-                        <div id="substack-domains-list"
-                            class="max-h-40 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700">
-                            <div class="text-gray-500 px-1 py-2">Loading…</div>
-                        </div>
-                    </div>
-
-                    <!-- Saved Comments list -->
-                    <div class="space-y-3">
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-900">Saved Items</label>
-                                <p class="mt-1 text-sm text-gray-600">
-                                    Comments (HN), selected text, page links, and images. Text and images include the source page URL.
-                                </p>
-                            </div>
-                            <button type="button" id="refresh-saved-comments"
-                                class="rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600">
-                                Refresh
-                            </button>
-                        </div>
-                        <div id="saved-comments-list"
-                            class="max-h-80 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700">
-                            <div class="text-gray-500 px-1 py-2">Loading…</div>
-                        </div>
-                    </div>
-
-                    <!-- Backup: bookmarks + AI settings -->
-                    <div class="space-y-3">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-900">Backup (Bookmarks + AI Settings)</label>
-                            <p class="mt-1 text-sm text-gray-600">
-                                Export or import bookmarked authors, saved comments, and AI model settings as JSON.
-                                Import merges (same author/comment ID or settings key overwrites).
-                                Export includes API keys — keep the file private.
-                            </p>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-3">
-                            <button type="button" id="export-bookmarks"
-                                class="rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600">
-                                Export JSON
-                            </button>
-                            <button type="button" id="import-bookmarks"
-                                class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
-                                Import JSON
-                            </button>
-                            <input type="file" id="import-bookmarks-file" accept="application/json,.json" class="hidden">
-                        </div>
-                        <div id="bookmarks-io-status" class="hidden mt-2 p-3 bg-gray-50 rounded-md text-sm text-gray-700"></div>
-                    </div>
-
-                    <!-- Advanced Parameters -->
-                    <div class="space-y-3">
-                        <div class="flex items-center">
-                            <label for="max-tokens" class="block text-sm font-medium text-gray-900">Max Tokens</label>
-                        </div>
+                    <div class="options-params-row">
+                        <!-- Advanced Parameters -->
                         <div class="space-y-3">
-                            <div>
-                                <div class="mt-2 grid grid-cols-1">
-                                    <input type="number" id="max-tokens" name="max-tokens" min="1000" max="200000"
-                                        step="1000" value="100000"
-                                        class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
-                                        placeholder="100000">
+                            <div class="flex items-center">
+                                <label for="max-tokens" class="block text-sm font-medium text-gray-900">Max Tokens</label>
+                            </div>
+                            <div class="space-y-3">
+                                <div>
+                                    <div class="mt-2 grid grid-cols-1">
+                                        <input type="number" id="max-tokens" name="max-tokens" min="1000" max="200000"
+                                            step="1000" value="100000"
+                                            class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
+                                            placeholder="100000">
+                                    </div>
+                                    <p class="mt-1 text-sm text-gray-600">Maximum number of tokens to use for AI requests
+                                        (default: 100000)</p>
                                 </div>
-                                <p class="mt-1 text-sm text-gray-600">Maximum number of tokens to use for AI requests
-                                    (default: 100000)</p>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Temperature Parameter -->
-                    <div class="space-y-3">
-                        <div class="flex items-center">
-                            <label for="temperature" class="block text-sm font-medium text-gray-900">Temperature</label>
-                        </div>
+                        <!-- Temperature Parameter -->
                         <div class="space-y-3">
-                            <div>
-                                <div class="mt-2 grid grid-cols-1">
-                                    <input type="number" id="temperature" name="temperature" min="0" max="2" step="0.1"
-                                        value="0.7"
-                                        class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
-                                        placeholder="0.7">
+                            <div class="flex items-center">
+                                <label for="temperature" class="block text-sm font-medium text-gray-900">Temperature</label>
+                            </div>
+                            <div class="space-y-3">
+                                <div>
+                                    <div class="mt-2 grid grid-cols-1">
+                                        <input type="number" id="temperature" name="temperature" min="0" max="2" step="0.1"
+                                            value="0.7"
+                                            class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm/6"
+                                            placeholder="0.7">
+                                    </div>
+                                    <p class="mt-1 text-sm text-gray-600">Controls randomness in AI responses. Lower values
+                                        (0.1) are more focused, higher values (1.5) are more creative (default: 0.7)</p>
                                 </div>
-                                <p class="mt-1 text-sm text-gray-600">Controls randomness in AI responses. Lower values
-                                    (0.1) are more focused, higher values (1.5) are more creative (default: 0.7)</p>
                             </div>
                         </div>
                     </div>
@@ -261,26 +246,111 @@
                                 </details>
                             </div>
                             <div>
-                                <label for="router-model" class="block text-sm font-medium text-gray-900">Enter OpenAI-compatible Model</label>
-                                <!-- Search input (initially hidden, shown when dropdown is available) -->
-                                <div id="router-search-container" class="mt-2 hidden">
-                                    <input type="text" id="router-model-search" placeholder="Search models..."
-                                        class="block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm mb-2">
-                                </div>
+                                <label for="router-model" class="block text-sm font-medium text-gray-900">Model</label>
                                 <div class="mt-2 flex gap-2">
-                                    <div class="flex-1 grid grid-cols-1">
+                                    <div class="relative flex-1">
                                         <input type="text" id="router-model" name="router-model"
-                                            placeholder="e.g., gpt-4, claude-3-sonnet, ollama/llama2"
-                                            class="col-start-1 row-start-1 block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                                            placeholder="Type to search or enter a model id"
+                                            autocomplete="off" role="combobox" aria-expanded="false"
+                                            aria-controls="router-model-suggestions" aria-autocomplete="list"
+                                            class="block w-full rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                                        <ul id="router-model-suggestions" role="listbox"
+                                            class="router-model-suggestions hidden absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                                        </ul>
                                     </div>
                                     <button type="button" id="refresh-router-models"
                                         class="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-purple-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600">
                                         刷新
                                     </button>
                                 </div>
+                                <p id="router-model-status" class="mt-1 text-xs text-gray-500"></p>
+                                <div class="mt-3 flex items-start gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                                    <input id="router-model-supports-images" name="router-model-supports-images"
+                                        type="checkbox" aria-describedby="router-model-supports-images-help"
+                                        class="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                    <div>
+                                        <label for="router-model-supports-images"
+                                            class="block text-sm font-medium text-gray-900">Supports image input</label>
+                                        <p id="router-model-supports-images-help" class="mt-0.5 text-xs text-gray-600">
+                                            Enable only when this model accepts images. Unsupported models will use text-only requests even if Article Images or Screenshot is on.
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
+                    <aside class="options-sidebar space-y-5" aria-label="Data and storage settings">
+                    <header class="options-section-heading">
+                        <h2>Data &amp; Storage</h2>
+                        <p>Saved content, custom domains, and backup.</p>
+                    </header>
+                    <!-- Saved Comments list -->
+                    <div class="space-y-3">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-900">Saved Items</label>
+                                <p class="mt-1 text-sm text-gray-600">
+                                    Comments (HN), selected text, page links, and images. Text and images include the source page URL.
+                                </p>
+                            </div>
+                            <button type="button" id="refresh-saved-comments"
+                                class="rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600">
+                                Refresh
+                            </button>
+                        </div>
+                        <div id="saved-comments-list"
+                            class="options-sidebar-list overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700">
+                            <div class="text-gray-500 px-1 py-2">Loading…</div>
+                        </div>
+                    </div>
+
+                    <!-- Substack custom domains -->
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-900">Added Domains</label>
+                            <p class="mt-1 text-sm text-gray-600">
+                                Custom domains hosting Substack newsletters or podcasts.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="substack-domain-input" placeholder="example.com"
+                                class="block min-w-0 flex-1 rounded-md bg-white px-3 py-1.5 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                            <button type="button" id="add-substack-domain"
+                                class="shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                                Add
+                            </button>
+                        </div>
+                        <div id="substack-domains-list"
+                            class="max-h-36 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700">
+                            <div class="text-gray-500 px-1 py-2">Loading…</div>
+                        </div>
+                    </div>
+
+                    <!-- Backup: bookmarks + AI settings -->
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-900">Backup (Bookmarks + AI Settings)</label>
+                            <p class="mt-1 text-sm text-gray-600">
+                                Export or import bookmarked authors, saved comments, and AI model settings as JSON.
+                                Import merges (same author/comment ID or settings key overwrites).
+                                Export includes API keys — keep the file private.
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <button type="button" id="export-bookmarks"
+                                class="rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600">
+                                Export JSON
+                            </button>
+                            <button type="button" id="import-bookmarks"
+                                class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+                                Import JSON
+                            </button>
+                            <input type="file" id="import-bookmarks-file" accept="application/json,.json" class="hidden">
+                        </div>
+                        <div id="bookmarks-io-status" class="hidden mt-2 p-3 bg-gray-50 rounded-md text-sm text-gray-700"></div>
+                    </div>
+                    </aside>
+                </div>
 
                     <div class="mt-6 flex items-center justify-between gap-x-6">
                         <button type="button" id="test-connection"
@@ -295,7 +365,6 @@
                             </button>
                         </div>
                     </div>
-                </div>
             </fieldset>
         </form>
     </div>

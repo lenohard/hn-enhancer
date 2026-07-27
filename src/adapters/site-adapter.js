@@ -42,6 +42,18 @@ window.SiteAdapter = class SiteAdapter {
     getPostBodyElement() { return null; }
 
     /**
+     * Paragraph-like blocks inside `bodyEl` used for [P#] numbering and jump targets.
+     * @param {Element} bodyEl
+     * @returns {Element[]}
+     */
+    getParagraphElements(bodyEl) {
+        if (!bodyEl) return [];
+        return [...bodyEl.querySelectorAll('p')].filter(
+            (el) => el.textContent.trim().length > 0
+        );
+    }
+
+    /**
      * Plain-text post body for summarization. Override on sites where the
      * primary content is the article, not the comment thread.
      * @returns {string|null}
@@ -350,4 +362,341 @@ window.SiteAdapter = class SiteAdapter {
      * @returns {string|null}
      */
     getUserFavoritesUrl(_username) { return null; }
+
+    /**
+     * Collect article image URLs (absolute) for vision-enabled summaries.
+     * Default: none. Substack/Selection adapters override.
+     * @param {number} [_maxCount=8]
+     * @returns {string[]}
+     */
+    getArticleImages(_maxCount = 8) {
+        return this.getArticleImageEntries(_maxCount).map((entry) => entry.url);
+    }
+
+    /**
+     * Collect numbered article images and retain their source DOM elements so
+     * [I#] citations can jump back to the page.
+     * @param {number} [_maxCount=8]
+     * @returns {Array<{ref: string, url: string, element: HTMLImageElement}>}
+     */
+    getArticleImageEntries(_maxCount = 8) { return []; }
+
+    /**
+     * Collect usable, remote image URLs from a DOM subtree. Tiny UI images,
+     * hidden images, data URLs, and duplicate URLs are excluded.
+     * @param {ParentNode|null} root
+     * @param {number} [_maxCount=8]
+     * @returns {string[]}
+     */
+    _collectImageEntries(root, _maxCount = 8) {
+        if (!root?.querySelectorAll) return [];
+
+        const parsedLimit = Number.parseInt(_maxCount, 10);
+        const maxCount = Number.isFinite(parsedLimit)
+            ? Math.max(0, parsedLimit)
+            : 8;
+        if (maxCount === 0) return [];
+
+        const entries = [];
+        const seenUrls = new Set();
+        for (const img of root.querySelectorAll('img')) {
+            if (img.hidden || img.getAttribute('aria-hidden') === 'true') continue;
+            if (this._isLikelyNonContentImage(img)) continue;
+
+            const lazySrc =
+                img.getAttribute('data-src') ||
+                img.getAttribute('data-original') ||
+                '';
+            const declaredWidth = Number.parseFloat(img.getAttribute('width')) || 0;
+            const declaredHeight = Number.parseFloat(img.getAttribute('height')) || 0;
+            // A loaded 1x1 placeholder should not disqualify its real lazy URL.
+            const width = lazySrc ? declaredWidth : img.naturalWidth || declaredWidth;
+            const height = lazySrc ? declaredHeight : img.naturalHeight || declaredHeight;
+            if ((width > 0 && width < 48) || (height > 0 && height < 48)) continue;
+
+            const candidates = [img.currentSrc, lazySrc, img.src].filter(Boolean);
+            let src = null;
+            for (const candidate of candidates) {
+                const absolute = this._absoluteUrl(candidate);
+                try {
+                    const protocol = new URL(absolute).protocol;
+                    if (protocol === 'http:' || protocol === 'https:') {
+                        src = absolute;
+                        break;
+                    }
+                } catch {
+                    // Try the next source candidate.
+                }
+            }
+            if (!src || seenUrls.has(src)) continue;
+
+            const ref = `I${entries.length + 1}`;
+            img.dataset.hnImageRef = ref;
+            entries.push({ ref, url: src, element: img });
+            seenUrls.add(src);
+            if (entries.length >= maxCount) break;
+        }
+        this._articleImageRefMap = new Map(
+            entries.map((entry) => [entry.ref, entry])
+        );
+        return entries;
+    }
+
+    /**
+     * Exclude avatars, profile chrome, controls, logos, and other images that
+     * are technically inside an article container but are not article content.
+     * @param {HTMLImageElement} img
+     * @returns {boolean}
+     */
+    _isLikelyNonContentImage(img) {
+        const excludedContainerSelector = [
+            '[class*="avatar" i]',
+            '[data-testid*="avatar" i]',
+            '[class*="userpic" i]',
+            '[class*="profile-image" i]',
+            '[class*="profile-photo" i]',
+            '[class*="author-photo" i]',
+            '[class*="author-image" i]',
+            '[class*="byline" i]',
+            '[rel~="author"]',
+            'button',
+            '[role="button"]',
+            'nav',
+            'footer',
+            'aside',
+        ].join(',');
+        if (img.closest(excludedContainerSelector)) return true;
+
+        const identityText = [
+            img.className,
+            img.id,
+            img.alt,
+            img.title,
+            img.getAttribute('aria-label'),
+        ].filter(Boolean).join(' ');
+        if (/(?:avatar|userpic|profile[- ]?(?:image|photo|picture)|author[- ]?(?:image|photo|portrait)|头像|用户头像)/i.test(identityText)) {
+            return true;
+        }
+
+        const sourceHint = [
+            img.currentSrc,
+            img.getAttribute('data-src'),
+            img.src,
+        ].filter(Boolean).join(' ');
+        if (/(?:^|[\/_-])(?:avatar|userpic|gravatar|profile[-_]?(?:image|photo))(?:[\/_\-.]|$)/i.test(sourceHint)) {
+            return true;
+        }
+
+        if (/(?:^|\s)(?:logo|icon|emoji|spinner)(?:\s|$)/i.test(identityText)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Insert [I#] placeholders after the nearest preceding [P#] line, keeping
+     * the original image/text order in prompts while image bytes remain as
+     * OpenAI-compatible attachments.
+     * @param {string} text
+     * @returns {string}
+     */
+    addImagePlaceholders(text) {
+        const entries = [...(this._articleImageRefMap?.values?.() || [])];
+        const bodyEl = this.getPostBodyElement?.();
+        const paragraphs = this.getParagraphElements?.(bodyEl) || [];
+        if (!entries.length || !paragraphs.length || !/\[P\d+\]/m.test(text)) {
+            return text;
+        }
+
+        const placements = new Map();
+        entries.forEach((entry) => {
+            let afterParagraph = 0;
+            paragraphs.forEach((paragraph, index) => {
+                if (
+                    paragraph.contains(entry.element) ||
+                    (paragraph.compareDocumentPosition(entry.element) & 4)
+                ) {
+                    afterParagraph = index + 1;
+                }
+            });
+            const refs = placements.get(afterParagraph) || [];
+            refs.push(`[${entry.ref}]`);
+            placements.set(afterParagraph, refs);
+        });
+
+        const lines = String(text).split('\n');
+        const output = [];
+        let insertedBeforeFirstParagraph = false;
+        lines.forEach((line) => {
+            const paragraphMatch = line.match(/^\[P(\d+)\]\s/);
+            if (paragraphMatch && !insertedBeforeFirstParagraph) {
+                output.push(...(placements.get(0) || []));
+                insertedBeforeFirstParagraph = true;
+            }
+            output.push(line);
+            if (paragraphMatch) {
+                output.push(...(placements.get(Number(paragraphMatch[1])) || []));
+            }
+        });
+
+        return output.join('\n');
+    }
+
+    /**
+     * Resolve an [I#] citation to its current source image.
+     * @param {string} ref
+     * @returns {HTMLImageElement|null}
+     */
+    resolveImageByRef(ref) {
+        let entry = this._articleImageRefMap?.get(ref);
+        if (!entry?.element?.isConnected) {
+            entry = this.getArticleImageEntries(8).find(
+                (candidate) => candidate.ref === ref
+            );
+        }
+        return entry?.element || null;
+    }
+
+    /**
+     * Rebuild an image-ref map saved with a cached summary/chat by matching
+     * its URLs against images currently present in the article.
+     * @param {Array<{ref: string, url: string}>} savedEntries
+     */
+    restoreImageRefs(savedEntries) {
+        if (!Array.isArray(savedEntries) || savedEntries.length === 0) return;
+
+        // Search beyond the attachment limit so inserted images do not break
+        // citations from a cached result.
+        const currentEntries = this.getArticleImageEntries(
+            Math.max(64, savedEntries.length)
+        );
+        const elementsByUrl = new Map(
+            currentEntries.map((entry) => [entry.url, entry.element])
+        );
+        const restored = savedEntries
+            .map(({ ref, url }) => ({
+                ref,
+                url,
+                element: elementsByUrl.get(url),
+            }))
+            .filter((entry) => entry.ref && entry.url && entry.element);
+
+        if (restored.length > 0) {
+            currentEntries.forEach((entry) => {
+                delete entry.element.dataset.hnImageRef;
+            });
+            restored.forEach((entry) => {
+                entry.element.dataset.hnImageRef = entry.ref;
+            });
+            this._articleImageRefMap = new Map(
+                restored.map((entry) => [entry.ref, entry])
+            );
+        }
+    }
+
+    /**
+     * Build OpenAI-compatible multimodal content with stable [I#] labels.
+     * Keeping this in the adapter layer gives summary and chat one contract.
+     * @param {string} text
+     * @param {Array<string|{ref?: string, url: string}>} imageUrls
+     * @param {Array<{ref?: string, dataUrl: string}>} screenshots
+     * @param {{includeInstructions?: boolean}} [options]
+     * @returns {string|Array<object>}
+     */
+    buildVisionMessageContent(
+        text,
+        imageUrls = [],
+        screenshots = [],
+        options = {}
+    ) {
+        imageUrls = Array.isArray(imageUrls) ? imageUrls : [];
+        screenshots = Array.isArray(screenshots)
+            ? screenshots.filter((shot) => typeof shot?.dataUrl === 'string')
+            : [];
+        if (imageUrls.length === 0 && screenshots.length === 0) return text;
+
+        let renderedText = String(text || '');
+        if (options.includeInstructions !== false) {
+            const imageRefs = imageUrls
+                .map((entry, index) =>
+                    typeof entry === 'object' && entry?.ref
+                        ? entry.ref
+                        : `I${index + 1}`
+                )
+                .filter(Boolean);
+            const screenshotRefs = screenshots.map(
+                (screenshot, index) => screenshot.ref || `S${index + 1}`
+            );
+            const instructions = [];
+            if (imageRefs.length > 0) {
+                const imageLabels = imageRefs
+                    .map((ref) => `[${ref}]`)
+                    .join(', ');
+                const hasImagePlaceholders = imageRefs.some((ref) =>
+                    renderedText.includes(`[${ref}]`)
+                );
+                instructions.push(hasImagePlaceholders
+                    ? `The article text contains image placeholders at their original positions. ` +
+                      `Attached article images are labeled ${imageLabels}.`
+                    : `Attached article images are labeled ${imageLabels}.`
+                );
+            }
+            if (screenshotRefs.length > 0) {
+                instructions.push(
+                    `The full-page webpage screenshot is labeled ${screenshotRefs.map((ref) => `[${ref}]`).join(', ')}. ` +
+                    `Use it when extracted text is missing, incomplete, or visual layout matters.`
+                );
+            }
+            instructions.push(
+                `When visual evidence is relevant, cite its exact [I#] or [S#] label. ` +
+                `Do not cite visual attachments you did not use.`
+            );
+            renderedText +=
+                `\n\n---\n\n# Visual citation instructions\n` +
+                instructions.join(' ');
+        }
+        const content = [{ type: 'text', text: renderedText }];
+
+        imageUrls.forEach((imageEntry, index) => {
+            const url = typeof imageEntry === 'string'
+                ? imageEntry
+                : imageEntry?.url;
+            if (!url) return;
+            const ref = typeof imageEntry === 'object' && imageEntry?.ref
+                ? imageEntry.ref
+                : `I${index + 1}`;
+            content.push({ type: 'text', text: `Image [${ref}]` });
+            content.push({
+                type: 'image_url',
+                image_url: { url },
+            });
+        });
+        screenshots.forEach((screenshot, index) => {
+            const ref = screenshot.ref || `S${index + 1}`;
+            content.push({
+                type: 'text',
+                text: `Screenshot [${ref}] — full webpage`,
+            });
+            content.push({
+                type: 'image_url',
+                image_url: { url: screenshot.dataUrl },
+            });
+        });
+        return content;
+    }
+
+    /**
+     * Make a relative URL absolute against the current document.
+     * @param {string} src
+     * @returns {string|null}
+     */
+    _absoluteUrl(src) {
+        if (!src) return null;
+        try {
+            return new URL(src, document.baseURI).href;
+        } catch {
+            return null;
+        }
+    }
 };

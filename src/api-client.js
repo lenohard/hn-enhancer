@@ -34,7 +34,13 @@ class ApiClient {
    * @throws {Error} If the background script returns an error or no response
    */
   async sendBackgroundMessage(type, data = {}) { // Add default value for data
-    this.logDebug(`Sending browser runtime message ${type}:`, data);
+    const debugData = ["HN_CHAT_REQUEST", "OPENAI_ROUTER_API_REQUEST"].includes(type)
+      ? {
+          ...data,
+          messages: `[${data?.messages?.length || 0} messages; visual data omitted]`,
+        }
+      : data;
+    this.logDebug(`Sending browser runtime message ${type}:`, debugData);
 
     let response;
     const startTime = performance.now();

@@ -161,6 +161,7 @@ function copySrcDirectory(targetDir) {
   const srcFiles = [
     "hn-state.js",
     "api-client.js",
+    "screenshot-capture.js",
     "markdown-utils.js",
     "dom-utils.js",
     "summary-panel.js",
@@ -170,6 +171,7 @@ function copySrcDirectory(targetDir) {
     "ui-components.js",
     "chat-modal.js",
     "hub-panel.js",
+    "extract-panel.js",
     "prompts.js",
     "substack-domains.js",
     "hn-enhancer.js",

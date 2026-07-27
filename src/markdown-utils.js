@@ -3,6 +3,30 @@
  */
 class MarkdownUtils {
     /**
+     * Remove model-internal reasoning blocks before display, caching, or reuse.
+     * Handles both completed and still-streaming <think> blocks.
+     * @param {string} text
+     * @returns {string}
+     */
+    static stripThinkingContent(text) {
+        let cleaned = String(text ?? '');
+        cleaned = cleaned.replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/gi, '');
+        cleaned = cleaned.replace(/<think\b[^>]*>?[\s\S]*$/gi, '');
+        cleaned = cleaned.replace(/<\/think\s*>/gi, '');
+
+        // Avoid briefly rendering a tag while its opening characters stream in.
+        const lower = cleaned.toLowerCase();
+        for (const prefix of ['<think', '<thin', '<thi', '<th', '<t']) {
+            if (lower.endsWith(prefix)) {
+                cleaned = cleaned.slice(0, -prefix.length);
+                break;
+            }
+        }
+
+        return cleaned.replace(/^\s*\n/, '');
+    }
+
+    /**
      * Converts markdown text to HTML
      * @param {string} markdown - The markdown text to convert
      * @returns {string} The converted HTML
@@ -15,11 +39,101 @@ class MarkdownUtils {
                 match => `<ul>${match}</ul>`);
         }
 
+        function splitTableRow(line) {
+            let value = line.trim();
+            if (value.startsWith('|')) value = value.slice(1);
+            if (value.endsWith('|')) value = value.slice(0, -1);
+
+            const cells = [];
+            let cell = '';
+            for (let index = 0; index < value.length; index += 1) {
+                const char = value[index];
+                if (char === '\\' && value[index + 1] === '|') {
+                    cell += '|';
+                    index += 1;
+                } else if (char === '|') {
+                    cells.push(cell.trim());
+                    cell = '';
+                } else {
+                    cell += char;
+                }
+            }
+            cells.push(cell.trim());
+            return cells;
+        }
+
+        function convertTables(text) {
+            const lines = text.split('\n');
+            const output = [];
+
+            for (let index = 0; index < lines.length; index += 1) {
+                const headerLine = lines[index];
+                const separatorLine = lines[index + 1];
+                if (!headerLine?.includes('|') || !separatorLine?.includes('|')) {
+                    output.push(headerLine);
+                    continue;
+                }
+
+                const headers = splitTableRow(headerLine);
+                const separators = splitTableRow(separatorLine);
+                const isTable =
+                    headers.length > 0 &&
+                    headers.length === separators.length &&
+                    separators.every((cell) => /^:?-{3,}:?$/.test(cell));
+                if (!isTable) {
+                    output.push(headerLine);
+                    continue;
+                }
+
+                const alignments = separators.map((cell) => {
+                    if (cell.startsWith(':') && cell.endsWith(':')) return 'center';
+                    if (cell.endsWith(':')) return 'right';
+                    return 'left';
+                });
+                const bodyRows = [];
+                index += 2;
+                while (index < lines.length && lines[index].includes('|')) {
+                    const cells = splitTableRow(lines[index]);
+                    if (cells.length === 1 && !cells[0]) break;
+                    bodyRows.push(
+                        headers.map((_, cellIndex) => cells[cellIndex] || '')
+                    );
+                    index += 1;
+                }
+                index -= 1;
+
+                const headerHtml = headers
+                    .map(
+                        (cell, cellIndex) =>
+                            `<th class="hn-table-align-${alignments[cellIndex]}">${cell}</th>`
+                    )
+                    .join('');
+                const bodyHtml = bodyRows
+                    .map(
+                        (row) =>
+                            `<tr>${row
+                                .map(
+                                    (cell, cellIndex) =>
+                                        `<td class="hn-table-align-${alignments[cellIndex]}">${cell}</td>`
+                                )
+                                .join('')}</tr>`
+                    )
+                    .join('');
+                output.push(
+                    `<div class="hn-markdown-table-wrap"><table class="hn-markdown-table"><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`
+                );
+            }
+
+            return output.join('\n');
+        }
+
         // First escape HTML special characters
-        let html = markdown
+        let html = MarkdownUtils.stripThinkingContent(markdown)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
+
+        html = convertTables(html);
 
         // Convert markdown to HTML
         // noinspection RegExpRedundantEscape,HtmlUnknownTarget
@@ -156,8 +270,8 @@ class MarkdownUtils {
     }
 
     /**
-     * Replace [P#] paragraph refs with private-use tokens (survives markdown escape).
-     * Handles [P11], (P11), （P11）, and ranges like (P12–14).
+     * Replace paragraph/image refs with private-use tokens so they survive
+     * markdown escaping. Handles [P11], [I2], and paragraph ranges.
      * @param {string} text
      * @returns {{ text: string, tokens: string[][] }}
      */
@@ -182,9 +296,9 @@ class MarkdownUtils {
             }
         );
 
-        // Single refs: [P11], (P11), （P11）
+        // Single refs: [P11], [I2], (P11), （I2）
         text = text.replace(
-            /(?:\[|\(|（)\s*(P\d+)\s*(?:\]|）|\))/gi,
+            /(?:\[|\(|（)\s*([PIS]\d+)\s*(?:\]|）|\))/gi,
             (match, ref) => emit([ref])
         );
 
@@ -192,7 +306,7 @@ class MarkdownUtils {
     }
 
     /**
-     * Restore paragraph-ref tokens as clickable jump buttons.
+     * Restore source-ref tokens as clickable jump buttons.
      * @param {string} html
      * @param {string[][]} tokens
      * @returns {string}

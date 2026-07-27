@@ -29,7 +29,15 @@ class HubPanel {
       return this.panel;
     }
 
-    if (this.panel) {
+    // SPA navigation may remove the panel from the DOM while this.panel still
+    // references the detached node — re-attach instead of returning early.
+    if (this.panel?.isConnected) {
+      return this.panel;
+    }
+
+    if (this.panel && !this.panel.isConnected) {
+      document.body.appendChild(this.panel);
+      this.updateStats();
       return this.panel;
     }
 
@@ -43,6 +51,7 @@ class HubPanel {
       <div class="hn-hub-body">
         <div class="hn-hub-stats" data-hub-stats hidden></div>
         <div class="hn-hub-actions" data-hub-actions></div>
+        <div class="hn-hub-toggles" data-hub-toggles hidden></div>
         <div class="hn-hub-list-wrap" hidden>
           <div class="hn-hub-list-header">
             <span class="hn-hub-list-title"></span>
@@ -79,6 +88,7 @@ class HubPanel {
     summaryBtn.textContent = 'Summary';
     summaryBtn.title = 'Summarize post (s)';
     summaryBtn.addEventListener('click', async () => {
+      this.enhancer.clearSelectionScope?.();
       await this.enhancer.summarization?.summarizeAllComments();
     });
     actions.appendChild(summaryBtn);
@@ -89,6 +99,24 @@ class HubPanel {
     optionsBtn.textContent = 'Options';
     optionsBtn.addEventListener('click', () => this.openOptionsPage());
     actions.appendChild(optionsBtn);
+
+    if (
+      typeof this.enhancer.adapter?.getReadabilityPreview === 'function' &&
+      this.enhancer.adapter?.isDedicatedCommentsPage?.() === false
+    ) {
+      const extractBtn = document.createElement('button');
+      extractBtn.type = 'button';
+      extractBtn.className = 'hn-hub-action';
+      extractBtn.textContent = 'Preview';
+      extractBtn.title = 'Preview the exact text, images, and screenshot sent to the model';
+      extractBtn.addEventListener('click', () => {
+        this.enhancer.extractPanel?.toggle();
+      });
+      this.extractBtn = extractBtn;
+      actions.appendChild(extractBtn);
+    }
+
+    this.setupHubToggles();
 
     // Site-specific buttons via adapter
     const siteButtons = this.enhancer.adapter?.getHubButtons?.(this.enhancer);
@@ -108,6 +136,149 @@ class HubPanel {
         actions.appendChild(el);
       });
     }
+  }
+
+  setupHubToggles() {
+    const toggles = this.panel.querySelector('[data-hub-toggles]');
+    if (!toggles) return;
+
+    const adapter = this.enhancer.adapter;
+    const isHN = adapter?.getSiteKey?.() === 'news.ycombinator.com';
+    toggles.hidden = false;
+
+    const controls = [];
+    const addToggle = ({
+      key,
+      labelText,
+      description,
+      skippedLabel,
+      defaultOn = false,
+      requiresImages = false,
+    }) => {
+      const row = document.createElement('div');
+      row.className = 'hn-hub-toggle-row';
+
+      const label = document.createElement('span');
+      label.className = 'hn-hub-toggle-label';
+      label.textContent = labelText;
+
+      const warning = document.createElement('div');
+      warning.id = `hn-hub-${key}-warning`;
+      warning.className = 'hn-hub-toggle-warning';
+      warning.setAttribute('role', 'status');
+      warning.hidden = true;
+
+      const switchBtn = document.createElement('button');
+      switchBtn.type = 'button';
+      switchBtn.className = 'hn-hub-toggle-switch';
+      switchBtn.setAttribute('role', 'switch');
+      switchBtn.setAttribute('aria-checked', 'false');
+      switchBtn.setAttribute('aria-label', description);
+      switchBtn.setAttribute('aria-describedby', warning.id);
+      switchBtn.title = description;
+      switchBtn.innerHTML =
+        '<span class="hn-hub-toggle-track" aria-hidden="true"><span class="hn-hub-toggle-thumb"></span></span>';
+
+      switchBtn.addEventListener('click', async () => {
+        switchBtn.disabled = true;
+        try {
+          const data = await chrome.storage.sync.get('settings');
+          const currentValue = defaultOn
+            ? data.settings?.[key] !== false
+            : data.settings?.[key] === true;
+          const settings = {
+            ...(data.settings || {}),
+            [key]: !currentValue,
+          };
+          await chrome.storage.sync.set({ settings });
+          applyState(settings);
+        } catch (error) {
+          console.error(`Failed to update ${key}:`, error);
+          switchBtn.title = `Could not update ${labelText.toLowerCase()}`;
+        } finally {
+          switchBtn.disabled = false;
+        }
+      });
+
+      row.appendChild(label);
+      row.appendChild(switchBtn);
+      toggles.appendChild(row);
+      toggles.appendChild(warning);
+      controls.push({
+        key,
+        labelText,
+        skippedLabel,
+        defaultOn,
+        requiresImages,
+        row,
+        switchBtn,
+        warning,
+      });
+    };
+
+    if (!isHN) {
+      addToggle({
+        key: 'bodyEnabled',
+        labelText: 'Body',
+        description: 'Include extracted article body text in summaries and chat',
+        skippedLabel: 'Article body',
+        defaultOn: true,
+      });
+    }
+    if (!isHN && typeof adapter?.getArticleImages === 'function') {
+      addToggle({
+        key: 'imagesEnabled',
+        labelText: 'Images',
+        description: 'Attach article images to summaries and chat',
+        skippedLabel: 'Article images',
+        requiresImages: true,
+      });
+    }
+    addToggle({
+      key: 'screenshotEnabled',
+      labelText: 'Screenshot',
+      description: 'Attach a full-page screenshot; it may contain private information',
+      skippedLabel: 'Screenshot',
+      requiresImages: true,
+    });
+
+    const applyState = (settings = {}) => {
+      const provider = settings.providerSelection || 'openai-router';
+      const supportsImages = settings[provider]?.supportsImages === true;
+      const model = settings[provider]?.model || 'Current model';
+
+      controls.forEach((control) => {
+        const on = control.defaultOn
+          ? settings[control.key] !== false
+          : settings[control.key] === true;
+        const unavailable = control.requiresImages && on && !supportsImages;
+        control.switchBtn.classList.toggle('is-on', on);
+        control.row.classList.toggle('has-warning', unavailable);
+        control.switchBtn.setAttribute('aria-checked', on ? 'true' : 'false');
+        control.switchBtn.title = unavailable
+          ? `${control.labelText} is on, but the current model does not support image input`
+          : `${control.labelText}: ${on ? 'on' : 'off'}`;
+        control.warning.hidden = !unavailable;
+        control.warning.textContent = unavailable
+          ? `${model} does not support image input. ${control.skippedLabel} will be skipped.`
+          : '';
+      });
+    };
+
+    chrome.storage.sync
+      .get('settings')
+      .then((data) => {
+        applyState(data.settings || {});
+      })
+      .catch((error) => {
+        console.error('Failed to read visual attachment settings:', error);
+      });
+
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'sync' && changes.settings?.newValue) {
+        applyState(changes.settings.newValue);
+      }
+    });
   }
 
   setupInteractions() {
@@ -177,16 +348,51 @@ class HubPanel {
     this.panel.classList.remove("is-dragging");
     document.removeEventListener("mousemove", this.onMouseMove);
     document.removeEventListener("mouseup", this.onMouseUp);
+    this._applyExpandDirection();
     this.savePosition();
+  }
+
+  _isNearBottom() {
+    const rect = this.panel.getBoundingClientRect();
+    const padding = 12;
+    return rect.bottom >= window.innerHeight - padding;
+  }
+
+  /**
+   * Near the viewport bottom, anchor with `bottom` and grow upward so expand
+   * does not shift the docked position.
+   */
+  _applyExpandDirection() {
+    if (!this.panel) return;
+
+    const nearBottom = this._isNearBottom();
+    this.panel.classList.toggle("expand-upward", nearBottom);
+
+    const rect = this.panel.getBoundingClientRect();
+    if (nearBottom) {
+      const bottom = Math.max(0, window.innerHeight - rect.bottom);
+      this.panel.style.bottom = `${Math.round(bottom)}px`;
+      this.panel.style.top = "auto";
+    } else {
+      this.panel.style.top = `${Math.round(rect.top)}px`;
+      this.panel.style.bottom = "auto";
+    }
   }
 
   async restorePosition() {
     const position = await HNState.getHubPanelPosition();
-    if (position?.left != null && position?.top != null) {
+    if (position?.left != null) {
       this.panel.style.left = `${position.left}px`;
-      this.panel.style.top = `${position.top}px`;
       this.panel.style.right = "auto";
-      this.panel.style.bottom = "auto";
+
+      if (position.anchorBottom && position.bottom != null) {
+        this.panel.style.bottom = `${position.bottom}px`;
+        this.panel.style.top = "auto";
+        this.panel.classList.add("expand-upward");
+      } else if (position.top != null) {
+        this.panel.style.top = `${position.top}px`;
+        this.panel.style.bottom = "auto";
+      }
     } else {
       this.panel.style.left = "12px";
       this.panel.style.bottom = "72px";
@@ -194,16 +400,27 @@ class HubPanel {
 
     if (position?.collapsed) {
       this.setCollapsed(true, false);
+    } else if (!position?.anchorBottom) {
+      this._applyExpandDirection();
     }
   }
 
   async savePosition() {
     const rect = this.panel.getBoundingClientRect();
-    await HNState.saveHubPanelPosition({
+    const anchorBottom = this.panel.classList.contains("expand-upward");
+    const position = {
       left: Math.round(rect.left),
-      top: Math.round(rect.top),
       collapsed: this.isCollapsed,
-    });
+      anchorBottom,
+    };
+
+    if (anchorBottom) {
+      position.bottom = Math.round(window.innerHeight - rect.bottom);
+    } else {
+      position.top = Math.round(rect.top);
+    }
+
+    await HNState.saveHubPanelPosition(position);
   }
 
   setCollapsed(collapsed, persist = true) {
@@ -279,6 +496,14 @@ class HubPanel {
     } else if (view === "saved") {
       title.textContent = "Saved items";
       this.renderSavedCommentsList();
+    }
+
+    this.savePosition();
+  }
+
+  setExtractActive(active) {
+    if (this.extractBtn) {
+      this.extractBtn.classList.toggle("is-active", active);
     }
   }
 

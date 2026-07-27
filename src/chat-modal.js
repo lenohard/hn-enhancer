@@ -25,6 +25,8 @@ class ChatModal {
     this.modelIndicatorElement = null; // Displays current/history model info
     this.historyProvider = null; // Provider used for the last saved response
     this.historyModel = null; // Model used for the last saved response
+    this.currentModelSupportsImages = false;
+    this.activeScreenshot = null; // In-memory only; never persisted in chat history.
 
     this._createModalElement();
     this._addEventListeners();
@@ -471,13 +473,17 @@ class ChatModal {
    * @param {'user' | 'llm' | 'system'} sender - Who sent the message.
    * @private
    */
-  _displayMessage(text, sender, isStreaming = false) {
+  _displayMessage(text, sender, isStreaming = false, replaceStreaming = false) {
     // Find and remove the specific "Gathering context..." message element if it exists
     const gatheringMsgElement = Array.from(
       this.conversationArea.querySelectorAll(".chat-message-system")
     ).find((el) => el.textContent.includes("Gathering context..."));
     if (gatheringMsgElement) {
       gatheringMsgElement.remove();
+    }
+
+    if (sender === "llm") {
+      text = MarkdownUtils.stripThinkingContent(text);
     }
 
     // Clear any remaining initial placeholder like "Loading context..."
@@ -507,7 +513,9 @@ class ChatModal {
       }
 
       const existingMarkdown = textElement.dataset.rawMarkdown || "";
-      const updatedMarkdown = existingMarkdown + text;
+      const updatedMarkdown = replaceStreaming
+        ? text
+        : existingMarkdown + text;
       textElement.dataset.rawMarkdown = updatedMarkdown;
 
       const { text: tokenizedText, tokens: paraTokens } =
@@ -598,6 +606,264 @@ class ChatModal {
     }
 
     // Scroll to bottom
+    this.conversationArea.scrollTop = this.conversationArea.scrollHeight;
+  }
+
+  _clearContextPlaceholders() {
+    const gatheringMsgElement = Array.from(
+      this.conversationArea.querySelectorAll(".chat-message-system")
+    ).find((el) => el.textContent.includes("Gathering context..."));
+    if (gatheringMsgElement) {
+      gatheringMsgElement.remove();
+    }
+
+    const initialPlaceholder = this.conversationArea.querySelector("p > em");
+    if (initialPlaceholder) {
+      initialPlaceholder.remove();
+    }
+  }
+
+  /**
+   * Return the textual portion of either a legacy string message or an
+   * OpenAI-compatible multimodal content array.
+   * @param {string|Array<object>|object|null} content
+   * @returns {string}
+   * @private
+   */
+  _getMessageTextContent(content) {
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content
+        .filter((part) => part?.type === "text" && typeof part.text === "string")
+        .map((part) => part.text)
+        .join("\n\n");
+    }
+    return typeof content?.text === "string" ? content.text : "";
+  }
+
+  /**
+   * Count image attachments in an OpenAI-compatible message.
+   * @param {string|Array<object>|object|null} content
+   * @returns {number}
+   * @private
+   */
+  _getMessageImageCount(content) {
+    return this._getMessageImageUrls(content).length;
+  }
+
+  /**
+   * Extract image URLs from an OpenAI-compatible message.
+   * @param {string|Array<object>|object|null} content
+   * @returns {string[]}
+   * @private
+   */
+  _getMessageImageUrls(content) {
+    if (!Array.isArray(content)) return [];
+    return content
+      .filter(
+        (part) =>
+          part?.type === "image_url" &&
+          typeof part.image_url?.url === "string"
+      )
+      .map((part) => part.image_url.url);
+  }
+
+  /**
+   * Convert multimodal history to plain text for a model without image input.
+   * This also makes resumed chats safe after switching to a text-only model.
+   * @param {Array<object>} messages
+   * @returns {Array<object>}
+   * @private
+   */
+  _withoutImageContent(messages) {
+    if (!Array.isArray(messages)) return [];
+    return messages.map((message) => {
+      if (!Array.isArray(message?.content)) return message;
+
+      const content = message.content
+        .filter(
+          (part) =>
+            part?.type === "text" &&
+            typeof part.text === "string" &&
+            !/^(?:Image \[I\d+\]|Screenshot \[S\d+\])/.test(part.text.trim())
+        )
+        .map((part) => part.text)
+        .join("\n\n")
+        .replace(
+          /\n\n---\n\n# (?:Image|Visual) citation instructions\n[\s\S]*$/,
+          ""
+        )
+        .trim();
+
+      return { ...message, content };
+    });
+  }
+
+  /**
+   * Attach screenshot bytes to a request copy without mutating/persisting the
+   * conversation history. The first user message owns the page context.
+   */
+  _withScreenshotContent(messages, screenshot) {
+    if (!Array.isArray(messages) || !screenshot?.dataUrl) return messages;
+    const requestMessages = messages.map((message) => ({ ...message }));
+    const contextIndex = requestMessages.findIndex(
+      (message) => message?.role === "user"
+    );
+    if (contextIndex < 0) return requestMessages;
+
+    const message = requestMessages[contextIndex];
+    if (Array.isArray(message.content)) {
+      message.content = [
+        ...message.content,
+        {
+          type: "text",
+          text:
+            "Screenshot [S1] — current visible webpage area. Use it when extracted text is incomplete, and cite it as [S1] when relevant.",
+        },
+        { type: "image_url", image_url: { url: screenshot.dataUrl } },
+      ];
+    } else {
+      message.content = this.enhancer.adapter?.buildVisionMessageContent
+        ? this.enhancer.adapter.buildVisionMessageContent(
+            String(message.content || ""),
+            [],
+            [screenshot]
+          )
+        : message.content;
+    }
+    return requestMessages;
+  }
+
+  _parsePostBodyContextStats(contextContent) {
+    const textContent = this._getMessageTextContent(contextContent);
+    const postMatch = textContent.match(
+      /# Article Body\n([\s\S]*?)(?:\n\n---|\n# Cached Summary|$)/
+    );
+    const summaryMatch = textContent.match(
+      /# Cached Summary\n([\s\S]*?)(?:\n\n---|\n# Instructions|$)/
+    );
+
+    const postText = postMatch ? postMatch[1].trim() : "";
+    const summaryText = summaryMatch ? summaryMatch[1].trim() : "";
+    const postParagraphs = postText
+      ? postText
+          .split(/\n\s*\n/)
+          .map((p) => p.trim())
+          .filter((paragraph) =>
+            paragraph && !/^\[I\d+\]$/.test(paragraph)
+          )
+      : [];
+
+    return {
+      paraCount: postParagraphs.length,
+      postChars: postText.length,
+      summaryLines: summaryText ? summaryText.split("\n").length : 0,
+      summaryChars: summaryText.length,
+      totalChars: postText.length + summaryText.length,
+      imageCount: this._getMessageImageCount(contextContent),
+    };
+  }
+
+  _buildPostBodyContextSummary(contextType, stats, summaryEntry, resumed = false) {
+    const parts = [];
+    const prefix = resumed ? "Resumed" : "Loaded";
+    const typeLabel =
+      contextType === "post-summary" ? "post + summary" : contextType;
+
+    if (contextType !== "summary" && stats.paraCount > 0) {
+      parts.push(
+        `${stats.paraCount} paragraph${stats.paraCount === 1 ? "" : "s"}, ${stats.postChars.toLocaleString()} chars`
+      );
+    } else if (contextType === "post" && stats.postChars > 0) {
+      parts.push(`${stats.postChars.toLocaleString()} chars`);
+    }
+
+    if (contextType === "summary" || contextType === "post-summary") {
+      const provider = summaryEntry?.provider
+        ? ` from ${summaryEntry.provider}`
+        : "";
+      parts.push(
+        `summary ${stats.summaryLines.toLocaleString()} lines, ${stats.summaryChars.toLocaleString()} chars${provider}`
+      );
+    }
+
+    if (stats.imageCount > 0) {
+      parts.push(
+        `${stats.imageCount} image${stats.imageCount === 1 ? "" : "s"}`
+      );
+    }
+
+    const statsText = parts.length ? `: ${parts.join("; ")}` : "";
+    return `${prefix} ${typeLabel} context${statsText}.\nAsk a question to start the conversation.`;
+  }
+
+  /**
+   * Display a context-loaded system message with stats and collapsible preview.
+   * @private
+   */
+  _displayContextLoadedMessage({
+    contextType,
+    paraCount = 0,
+    postChars = 0,
+    summaryLines = 0,
+    summaryChars = 0,
+    totalChars = 0,
+    imageCount = 0,
+    summaryEntry = null,
+    contextContent = "",
+    resumed = false,
+  }) {
+    this._clearContextPlaceholders();
+
+    const messageElement = document.createElement("div");
+    messageElement.classList.add(
+      "chat-message",
+      "chat-message-system",
+      "chat-context-loaded"
+    );
+
+    const senderElement = document.createElement("strong");
+    senderElement.textContent = "System: ";
+
+    const body = document.createElement("div");
+    body.classList.add("chat-context-loaded-body");
+
+    const summary = document.createElement("div");
+    summary.classList.add("chat-context-summary");
+    summary.textContent = this._buildPostBodyContextSummary(
+      contextType,
+      {
+        paraCount,
+        postChars,
+        summaryLines,
+        summaryChars,
+        totalChars,
+        imageCount,
+      },
+      summaryEntry,
+      resumed
+    );
+    body.appendChild(summary);
+
+    if (contextContent) {
+      const details = document.createElement("details");
+      details.classList.add("chat-context-details");
+
+      const summaryToggle = document.createElement("summary");
+      summaryToggle.textContent = "View context content";
+      details.appendChild(summaryToggle);
+
+      const preview = document.createElement("pre");
+      preview.classList.add("chat-context-preview");
+      preview.textContent = contextContent;
+      details.appendChild(preview);
+
+      body.appendChild(details);
+    }
+
+    messageElement.appendChild(senderElement);
+    messageElement.appendChild(body);
+    this.conversationArea.appendChild(messageElement);
     this.conversationArea.scrollTop = this.conversationArea.scrollHeight;
   }
 
@@ -825,6 +1091,7 @@ class ChatModal {
         await this.enhancer.summarization.getAIProviderModel();
       const aiProvider = settings?.aiProvider || null;
       const model = settings?.model || null;
+      const supportsImages = settings?.supportsImages === true;
 
       const providerChanged = this.currentAiProvider !== aiProvider;
       const modelChanged = this.currentModel !== model;
@@ -836,13 +1103,21 @@ class ChatModal {
 
       this.currentAiProvider = aiProvider;
       this.currentModel = model;
+      this.currentModelSupportsImages = supportsImages;
       this._updateModelIndicator(aiProvider, model);
 
-      return { aiProvider, model, providerChanged, modelChanged };
+      return {
+        aiProvider,
+        model,
+        supportsImages,
+        providerChanged,
+        modelChanged,
+      };
     } catch (error) {
       console.error("Error refreshing AI provider/model:", error);
       this.currentAiProvider = null;
       this.currentModel = null;
+      this.currentModelSupportsImages = false;
       this._updateModelIndicator(null, null);
       return null;
     }
@@ -923,6 +1198,7 @@ class ChatModal {
   async _handleStreamingChatResponse(messageType, requestData, provider) {
     const chunkEventType = `${messageType}_STREAM_CHUNK`;
     let accumulatedText = "";
+    let visibleText = "";
 
     return new Promise((resolve, reject) => {
       const messageListener = (message) => {
@@ -937,7 +1213,13 @@ class ChatModal {
 
         if (content) {
           accumulatedText += content;
-          this._displayMessage(content, "llm", true);
+          const nextVisibleText = MarkdownUtils.stripThinkingContent(
+            accumulatedText
+          );
+          if (nextVisibleText && nextVisibleText !== visibleText) {
+            visibleText = nextVisibleText;
+            this._displayMessage(visibleText, "llm", true, true);
+          }
         }
       };
 
@@ -948,12 +1230,13 @@ class ChatModal {
         .then(() => {
           chrome.runtime.onMessage.removeListener(messageListener);
 
-          if (!accumulatedText.trim()) {
+          const finalText = MarkdownUtils.stripThinkingContent(accumulatedText);
+          if (!finalText.trim()) {
             const fallbackText = "No response content";
             this._displayMessage(fallbackText, "llm", false);
             resolve(fallbackText);
           } else {
-            resolve(accumulatedText);
+            resolve(finalText);
           }
         })
         .catch((error) => {
@@ -1438,6 +1721,12 @@ ${systemPromptIntro}
     const aiProvider = this.currentAiProvider;
     const model = this.currentModel;
 
+    conversationHistory.forEach((message) => {
+      if (message?.role === "assistant" && typeof message.content === "string") {
+        message.content = MarkdownUtils.stripThinkingContent(message.content);
+      }
+    });
+
     if (!aiProvider) {
       this._displayMessage(
         "Error: AI provider not determined for this session.",
@@ -1465,6 +1754,7 @@ ${systemPromptIntro}
       this.enhancer.logDebug("Sending message to Chrome AI...");
       this.currentLlmMessageElement = null; // Reset stream target
       let fullResponse = ""; // Accumulate response for history
+      let visibleResponse = "";
       try {
         // Chrome AI's promptStreaming expects the latest user message.
         // We need to adapt the history for it if we want multi-turn,
@@ -1486,9 +1776,16 @@ ${systemPromptIntro}
         );
         const stream = this.aiSession.promptStreaming(lastUserMessage);
         for await (const chunk of stream) {
-          this._displayMessage(chunk, "llm", true);
           fullResponse += chunk; // Accumulate the response
+          const nextVisibleResponse = MarkdownUtils.stripThinkingContent(
+            fullResponse
+          );
+          if (nextVisibleResponse && nextVisibleResponse !== visibleResponse) {
+            visibleResponse = nextVisibleResponse;
+            this._displayMessage(visibleResponse, "llm", true, true);
+          }
         }
+        fullResponse = MarkdownUtils.stripThinkingContent(fullResponse);
         this.enhancer.logDebug("Chrome AI response stream finished.");
         // Add accumulated response to history
         this.conversationHistory.push({
@@ -1562,23 +1859,53 @@ ${systemPromptIntro}
 
     try {
       const messageType = "HN_CHAT_REQUEST";
+      // Always get current Router settings before building the request.
+      const settings = await this.enhancer.apiClient.sendBackgroundMessage(
+        "FETCH_AI_SETTINGS"
+      );
+
+      this.activeScreenshot = null;
+      if (
+        this.isPostChat &&
+        settings.screenshotEnabled &&
+        this.currentModelSupportsImages
+      ) {
+        try {
+          this.activeScreenshot =
+            await this.enhancer.screenshotCapture?.captureFullPage();
+        } catch (error) {
+          console.warn("Could not attach visible webpage screenshot to chat:", error);
+        }
+      }
+
+      let messagesForRequest = this.currentModelSupportsImages
+        ? conversationHistory
+        : this._withoutImageContent(conversationHistory);
+      if (this.activeScreenshot) {
+        messagesForRequest = this._withScreenshotContent(
+          messagesForRequest,
+          this.activeScreenshot
+        );
+      }
       const requestData = {
-        messages: conversationHistory, // Send the full history
+        messages: messagesForRequest,
       };
 
-      // Always get the router URL from settings
-      const settings = await this.enhancer.apiClient.sendBackgroundMessage("FETCH_AI_SETTINGS");
       requestData.url = settings.routerUrl || "http://127.0.0.1:4000";
       requestData.model = model;
 
       // Log the exact messages being sent
       this.enhancer.logDebug(
         "Sending conversation history to background:",
-        JSON.stringify(conversationHistory, null, 2)
+        JSON.stringify(this._withoutImageContent(messagesForRequest), null, 2),
+        `(visual attachments: ${messagesForRequest.reduce(
+          (count, message) => count + this._getMessageImageCount(message.content),
+          0
+        )})`
       );
       this.enhancer.logDebug(
         "Preparing HN_CHAT_REQUEST payload:",
-        requestData
+        { ...requestData, messages: `[${messagesForRequest.length} messages]` }
       );
 
       const streamingEnabled = await this._isChatStreamingEnabled();
@@ -1603,6 +1930,7 @@ ${systemPromptIntro}
           messageType,
           requestData
         );
+        responseText = MarkdownUtils.stripThinkingContent(responseText);
         this._displayMessage(responseText, "llm", false); // Display full response
       }
 
@@ -1663,6 +1991,8 @@ ${systemPromptIntro}
       // Keep input disabled on error (already handled by the flow)
     } finally {
       this.currentLlmMessageElement = null; // Ensure reset
+      this.activeScreenshot = null;
+      this.enhancer.screenshotCapture?.releaseActiveData();
       // Re-enable input only if no error occurred (handled in the try block)
       // If an error occurred, input remains disabled.
     }
@@ -2233,18 +2563,65 @@ ${systemPromptIntro}
         this.historyProvider = storedHistoryEntry?.provider || null;
         this.historyModel = storedHistoryEntry?.model || null;
 
+        let contextSummaryShown = false;
         this.conversationHistory.forEach((message) => {
           if (message.role === "system") {
-            this._displayMessage(
-              `Loaded previous chat (${contextType} context).`,
-              "system"
+            if (contextSummaryShown) {
+              return;
+            }
+
+            const contextMessage = this.conversationHistory.find(
+              (entry) =>
+                entry.role === "user" &&
+                this._getMessageTextContent(entry.content).includes(
+                  "# Article Title"
+                )
             );
-          } else {
-            this._displayMessage(
-              message.content,
-              message.role === "assistant" ? "llm" : message.role
-            );
+            if (contextMessage) {
+              const imageUrls = this._getMessageImageUrls(
+                contextMessage.content
+              );
+              this.enhancer.adapter?.restoreImageRefs?.(
+                imageUrls.map((url, index) => ({
+                  ref: `I${index + 1}`,
+                  url,
+                }))
+              );
+              const stats = this._parsePostBodyContextStats(
+                contextMessage.content
+              );
+              this._displayContextLoadedMessage({
+                contextType,
+                ...stats,
+                contextContent: this._getMessageTextContent(
+                  contextMessage.content
+                ),
+                resumed: true,
+              });
+              contextSummaryShown = true;
+            } else {
+              this._displayMessage(
+                `Loaded previous chat (${contextType} context).`,
+                "system"
+              );
+              contextSummaryShown = true;
+            }
+            return;
           }
+
+          if (
+            message.role === "user" &&
+            this._getMessageTextContent(message.content).includes(
+              "# Article Title"
+            )
+          ) {
+            return;
+          }
+
+          this._displayMessage(
+            this._getMessageTextContent(message.content),
+            message.role === "assistant" ? "llm" : message.role
+          );
         });
 
         await this._refreshProviderAndModel();
@@ -2270,13 +2647,29 @@ ${systemPromptIntro}
       // --- No history: gather post body and (optionally) cached summary ---
       const postTitle =
         adapter?.getPostTitle?.() || document.title || "Untitled";
-      const postText = adapter?.getPostText?.() || "";
-      const postParagraphs = postText
-        ? postText
-            .split(/\n\s*\n/)
-            .map((p) => p.trim())
-            .filter(Boolean)
-        : [];
+      const contextSettingsResult = await chrome.storage.sync.get("settings");
+      const contextSettings = contextSettingsResult.settings || {};
+      const bodyEnabled = contextSettings.bodyEnabled !== false;
+      const postText = bodyEnabled ? adapter?.getPostText?.() || "" : "";
+      const canJump = adapter?.supportsParagraphJump?.() !== false;
+      const bodyEl = bodyEnabled ? adapter?.getPostBodyElement?.() : null;
+      let postParagraphs = [];
+      if (canJump && bodyEl && this.enhancer.summarization?._formatPostBodyForLLM) {
+        const { formattedText } =
+          this.enhancer.summarization._formatPostBodyForLLM(bodyEl, postTitle);
+        postParagraphs = formattedText
+          .split('\n')
+          .slice(1)
+          .map((line) => line.replace(/^\[P\d+\]\s*/, '').trim())
+          .filter(Boolean);
+      } else {
+        postParagraphs = postText
+          ? postText
+              .split(/\n\s*\n/)
+              .map((p) => p.trim())
+              .filter(Boolean)
+          : [];
+      }
 
       let summaryEntry = null;
       if (contextType === "summary" || contextType === "post-summary") {
@@ -2293,9 +2686,34 @@ ${systemPromptIntro}
         }
       }
 
-      if (contextType === "post" && postParagraphs.length === 0) {
+      await this._refreshProviderAndModel();
+      const screenshotCanProvideContext =
+        contextSettings.screenshotEnabled === true &&
+        this.currentAiProvider === "openai-router" &&
+        this.currentModelSupportsImages;
+
+      let imageUrls = [];
+      if (
+        this.currentAiProvider === "openai-router" &&
+        contextSettings.imagesEnabled === true &&
+        this.currentModelSupportsImages &&
+        contextType !== "summary" &&
+        this.enhancer.adapter?.getArticleImages
+      ) {
+        imageUrls = this.enhancer.adapter.getArticleImages(8) || [];
+      }
+      const imagesCanProvideContext = imageUrls.length > 0;
+
+      if (
+        contextType === "post" &&
+        postParagraphs.length === 0 &&
+        !screenshotCanProvideContext &&
+        !imagesCanProvideContext
+      ) {
         this._displayMessage(
-          "No article body found on this page. Cannot start post-body chat.",
+          bodyEnabled
+            ? "No article body was extracted. Enable Images or Screenshot with a vision-capable model to chat about the webpage."
+            : "Article Body is disabled. Enable Body, Images, or Screenshot to provide chat context.",
           "system"
         );
         this.inputElement.disabled = false;
@@ -2304,7 +2722,6 @@ ${systemPromptIntro}
       }
 
       // --- Build the system message ---
-      const canJump = adapter?.supportsParagraphJump?.() !== false;
       const systemMessageFromAdapter = adapter?.getChatSystemMessage?.();
       const systemPrompt =
         systemMessageFromAdapter ||
@@ -2334,12 +2751,28 @@ ${systemPromptIntro}
           : "# Instructions\nAnswer the user's questions using the materials above. When quoting, use quotation marks. Reply in the user's language."
       );
 
-      const initialUserMessage = contextSections.join("\n\n---\n\n");
+      let initialUserMessage = contextSections.join("\n\n---\n\n");
 
       // --- Determine AI provider ---
       await this._refreshProviderAndModel();
       const aiProvider = this.currentAiProvider;
       const model = this.currentModel;
+
+      // --- Optionally attach article images (OpenAI vision format) ---
+      // Image content is currently supported only by the OpenAI-compatible
+      // router. Other providers keep the same text-only history shape.
+      if (imageUrls.length > 0) {
+        initialUserMessage =
+          this.enhancer.adapter.addImagePlaceholders?.(initialUserMessage) ||
+          initialUserMessage;
+      }
+      const initialUserContent = this.enhancer.adapter
+        ?.buildVisionMessageContent
+        ? this.enhancer.adapter.buildVisionMessageContent(
+            initialUserMessage,
+            imageUrls
+          )
+        : initialUserMessage;
 
       if (!aiProvider) {
         this.enhancer.logInfo("Post-body chat: AI provider not configured.");
@@ -2363,25 +2796,32 @@ ${systemPromptIntro}
       });
       this.conversationHistory.push({
         role: "user",
-        content: initialUserMessage,
+        content: initialUserContent,
       });
       this.enhancer.logDebug(
         "Initialized post-body chat history with system prompt and context."
       );
 
-      // Display a friendly context-loaded summary
-      const paraCount =
-        contextType !== "summary" ? postParagraphs.length : 0;
-      const summaryLines = summaryEntry
+      const postCharCount =
+        contextType !== "summary" ? postParagraphs.join("\n\n").length : 0;
+      const summaryCharCount = summaryEntry
+        ? String(summaryEntry.summary).length
+        : 0;
+      const summaryLineCount = summaryEntry
         ? String(summaryEntry.summary).split("\n").length
         : 0;
-      const summaryLine = summaryEntry
-        ? `\nSummary: ${summaryLines} lines from ${summaryEntry.provider || "cache"}`
-        : "";
-      this._displayMessage(
-        `Loaded ${contextType} context: ${paraCount} paragraph(s)${summaryLine}.\nAsk a question to start the conversation.`,
-        "system"
-      );
+
+      this._displayContextLoadedMessage({
+        contextType,
+        paraCount: contextType !== "summary" ? postParagraphs.length : 0,
+        postChars: postCharCount,
+        summaryLines: summaryLineCount,
+        summaryChars: summaryCharCount,
+        totalChars: postCharCount + summaryCharCount,
+        imageCount: imageUrls.length,
+        summaryEntry,
+        contextContent: initialUserMessage,
+      });
 
       // --- Prepare chat based on provider ---
       if (aiProvider === "chrome-ai") {

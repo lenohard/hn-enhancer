@@ -23,6 +23,7 @@ async function onInstalled() {
 const HN_CONTENT_SCRIPT_JS = [
   "src/hn-state.js",
   "src/api-client.js",
+  "src/screenshot-capture.js",
   "src/markdown-utils.js",
   "src/dom-utils.js",
   "src/summary-panel.js",
@@ -32,6 +33,7 @@ const HN_CONTENT_SCRIPT_JS = [
   "src/ui-components.js",
   "src/chat-modal.js",
   "src/hub-panel.js",
+  "src/extract-panel.js",
   "src/prompts.js",
   "src/substack-domains.js",
   "src/adapters/site-adapter.js",
@@ -227,7 +229,17 @@ console.log("[BACKGROUND] Background script 已加载");
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("[BACKGROUND] 收到消息, 类型:", message.type);
-  console.log("[BACKGROUND] 消息数据:", message.data);
+  console.log(
+    "[BACKGROUND] 消息数据:",
+    message.type === "CAPTURE_VISIBLE_TAB"
+      ? "[visible-tab capture requested]"
+      : ["HN_CHAT_REQUEST", "OPENAI_ROUTER_API_REQUEST"].includes(message.type)
+        ? {
+            ...message.data,
+            messages: `[${message.data?.messages?.length || 0} messages; visual data omitted]`,
+          }
+        : message.data
+  );
   console.log("[BACKGROUND] 发送者:", sender);
 
   // Handle the message
@@ -235,6 +247,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "HN_SHOW_OPTIONS":
       chrome.tabs.create({ url: chrome.runtime.getURL("options.html") });
       break;
+
+    case "CAPTURE_VISIBLE_TAB":
+      return handleAsyncMessage(
+        message,
+        async () => {
+          if (!sender.tab) {
+            throw new Error("Visible-tab capture requires a webpage tab");
+          }
+          const dataUrl = await new Promise((resolve, reject) => {
+            chrome.tabs.captureVisibleTab(
+              sender.tab.windowId,
+              { format: "jpeg", quality: 75 },
+              (capturedUrl) => {
+                const error = chrome.runtime.lastError;
+                if (error) {
+                  reject(new Error(error.message));
+                } else if (!capturedUrl) {
+                  reject(new Error("The browser returned an empty screenshot"));
+                } else {
+                  resolve(capturedUrl);
+                }
+              }
+            );
+          });
+          return { dataUrl };
+        },
+        sendResponse
+      );
 
     case "FETCH_API_REQUEST":
       return handleAsyncMessage(
@@ -254,7 +294,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const maxTokens = settingsData.settings?.maxTokens || 100000;
           const temperature = settingsData.settings?.temperature || 0.7;
           const routerUrl = settingsData.settings?.["openai-router"]?.url || "http://127.0.0.1:4000";
-          return { aiProvider, model, language, maxTokens, temperature, routerUrl };
+          const supportsImages =
+            settingsData.settings?.[aiProvider]?.supportsImages === true;
+          const screenshotEnabled =
+            settingsData.settings?.screenshotEnabled === true;
+          return {
+            aiProvider,
+            model,
+            language,
+            maxTokens,
+            temperature,
+            routerUrl,
+            supportsImages,
+            screenshotEnabled,
+          };
         },
         sendResponse
       );
@@ -565,6 +618,7 @@ async function handleOpenAIRouterRequest(data) {
         statusText: response.statusText,
         errorBody: errorText,
       });
+
       throw new Error(
         `OpenAI Router API Error: HTTP error code: ${response.status} \nBody: ${errorText}`
       );

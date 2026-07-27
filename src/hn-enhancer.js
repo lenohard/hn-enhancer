@@ -44,6 +44,7 @@ window.HNEnhancer = class HNEnhancer {
       this.logDebug(`Site adapter: ${this.adapter.name} (${this.adapter.getSiteKey()})`);
 
       this.domUtils = new DomUtils(this.adapter);
+      this.screenshotCapture = new ScreenshotCapture(this);
 
       // Initialize components
       this.uiComponents = new UIComponents(this);
@@ -51,6 +52,9 @@ window.HNEnhancer = class HNEnhancer {
       this.authorTracking = new AuthorTracking(this);
       this.navigation = new Navigation(this);
       this.chatModal = new ChatModal(this); // Instantiate ChatModal
+      if (typeof this.adapter.getReadabilityPreview === "function") {
+        this.extractPanel = new ExtractPanel(this);
+      }
 
       this.bookmarkedAuthors = new Map();
       this.unsubscribeFromBookmarks = null;
@@ -373,7 +377,15 @@ window.HNEnhancer = class HNEnhancer {
     const sel = window.getSelection()?.toString().trim() || '';
     if (sel.length >= 20 && this.adapter?.setSelectionOverride) {
       this.adapter.setSelectionOverride(sel);
+      this._useSelectionScope = true;
+    } else {
+      this._useSelectionScope = false;
     }
+  }
+
+  clearSelectionScope() {
+    this.adapter?.clearSelectionScope?.();
+    this._useSelectionScope = false;
   }
 
   _summarizeSelection() {
@@ -2165,6 +2177,11 @@ window.HNEnhancer = class HNEnhancer {
    * Opens the chat modal for the entire post.
    */
   openPostChatModal() {
+    if (!this._useSelectionScope) {
+      this.clearSelectionScope();
+    }
+    this._useSelectionScope = false;
+
     if (this.chatModal) {
       const postId = this.adapter?.getPostId?.();
       if (!postId) {

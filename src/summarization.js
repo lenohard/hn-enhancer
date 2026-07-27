@@ -49,6 +49,45 @@ class Summarization {
     this.SummarizeCheckStatus = SUMMARIZATION_CONFIG.STATUS;
     this._summaryPathMap = new Map();
     this._summaryViewState = null;
+    this._nextRequestPreviewOverride = null;
+  }
+
+  setNextRequestPreviewOverride(override) {
+    if (!override || override.pageUrl !== window.location.href) return false;
+    this._nextRequestPreviewOverride = {
+      ...override,
+      model: override.model || null,
+      imageEntries: Array.isArray(override.imageEntries)
+        ? override.imageEntries
+        : [],
+      appliedAt: Date.now(),
+    };
+    return true;
+  }
+
+  clearNextRequestPreviewOverride() {
+    this._nextRequestPreviewOverride = null;
+  }
+
+  _consumeRequestPreviewOverride(
+    provider,
+    model,
+    targetCommentId,
+    isPostSummary = false
+  ) {
+    const override = this._nextRequestPreviewOverride;
+    if (
+      !override ||
+      targetCommentId != null ||
+      !isPostSummary ||
+      override.pageUrl !== window.location.href ||
+      override.provider !== provider ||
+      override.model !== (model || null)
+    ) {
+      return null;
+    }
+    this._nextRequestPreviewOverride = null;
+    return override;
   }
 
   /**
@@ -301,8 +340,10 @@ class Summarization {
       return { formattedText: `[post] ${postTitle || 'Article'}`, paraMap };
     }
 
-    const canJump = this.enhancer.adapter?.supportsParagraphJump?.() !== false;
-    const paragraphs = bodyEl.querySelectorAll('p');
+    const adapter = this.enhancer.adapter;
+    const canJump = adapter?.supportsParagraphJump?.() !== false;
+    const paragraphs = adapter?.getParagraphElements?.(bodyEl)
+      || [...bodyEl.querySelectorAll('p')];
     const lines = [`[post] ${postTitle || 'Article'}:`];
     let idx = 1;
 
@@ -332,6 +373,11 @@ class Summarization {
     const title = adapter.getPostTitle?.() || 'Post';
     const { formattedText } = this._formatPostBodyForLLM(bodyEl, title);
     return { formattedComment: formattedText, commentPathToIdMap: new Map([['post', 'post']]) };
+  }
+
+  _getPostTitleOnlyContext() {
+    const title = this.enhancer.adapter?.getPostTitle?.() || "Post";
+    return `[post] ${title}:\n[Article body not attached]`;
   }
 
   /**
@@ -556,6 +602,12 @@ class Summarization {
         pathMap = await this._getCommentPathToIdMap(
           state.itemId,
           local.metadata
+        );
+        this.enhancer.adapter?.restoreImageRefs?.(
+          local.metadata?.imageRefs
+        );
+        this.enhancer.screenshotCapture?.restoreRefs(
+          local.metadata?.screenshotRefs
         );
         bodyHtml = this._formatSummaryHtml(local.summary || "", pathMap);
       } else {
@@ -851,6 +903,11 @@ class Summarization {
    * Does not start generation — use Generate in the panel or _generatePostSummary().
    */
   async summarizeAllComments() {
+    if (!this.enhancer._useSelectionScope) {
+      this.enhancer.adapter?.clearSelectionScope?.();
+    }
+    this.enhancer._useSelectionScope = false;
+
     const itemId = this.enhancer.domUtils.getCurrentHNItemId();
     if (!itemId) {
       console.error(
@@ -1120,6 +1177,7 @@ class Summarization {
    * @returns {string}
    */
   _formatSummaryHtml(summary, commentPathToIdMap) {
+    summary = MarkdownUtils.stripThinkingContent(summary);
     this._summaryPathMap =
       commentPathToIdMap instanceof Map
         ? commentPathToIdMap
@@ -1330,10 +1388,31 @@ class Summarization {
   }
 
   /**
-   * Resolve a summary ref (e.g. "#1", "post", "P3") to a DOM element and scroll.
+   * Resolve a summary ref (e.g. "#1", "post", "P3", "I2", "S1") and scroll.
    * @param {string} ref
    */
   _resolveAndScrollToRef(ref) {
+    // Screenshot ref: [S1] returns to the viewport captured for the request.
+    if (/^S\d+$/i.test(ref)) {
+      if (!this.enhancer.screenshotCapture?.resolveRef(ref)) {
+        console.warn("Could not restore captured webpage viewport:", ref);
+      }
+      return;
+    }
+
+    // Image ref: [I1], [I2], etc. → source image retained by the adapter.
+    if (/^I\d+$/i.test(ref)) {
+      const imageEl = this.enhancer.adapter?.resolveImageByRef?.(
+        ref.toUpperCase()
+      );
+      if (imageEl) {
+        this._scrollAndFlashSummaryTarget(imageEl);
+      } else {
+        console.warn("Could not find article image:", ref);
+      }
+      return;
+    }
+
     // Paragraph ref: [P1], [P2], etc. → query data-para-index on body element
     const paraMatch = ref.match(/^P(\d+)$/);
     if (paraMatch) {
@@ -1341,10 +1420,12 @@ class Summarization {
       if (bodyEl) {
         // Try pre-set data-para-index first (from _formatPostBodyForLLM)
         let paraEl = bodyEl.querySelector(`[data-para-index="${paraMatch[1]}"]`);
-        // Fallback: collect <p> elements by 1-based index
+        // Fallback: collect paragraph blocks by 1-based index
         if (!paraEl) {
           const idx = parseInt(paraMatch[1], 10) - 1;
-          const paras = bodyEl.querySelectorAll('p');
+          const paras =
+            this.enhancer.adapter?.getParagraphElements?.(bodyEl)
+            || bodyEl.querySelectorAll('p');
           if (idx >= 0 && idx < paras.length) {
             paraEl = paras[idx];
           }
@@ -1610,6 +1691,12 @@ class Summarization {
             commentPathToIdMap instanceof Map
               ? Array.from(commentPathToIdMap.entries())
               : [],
+          imageRefs: Array.isArray(providerInfo.imageRefs)
+            ? providerInfo.imageRefs
+            : [],
+          screenshotRefs: Array.isArray(providerInfo.screenshotRefs)
+            ? providerInfo.screenshotRefs
+            : [],
         };
 
         await HNState.saveSummary(
@@ -2033,6 +2120,11 @@ class Summarization {
       const data = await chrome.storage.sync.get("settings");
       const providerSelection = data.settings?.providerSelection;
       const streamingEnabled = data.settings?.streamingEnabled || false;
+      const bodyEnabled = data.settings?.bodyEnabled !== false;
+      const imagesEnabled = data.settings?.imagesEnabled || false;
+      const screenshotEnabled = data.settings?.screenshotEnabled === true;
+      const modelSupportsImages =
+        data.settings?.[providerSelection]?.supportsImages === true;
 
       if (!providerSelection) {
         this.showConfigureAIMessage();
@@ -2054,12 +2146,57 @@ class Summarization {
         }
       }
 
+      const requestOverride = this._consumeRequestPreviewOverride(
+        providerSelection,
+        data.settings?.[providerSelection]?.model,
+        targetCommentId,
+        isPostSummary
+      );
+
       // Remove unnecessary anchor tags
       formattedComment =
         this.enhancer.markdownUtils.stripAnchors(formattedComment);
 
+      if (isPostSummary && !bodyEnabled) {
+        formattedComment = this._getPostTitleOnlyContext();
+      }
+
       // Set summary mode so prompts can adapt (post-only vs comments)
       this._summaryMode = isPostSummary ? 'post' : null;
+
+      // Collect article images for post summary (only when feature enabled
+      // and supported by the selected model). HN/empty adapter returns [].
+      const imageUrls = requestOverride
+        ? requestOverride.imageEntries
+        : imagesEnabled &&
+          modelSupportsImages &&
+          isPostSummary &&
+          this.enhancer.adapter?.getArticleImages
+            ? this.enhancer.adapter.getArticleImages(8)
+            : [];
+      if (imageUrls.length > 0) {
+        formattedComment =
+          this.enhancer.adapter.addImagePlaceholders?.(formattedComment) ||
+          formattedComment;
+      }
+
+      let screenshot = null;
+      // Attach to full-page/post summaries, but not an individual comment
+      // thread whose evidence should remain limited to that thread.
+      if (requestOverride) {
+        screenshot = requestOverride.screenshot || null;
+      } else if (
+        screenshotEnabled &&
+        modelSupportsImages &&
+        targetCommentId == null
+      ) {
+        try {
+          screenshot = await this.enhancer.screenshotCapture?.captureFullPage();
+        } catch (error) {
+          // Screenshot capture is additive: keep text/image summarization usable.
+          console.warn("Could not attach visible webpage screenshot:", error);
+        }
+      }
 
       // Call appropriate AI provider
       await this.callAIProvider(
@@ -2068,12 +2205,16 @@ class Summarization {
         commentPathToIdMap,
         streamingEnabled,
         targetCommentId,
-        data.settings
+        data.settings,
+        imageUrls,
+        screenshot,
+        requestOverride
       );
     } catch (error) {
       this.handleError("Error fetching settings", error);
     } finally {
       this._summaryMode = null;
+      this.enhancer.screenshotCapture?.releaseActiveData();
     }
   }
 
@@ -2112,6 +2253,13 @@ class Summarization {
   async displayCachedSummary(cachedSummary, commentPathToIdMap) {
     this.enhancer.logInfo(`Using cached summary`);
 
+    this.enhancer.adapter?.restoreImageRefs?.(
+      cachedSummary.metadata?.imageRefs
+    );
+    this.enhancer.screenshotCapture?.restoreRefs(
+      cachedSummary.metadata?.screenshotRefs
+    );
+
     const cacheAge = Math.round(
       (Date.now() - cachedSummary.timestamp) / (1000 * 60)
     );
@@ -2145,7 +2293,10 @@ class Summarization {
     commentPathToIdMap,
     streamingEnabled,
     targetCommentId,
-    settings
+    settings,
+    imageUrls = [],
+    screenshot = null,
+    requestOverride = null
   ) {
     const model = settings?.[providerSelection]?.model;
     const apiKey = settings?.[providerSelection]?.apiKey;
@@ -2154,7 +2305,7 @@ class Summarization {
     this.enhancer.logInfo(
       `Summarization - AI Provider: ${providerSelection}, Model: ${
         model || "none"
-      }, Streaming: ${streamingEnabled}`
+      }, Streaming: ${streamingEnabled}, Images: ${imageUrls.length}, Screenshot: ${screenshot ? "yes" : "no"}`
     );
 
     const providers = {
@@ -2168,9 +2319,11 @@ class Summarization {
           commentPathToIdMap,
           streamingEnabled,
           targetCommentId,
-          false,
           language,
-          true
+          true,
+          imageUrls,
+          screenshot,
+          requestOverride
         ),
       none: () =>
         this.showSummaryInPanel(formattedComment, commentPathToIdMap, 0, {
@@ -2201,7 +2354,10 @@ class Summarization {
     streamingEnabled = false,
     targetCommentId = null,
     language = "en",
-    isRouter = false
+    isRouter = false,
+    imageUrls = [],
+    screenshot = null,
+    requestOverride = null
   ) {
     if (!text || !model) {
       this.showError("Missing API configuration");
@@ -2209,11 +2365,29 @@ class Summarization {
     }
 
     try {
+      // Keep malformed/legacy callers from turning optional image support
+      // into a hard failure while constructing metadata or request content.
+      imageUrls = Array.isArray(imageUrls)
+        ? imageUrls.filter((entry) =>
+            typeof entry === "string"
+              ? entry.length > 0
+              : typeof entry?.url === "string" && entry.url.length > 0
+          )
+        : [];
+
       const { maxTokens, routerUrl } = await this.getAIProviderModel();
       const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
-      const { systemPrompt, userPrompt } = await this.preparePrompts(
+      let { systemPrompt, userPrompt } = await this.preparePrompts(
         tokenLimitText
       );
+      if (requestOverride) {
+        if (Object.hasOwn(requestOverride, "systemPrompt")) {
+          systemPrompt = requestOverride.systemPrompt;
+        }
+        if (Object.hasOwn(requestOverride, "userPrompt")) {
+          userPrompt = requestOverride.userPrompt;
+        }
+      }
 
       const requestData = this.buildRequestData(
         messageType,
@@ -2224,8 +2398,25 @@ class Summarization {
         maxTokens,
         streamingEnabled,
         isRouter,
-        routerUrl
+        routerUrl,
+        imageUrls,
+        screenshot,
+        requestOverride?.userPromptIsFinal === true
       );
+      const generationMetadata = {
+        aiProvider: providerName,
+        model,
+        language,
+        imageRefs: imageUrls.map((entry, index) => ({
+          ref: typeof entry === "object" && entry.ref
+            ? entry.ref
+            : `I${index + 1}`,
+          url: typeof entry === "string" ? entry : entry.url,
+        })),
+        screenshotRefs: screenshot
+          ? [this.enhancer.screenshotCapture.getMetadata(screenshot)]
+          : [],
+      };
 
       if (streamingEnabled) {
         await this.handleStreamingResponse(
@@ -2233,7 +2424,7 @@ class Summarization {
           requestData,
           commentPathToIdMap,
           targetCommentId,
-          { aiProvider: providerName, model, language }
+          generationMetadata
         );
       } else {
         const response = await this.enhancer.apiClient.sendBackgroundMessage(
@@ -2247,13 +2438,13 @@ class Summarization {
           commentPathToIdMap,
           response.duration,
           targetCommentId,
-          { aiProvider: providerName, model, language }
+          generationMetadata
         );
         await this.showSummaryInPanel(
           summary,
           commentPathToIdMap,
           response.duration,
-          { aiProvider: providerName, model, language }
+          generationMetadata
         );
       }
     } catch (error) {
@@ -2274,6 +2465,102 @@ class Summarization {
       ? await this._getPostSummaryUserMessage(postTitle, text)
       : await this.getUserMessage(postTitle, text);
     return { systemPrompt, userPrompt };
+  }
+
+  /**
+   * Build the same post-summary message and visual attachments used by a new
+   * request, without sending it. ExtractPanel uses this as a truthful request
+   * preview instead of showing a separate Readability-only representation.
+   */
+  async buildPostRequestPreview() {
+    const data = await chrome.storage.sync.get("settings");
+    const settings = data.settings || {};
+    const provider = settings.providerSelection || "openai-router";
+    const providerSettings = settings[provider] || {};
+    const modelSupportsImages = providerSettings.supportsImages === true;
+    const notices = [];
+
+    let { formattedComment } = await this._getPostBodyOnly();
+    formattedComment = this.enhancer.markdownUtils.stripAnchors(
+      formattedComment || ""
+    );
+    if (settings.bodyEnabled === false) {
+      formattedComment = this._getPostTitleOnlyContext();
+      notices.push("Extracted article body is disabled and will not be sent.");
+    }
+
+    const rawImageEntries =
+      settings.imagesEnabled === true &&
+      modelSupportsImages &&
+      this.enhancer.adapter?.getArticleImageEntries
+        ? this.enhancer.adapter.getArticleImageEntries(8)
+        : [];
+    const imageEntries = rawImageEntries.map((entry, index) => ({
+      ref: entry?.ref || `I${index + 1}`,
+      url: entry?.url,
+    })).filter((entry) => typeof entry.url === "string" && entry.url.length > 0);
+    if (imageEntries.length > 0) {
+      formattedComment =
+        this.enhancer.adapter.addImagePlaceholders?.(formattedComment) ||
+        formattedComment;
+    }
+
+    if (settings.imagesEnabled && !modelSupportsImages) {
+      notices.push("Article images are enabled but will be skipped because the current model is marked text-only.");
+    }
+
+    let screenshot = null;
+    if (settings.screenshotEnabled && modelSupportsImages) {
+      try {
+        screenshot = await this.enhancer.screenshotCapture?.captureFullPage();
+      } catch (error) {
+        notices.push(`Screenshot capture failed: ${error.message}`);
+      }
+    } else if (settings.screenshotEnabled && !modelSupportsImages) {
+      notices.push("Screenshot is enabled but will be skipped because the current model is marked text-only.");
+    }
+
+    const previousMode = this._summaryMode;
+    this._summaryMode = "post";
+    try {
+      const maxTokens = settings.maxTokens || 100000;
+      const tokenLimitedText = this.splitInputTextAtTokenLimit(
+        formattedComment,
+        maxTokens
+      );
+      const { systemPrompt, userPrompt } = await this.preparePrompts(
+        tokenLimitedText
+      );
+      const userContent = this.enhancer.adapter?.buildVisionMessageContent
+        ? this.enhancer.adapter.buildVisionMessageContent(
+            userPrompt,
+            imageEntries,
+            screenshot ? [screenshot] : []
+          )
+        : userPrompt;
+      const userTextParts = Array.isArray(userContent)
+        ? userContent
+            .filter((part) => part?.type === "text")
+            .map((part) => part.text)
+        : [String(userContent || "")];
+      const editableUserText = userTextParts[0] || "";
+      const requestUserText = userTextParts.join("\n\n");
+
+      return {
+        provider,
+        model: providerSettings.model || null,
+        modelSupportsImages,
+        systemPrompt,
+        baseUserPrompt: userPrompt,
+        userPrompt: editableUserText,
+        requestText: `SYSTEM\n${systemPrompt}\n\nUSER\n${requestUserText}`,
+        imageEntries,
+        screenshot,
+        notices,
+      };
+    } finally {
+      this._summaryMode = previousMode;
+    }
   }
 
   /**
@@ -2312,7 +2599,10 @@ ${languageInstruction}`;
     maxTokens,
     streamingEnabled,
     isRouter = false,
-    routerUrl = "http://127.0.0.1:4000"
+    routerUrl = "http://127.0.0.1:4000",
+    imageUrls = [],
+    screenshot = null,
+    userPromptIsFinal = false
   ) {
     const baseData = {
       apiKey,
@@ -2322,11 +2612,22 @@ ${languageInstruction}`;
       include_usage: true,
     };
 
+    // The adapter assigns stable [I#] labels and produces the shared
+    // OpenAI-compatible content shape used by summaries and chat.
+    const userContent = this.enhancer.adapter?.buildVisionMessageContent
+      ? this.enhancer.adapter.buildVisionMessageContent(
+          userPrompt,
+          imageUrls,
+          screenshot ? [screenshot] : [],
+          { includeInstructions: !userPromptIsFinal }
+        )
+      : userPrompt;
+
     return {
       ...baseData,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
+        { role: "user", content: userContent },
       ],
     };
   }
@@ -2338,7 +2639,9 @@ ${languageInstruction}`;
     if (!response?.choices?.[0]?.message?.content) {
       throw new Error("No summary generated from API response");
     }
-    return response.choices[0].message.content;
+    return MarkdownUtils.stripThinkingContent(
+      response.choices[0].message.content
+    );
   }
 
   /**
@@ -2553,15 +2856,16 @@ ${languageInstruction}`;
       return;
     }
 
-    this.updateStreamingUI(accumulatedText, commentPathToIdMap, true);
+    const finalText = MarkdownUtils.stripThinkingContent(accumulatedText);
+    this.updateStreamingUI(finalText, commentPathToIdMap, true);
     await this.saveSummaryToCache(
-      accumulatedText,
+      finalText,
       commentPathToIdMap,
       0,
       targetCommentId,
       metadata
     );
-    await this.showSummaryInPanel(accumulatedText, commentPathToIdMap, 0, metadata);
+    await this.showSummaryInPanel(finalText, commentPathToIdMap, 0, metadata);
   }
 
   /**
@@ -2569,6 +2873,7 @@ ${languageInstruction}`;
    * If user is on Server, keep streaming in state only and refresh tab labels.
    */
   updateStreamingUI(text, commentPathToIdMap, isFinal = false) {
+    text = MarkdownUtils.stripThinkingContent(text);
     const itemId = this.enhancer.domUtils.getCurrentHNItemId();
     const state = this._ensureSummaryViewState(itemId);
     state.generating = {

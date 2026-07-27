@@ -16,12 +16,11 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://*/*",
-    "http://*/*"
+    "<all_urls>"
   ],
   "options_ui": {
     "page": "options.html",
-    "open_in_tab": false
+    "open_in_tab": true
   },
   "action": {
     "default_popup": "popup.html",
@@ -42,6 +41,7 @@
       "js": [
         "src/hn-state.js",
         "src/api-client.js",
+        "src/screenshot-capture.js",
         "src/markdown-utils.js",
         "src/dom-utils.js",
         "src/summary-panel.js",
@@ -51,6 +51,7 @@
         "src/ui-components.js",
         "src/chat-modal.js",
         "src/hub-panel.js",
+        "src/extract-panel.js",
         "src/prompts.js",
         "src/substack-domains.js",
         "src/adapters/site-adapter.js",
@@ -76,6 +77,7 @@
       "js": [
         "src/hn-state.js",
         "src/api-client.js",
+        "src/screenshot-capture.js",
         "src/markdown-utils.js",
         "src/dom-utils.js",
         "src/summary-panel.js",
@@ -85,6 +87,7 @@
         "src/ui-components.js",
         "src/chat-modal.js",
         "src/hub-panel.js",
+        "src/extract-panel.js",
         "src/prompts.js",
         "src/substack-domains.js",
         "src/lib/readability.js",
@@ -107,6 +110,7 @@
         "src/options.js",
         "src/hn-state.js",
         "src/api-client.js",
+        "src/screenshot-capture.js",
         "src/markdown-utils.js",
         "src/dom-utils.js",
         "src/summary-panel.js",

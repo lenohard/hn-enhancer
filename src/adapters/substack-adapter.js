@@ -11,6 +11,50 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
     /** Human-readable site name shown in UI. */
     name = 'Substack';
 
+    /** Selection-FAB context retained while the chat/summary is initialized. */
+    _selectionOverride = null;
+    _selectionRange = null;
+    _selectionBlocks = [];
+
+    static _SELECTION_BLOCK_SELECTOR =
+        'p, li, h1, h2, h3, h4, h5, h6, blockquote, pre';
+
+    setSelectionOverride(text) {
+        this._selectionOverride = text && text.length >= 20 ? text : null;
+        this._selectionRange = null;
+        this._selectionBlocks = [];
+
+        const selection = window.getSelection();
+        if (
+            this._selectionOverride &&
+            selection?.rangeCount > 0 &&
+            !selection.isCollapsed
+        ) {
+            this._selectionRange = selection.getRangeAt(0).cloneRange();
+            const body = this._getFullPostBodyElement();
+            this._selectionBlocks = body
+                ? [...body.querySelectorAll(SubstackAdapter._SELECTION_BLOCK_SELECTOR)]
+                    .filter((element) => {
+                        try {
+                            return (
+                                this._selectionRange.intersectsNode(element) &&
+                                element.textContent.trim().length > 0
+                            );
+                        } catch {
+                            return false;
+                        }
+                    })
+                : [];
+        }
+    }
+
+    clearSelectionScope() {
+        this._selectionOverride = null;
+        this._selectionRange = null;
+        this._selectionBlocks = [];
+        window.getSelection()?.removeAllRanges();
+    }
+
     // ── URL matching ──────────────────────────────────────────────
 
     /**
@@ -97,7 +141,7 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
         return document.querySelector('h1')?.textContent?.trim() || document.title;
     }
 
-    getPostBodyElement() {
+    _getFullPostBodyElement() {
         return (
             document.querySelector('article .body.markup') ||
             document.querySelector('article') ||
@@ -105,11 +149,80 @@ window.SubstackAdapter = class SubstackAdapter extends SiteAdapter {
         );
     }
 
+    getPostBodyElement() {
+        return this._getFullPostBodyElement();
+    }
+
+    getParagraphElements(bodyEl) {
+        if (this._selectionRange) {
+            return this._selectionBlocks;
+        }
+        return super.getParagraphElements(bodyEl);
+    }
+
     getPostText() {
+        if (this._selectionBlocks.length > 0) {
+            return this._selectionBlocks
+                .map((element) => element.textContent.trim())
+                .filter(Boolean)
+                .join('\n\n');
+        }
+        if (this._selectionOverride) {
+            return this._selectionOverride;
+        }
+
         const el =
             document.querySelector('article .body.markup') ||
             document.querySelector('.available-content .body.markup');
         return el?.innerText?.trim() || '';
+    }
+
+    /**
+     * Collect article body images (not comment images).
+     * @param {number} [_maxCount=8]
+     * @returns {Array<{ref: string, url: string, element: HTMLImageElement}>}
+     */
+    getArticleImageEntries(_maxCount = 8) {
+        const el =
+            document.querySelector('article .body.markup') ||
+            document.querySelector('.available-content .body.markup');
+
+        if (this._selectionRange) {
+            const selectedImages = el
+                ? [...el.querySelectorAll('img')].filter((image) => {
+                    try {
+                        return this._selectionRange.intersectsNode(image);
+                    } catch {
+                        return false;
+                    }
+                })
+                : [];
+            return this._collectImageEntries(
+                { querySelectorAll: () => selectedImages },
+                _maxCount
+            );
+        }
+
+        return this._collectImageEntries(el, _maxCount);
+    }
+
+    /**
+     * Readability-preview payload for the Extract panel.
+     * @returns {{selectionActive: boolean, selectionChars: number, title: string, text: string, chars: number, images: string[]}}
+     */
+    getReadabilityPreview() {
+        const el =
+            document.querySelector('article .body.markup') ||
+            document.querySelector('.available-content .body.markup');
+        const text = el?.innerText?.trim() || '';
+        return {
+            selectionActive: false,
+            selectionChars: 0,
+            title: this.getPostTitle(),
+            text,
+            chars: text.length,
+            images: this.getArticleImages(),
+        };
     }
 
     shouldAutoGeneratePostSummary() {
