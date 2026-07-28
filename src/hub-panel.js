@@ -149,14 +149,14 @@ class HubPanel {
       <div class="hn-hub-model-row">
         <label for="hn-hub-model-select">Model</label>
         <select id="hn-hub-model-select" aria-label="Active AI model"></select>
-        <button type="button" class="hn-hub-model-refresh" title="Refresh models" aria-label="Refresh models">↻</button>
+        <button type="button" class="hn-hub-model-vision" role="switch" aria-checked="false" title="Mark model as supporting image input" aria-label="Model supports image input">
+          <span aria-hidden="true">IMG</span>
+        </button>
       </div>
-      <div class="hn-hub-model-status" role="status"></div>
     `;
 
     const select = container.querySelector('.hn-hub-model-row select');
-    const refreshButton = container.querySelector('.hn-hub-model-refresh');
-    const status = container.querySelector('.hn-hub-model-status');
+    const visionButton = container.querySelector('.hn-hub-model-vision');
     let modelsByName = new Map();
 
     const normalizeUrl = (url) =>
@@ -198,7 +198,7 @@ class HubPanel {
       return merged;
     };
 
-    const renderModels = (models, settings, message = '') => {
+    const renderModels = (models, settings) => {
       const provider = settings.providerSelection || 'openai-router';
       const providerSettings = settings[provider] || {};
       const currentModel = providerSettings.model || '';
@@ -214,6 +214,12 @@ class HubPanel {
         modelsByName.set(currentModel, {
           name: currentModel,
           displayName: currentModel,
+          supportsImages: providerSettings.supportsImages === true,
+        });
+      }
+      if (currentModel && modelsByName.has(currentModel)) {
+        modelsByName.set(currentModel, {
+          ...modelsByName.get(currentModel),
           supportsImages: providerSettings.supportsImages === true,
         });
       }
@@ -235,51 +241,57 @@ class HubPanel {
       select.value = currentModel;
       select.title = currentModel || 'Select an AI model';
       select.disabled = provider !== 'openai-router' || modelsByName.size === 0;
-      refreshButton.disabled = provider !== 'openai-router';
-
       const selected = modelsByName.get(currentModel);
-      const capability = selected?.supportsImages === true
-        ? 'Vision'
-        : currentModel
-          ? 'Text only'
-          : '';
-      status.textContent = message || capability;
-      status.classList.toggle('supports-images', capability === 'Vision');
+      const supportsImages = selected?.supportsImages === true;
+      visionButton.disabled = provider !== 'openai-router' || !selected;
+      visionButton.classList.toggle('is-on', supportsImages);
+      visionButton.setAttribute('aria-checked', supportsImages ? 'true' : 'false');
+      visionButton.title = supportsImages
+        ? 'Vision enabled — click to mark this model text-only'
+        : 'Vision disabled — click if this model supports image input';
     };
 
-    const loadModels = async ({ refresh = false } = {}) => {
+    const loadModels = async () => {
       select.disabled = true;
-      refreshButton.disabled = true;
-      status.textContent = refresh ? 'Refreshing…' : 'Loading…';
+      visionButton.disabled = true;
       try {
-        const settings = await readSettings();
+        let settings = await readSettings();
         const provider = settings.providerSelection || 'openai-router';
         const providerSettings = settings[provider] || {};
-        let models = await readCachedModels(providerSettings.url);
-        if (refresh && provider === 'openai-router') {
-          const response = await this.enhancer.apiClient.sendBackgroundMessage(
-            'FETCH_OPENAI_ROUTER_MODELS',
-            {
-              apiKey: providerSettings.apiKey || undefined,
-              url: providerSettings.url,
-            }
-          );
-          models = await writeCachedModels(
-            providerSettings.url,
-            response?.models || []
-          );
-        }
-        renderModels(
-          models,
-          settings,
-          !models.length && provider === 'openai-router'
-            ? 'Use ↻ to load models'
-            : ''
+        const models = await readCachedModels(providerSettings.url);
+        const cachedCurrent = models.find(
+          (model) => model.name === providerSettings.model
         );
+        // Options stores per-model capabilities in the local model cache. If
+        // that model was marked Vision there, make the active request setting
+        // agree immediately instead of showing contradictory Hub states.
+        if (
+          cachedCurrent?.supportsImages === true &&
+          providerSettings.supportsImages !== true
+        ) {
+          settings = {
+            ...settings,
+            [provider]: {
+              ...providerSettings,
+              supportsImages: true,
+            },
+          };
+          await chrome.storage.sync.set({ settings });
+        } else if (
+          providerSettings.model &&
+          providerSettings.supportsImages === true &&
+          cachedCurrent &&
+          cachedCurrent.supportsImages !== true
+        ) {
+          cachedCurrent.supportsImages = true;
+          await writeCachedModels(providerSettings.url, models);
+        }
+        renderModels(models, settings);
       } catch (error) {
         console.error('Failed to load Hub models:', error);
         const settings = await readSettings().catch(() => ({}));
-        renderModels([], settings, 'Could not load models');
+        renderModels([], settings);
+        container.title = 'Could not load cached models. Refresh them in Options.';
       }
     };
 
@@ -288,7 +300,7 @@ class HubPanel {
       const model = modelsByName.get(modelName);
       if (!modelName || !model) return;
       select.disabled = true;
-      status.textContent = 'Applying…';
+      visionButton.disabled = true;
       try {
         const settings = await readSettings();
         const provider = settings.providerSelection || 'openai-router';
@@ -302,19 +314,47 @@ class HubPanel {
         };
         await chrome.storage.sync.set({ settings: nextSettings });
         await this.enhancer.chatModal?._refreshProviderAndModel?.();
-        renderModels(
-          [...modelsByName.values()],
-          nextSettings,
-          `Applied · ${model.supportsImages === true ? 'Vision' : 'Text only'}`
-        );
+        renderModels([...modelsByName.values()], nextSettings);
       } catch (error) {
         console.error('Failed to apply Hub model:', error);
-        status.textContent = 'Could not apply';
+        container.title = 'Could not apply the selected model';
         select.disabled = false;
+        visionButton.disabled = false;
       }
     });
 
-    refreshButton.addEventListener('click', () => loadModels({ refresh: true }));
+    visionButton.addEventListener('click', async () => {
+      const model = modelsByName.get(select.value);
+      if (!model) return;
+      select.disabled = true;
+      visionButton.disabled = true;
+      try {
+        const settings = await readSettings();
+        const provider = settings.providerSelection || 'openai-router';
+        const supportsImages = model.supportsImages !== true;
+        model.supportsImages = supportsImages;
+        await writeCachedModels(settings[provider]?.url, [
+          ...modelsByName.values(),
+        ]);
+        const nextSettings = {
+          ...settings,
+          [provider]: {
+            ...(settings[provider] || {}),
+            model: model.name,
+            supportsImages,
+          },
+        };
+        await chrome.storage.sync.set({ settings: nextSettings });
+        await this.enhancer.chatModal?._refreshProviderAndModel?.();
+        renderModels([...modelsByName.values()], nextSettings);
+      } catch (error) {
+        console.error('Failed to update model vision support:', error);
+        container.title = 'Could not update Vision support';
+        select.disabled = false;
+        visionButton.disabled = false;
+      }
+    });
+
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName !== 'sync' || !changes.settings?.newValue) return;
       const settings = changes.settings.newValue;
