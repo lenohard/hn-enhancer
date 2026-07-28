@@ -125,4 +125,55 @@
         outline-offset: 1px;
         border-radius: 4px;
     }
+
+    .password-field-wrap {
+        position: relative;
+    }
+
+    .password-field-wrap input {
+        padding-right: 4.5rem;
+    }
+
+    .password-field-actions {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding-right: 0.5rem;
+    }
+
+    .password-toggle-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.25rem;
+        border: none;
+        background: transparent;
+        color: #9ca3af;
+        cursor: pointer;
+        border-radius: 0.25rem;
+    }
+
+    .password-toggle-btn:hover {
+        color: #4b5563;
+    }
+
+    .password-toggle-btn:focus-visible {
+        outline: 2px solid #6366f1;
+        outline-offset: 2px;
+    }
+
+    .password-toggle-icon {
+        width: 1.25rem;
+        height: 1.25rem;
+    }
+
+    .password-field-help summary {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem;
+    }
 }

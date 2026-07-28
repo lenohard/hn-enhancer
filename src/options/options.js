@@ -78,6 +78,28 @@ async function sendBackgroundMessage(type, data) {
 const ROUTER_MODELS_CACHE_KEY = "openai-router-models-cache";
 const ROUTER_MODEL_SUGGESTION_LIMIT = 80;
 
+function setupPasswordVisibilityToggle(inputId, toggleButtonId) {
+  const input = document.getElementById(inputId);
+  const toggleButton = document.getElementById(toggleButtonId);
+  if (!input || !toggleButton) return;
+
+  const showIcon = toggleButton.querySelector(".password-toggle-show");
+  const hideIcon = toggleButton.querySelector(".password-toggle-hide");
+
+  toggleButton.addEventListener("click", () => {
+    const isHidden = input.type === "password";
+    input.type = isHidden ? "text" : "password";
+    showIcon?.classList.toggle("hidden", isHidden);
+    hideIcon?.classList.toggle("hidden", !isHidden);
+    toggleButton.setAttribute("aria-pressed", String(isHidden));
+    toggleButton.setAttribute(
+      "aria-label",
+      isHidden ? "Hide API key" : "Show API key"
+    );
+    toggleButton.title = isHidden ? "Hide API key" : "Show API key";
+  });
+}
+
 function normalizeRouterUrl(url) {
   return (url || "").trim().replace(/\/$/, "");
 }
@@ -801,6 +823,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   routerUrlInput.addEventListener("input", updateUrlPreview);
   updateUrlPreview(); // Initialize
 
+  setupPasswordVisibilityToggle("router-key", "router-key-toggle-visibility");
+
   // Add refresh OpenAI Router models button event listener
   const refreshRouterButton = document.getElementById(
     "refresh-router-models"
@@ -1089,10 +1113,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   // Add cancel button event listener
-  const cancelButton = document.querySelector(
-    'button[type="button"]:not(#test-connection):not(#refresh-router-models):not(#view-cache-stats):not(#clear-cache):not(#add-substack-domain):not(#export-bookmarks):not(#import-bookmarks):not(#refresh-saved-comments):not(.unsave-comment-btn):not(.remove-substack-domain)'
-  );
-  cancelButton.addEventListener("click", () => {
+  document.getElementById("cancel-settings")?.addEventListener("click", () => {
     window.close();
   });
 
