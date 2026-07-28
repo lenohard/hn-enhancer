@@ -2763,6 +2763,14 @@ ${systemPromptIntro}
               .filter(Boolean)
           : [];
       }
+      // Match preview/summary: when DOM paragraph extraction misses (wiki/CMS
+      // layouts), fall back to getPostText() chunks.
+      if (postParagraphs.length === 0 && postText) {
+        postParagraphs = postText
+          .split(/\n\s*\n/)
+          .map((p) => p.trim())
+          .filter(Boolean);
+      }
 
       let summaryEntry = null;
       if (contextType === "summary" || contextType === "post-summary") {

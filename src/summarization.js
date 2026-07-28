@@ -364,15 +364,77 @@ class Summarization {
   }
 
   /**
+   * @param {string} formattedText
+   * @returns {boolean}
+   */
+  _hasExtractedBodyParagraphs(formattedText) {
+    return formattedText
+      .split("\n")
+      .slice(1)
+      .some((line) => line.trim().length > 0);
+  }
+
+  /**
+   * Number plain-text chunks as [P#] lines when paragraph DOM extraction fails.
+   * @param {string} title
+   * @param {string} plainText
+   * @param {Element|null} [bodyEl]
+   * @returns {{ formattedText: string, paraMap: Map<string, Element> }}
+   */
+  _formatPlainTextAsPostBody(title, plainText, bodyEl = null) {
+    const adapter = this.enhancer.adapter;
+    const canJump = adapter?.supportsParagraphJump?.() !== false;
+    const chunks = String(plainText || "")
+      .split(/\n\s*\n/)
+      .map((chunk) => chunk.trim())
+      .filter(Boolean);
+    const paraMap = new Map();
+    const lines = [`[post] ${title || "Article"}:`];
+    chunks.forEach((chunk, index) => {
+      const paraNum = index + 1;
+      if (canJump) {
+        lines.push(`[P${paraNum}] ${chunk}`);
+        if (bodyEl) {
+          paraMap.set(`P${paraNum}`, bodyEl);
+        }
+      } else {
+        lines.push(chunk);
+      }
+    });
+    return { formattedText: lines.join("\n"), paraMap };
+  }
+
+  /**
    * Get post body only (no comments) for article-page summaries.
    * @returns {Promise<{ formattedComment: string, commentPathToIdMap: Map }>}
    */
   async _getPostBodyOnly() {
     const adapter = this.enhancer.adapter;
     const bodyEl = adapter.getPostBodyElement?.();
-    const title = adapter.getPostTitle?.() || 'Post';
-    const { formattedText } = this._formatPostBodyForLLM(bodyEl, title);
-    return { formattedComment: formattedText, commentPathToIdMap: new Map([['post', 'post']]) };
+    const title = adapter.getPostTitle?.() || "Post";
+    let { formattedText } = this._formatPostBodyForLLM(bodyEl, title);
+
+    // Chat uses getPostText() (Readability + innerText fallbacks). Preview and
+    // summary must follow the same source when DOM paragraph extraction misses
+    // wiki/CMS layouts (tables, dl/dt, div-heavy templates like Fandom).
+    if (
+      !this._hasExtractedBodyParagraphs(formattedText) &&
+      typeof adapter.getPostText === "function"
+    ) {
+      const fallbackText = (adapter.getPostText() || "").trim();
+      if (fallbackText.length > 50) {
+        ({ formattedText } = this._formatPlainTextAsPostBody(
+          title,
+          fallbackText,
+          bodyEl
+        ));
+      }
+    }
+
+    return {
+      formattedComment: formattedText,
+      commentPathToIdMap: new Map([["post", "post"]]),
+    };
   }
 
   _getPostTitleOnlyContext() {
@@ -2485,6 +2547,14 @@ class Summarization {
     formattedComment = this.enhancer.markdownUtils.stripAnchors(
       formattedComment || ""
     );
+    if (
+      settings.bodyEnabled !== false &&
+      !this._hasExtractedBodyParagraphs(formattedComment)
+    ) {
+      notices.push(
+        "No article paragraphs were extracted from this page. Enable Images or Screenshot with a vision-capable model, or the request may contain only the title."
+      );
+    }
     if (settings.bodyEnabled === false) {
       formattedComment = this._getPostTitleOnlyContext();
       notices.push("Extracted article body is disabled and will not be sent.");

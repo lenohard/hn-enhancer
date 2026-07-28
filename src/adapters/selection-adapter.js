@@ -40,7 +40,7 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
     _selectionBlocks = [];
 
     static _PARA_SELECTOR =
-        'p, li, h1, h2, h3, h4, h5, h6, blockquote, pre';
+        'p, li, dt, dd, h1, h2, h3, h4, h5, h6, blockquote, pre';
 
     /**
      * @param {string|null} text
@@ -67,7 +67,8 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
 
     _getContentRoot() {
         return (
-            document.querySelector('article, [role="main"], main, .post-content, .article-content, .entry-content')
+            document.querySelector('.mw-parser-output, #mw-content-text, .wiki-content')
+            || document.querySelector('article, [role="main"], main, .post-content, .article-content, .entry-content')
             || document.body
         );
     }
@@ -158,8 +159,7 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
             return entries;
         }
 
-        const articleEl = document.querySelector('article, [role="main"], main, .post-content, .article-content, .entry-content');
-        return this._collectImageEntries(articleEl || document.body, _maxCount);
+        return this._collectImageEntries(this._getContentRoot(), _maxCount);
     }
 
     /**
@@ -191,11 +191,7 @@ window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {
             return parsed.text.slice(0, 50000);
         }
 
-        // Fallback: try common article containers
-        const el = document.querySelector('article, [role="main"], main, .post-content, .article-content, .entry-content');
-        if (el) return el.innerText.trim().slice(0, 50000);
-
-        return document.body.innerText.trim().slice(0, 50000);
+        return this._getContentRoot().innerText.trim().slice(0, 50000);
     }
 
     /** For universal pages, "comment blocks" don't exist. */

@@ -87,4 +87,25 @@ describe("Summarization request preview override", () => {
       "[post] Example article:\n[Article body not attached]"
     );
   });
+
+  test("falls back to getPostText when DOM paragraph extraction is empty", async () => {
+    const summarization = new Summarization({
+      adapter: {
+        getPostTitle: () => "Action queue",
+        getPostBodyElement: () => ({ querySelectorAll: () => [] }),
+        getParagraphElements: () => [],
+        supportsParagraphJump: () => true,
+        getPostText: () =>
+          "Action queue is a list of actions.\n\nSims perform them in order.",
+      },
+    });
+
+    const { formattedComment } = await summarization._getPostBodyOnly();
+
+    expect(formattedComment).toContain("[post] Action queue:");
+    expect(formattedComment).toContain("[P1] Action queue is a list of actions.");
+    expect(formattedComment).toContain(
+      "[P2] Sims perform them in order."
+    );
+  });
 });
