@@ -369,7 +369,11 @@ class HubPanel {
     if (!toggles) return;
 
     const adapter = this.enhancer.adapter;
-    const isHN = adapter?.getSiteKey?.() === 'news.ycombinator.com';
+    if (adapter?.supportsVisualAttachmentToggles?.() === false) {
+      toggles.hidden = true;
+      return;
+    }
+
     toggles.hidden = false;
 
     const controls = [];
@@ -442,16 +446,14 @@ class HubPanel {
       });
     };
 
-    if (!isHN) {
-      addToggle({
-        key: 'bodyEnabled',
-        labelText: 'Body',
-        description: 'Include extracted article body text in summaries and chat',
-        skippedLabel: 'Article body',
-        defaultOn: true,
-      });
-    }
-    if (!isHN && typeof adapter?.getArticleImages === 'function') {
+    addToggle({
+      key: 'bodyEnabled',
+      labelText: 'Body',
+      description: 'Include extracted article body text in summaries and chat',
+      skippedLabel: 'Article body',
+      defaultOn: true,
+    });
+    if (typeof adapter?.getArticleImages === 'function') {
       addToggle({
         key: 'imagesEnabled',
         labelText: 'Images',

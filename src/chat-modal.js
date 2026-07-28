@@ -1960,7 +1960,8 @@ ${systemPromptIntro}
       if (
         this.isPostChat &&
         settings.screenshotEnabled &&
-        this.currentModelSupportsImages
+        this.currentModelSupportsImages &&
+        this.enhancer.adapter?.supportsScreenshot?.() !== false
       ) {
         try {
           this.activeScreenshot =
@@ -2782,7 +2783,8 @@ ${systemPromptIntro}
       const screenshotCanProvideContext =
         contextSettings.screenshotEnabled === true &&
         this.currentAiProvider === "openai-router" &&
-        this.currentModelSupportsImages;
+        this.currentModelSupportsImages &&
+        this.enhancer.adapter?.supportsScreenshot?.() !== false;
 
       let imageUrls = [];
       if (

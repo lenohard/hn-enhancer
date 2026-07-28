@@ -2188,7 +2188,8 @@ class Summarization {
       } else if (
         screenshotEnabled &&
         modelSupportsImages &&
-        targetCommentId == null
+        targetCommentId == null &&
+        this.enhancer.adapter?.supportsScreenshot?.() !== false
       ) {
         try {
           screenshot = await this.enhancer.screenshotCapture?.captureFullPage();
@@ -2510,7 +2511,11 @@ class Summarization {
     }
 
     let screenshot = null;
-    if (settings.screenshotEnabled && modelSupportsImages) {
+    if (
+      settings.screenshotEnabled &&
+      modelSupportsImages &&
+      this.enhancer.adapter?.supportsScreenshot?.() !== false
+    ) {
       try {
         screenshot = await this.enhancer.screenshotCapture?.captureFullPage();
       } catch (error) {

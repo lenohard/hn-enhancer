@@ -61,6 +61,14 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
         return true;
     }
 
+    supportsScreenshot() {
+        return false;
+    }
+
+    supportsVisualAttachmentToggles() {
+        return false;
+    }
+
     // ── Post identity ─────────────────────────────────────────────
 
     /**

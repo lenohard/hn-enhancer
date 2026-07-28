@@ -79,6 +79,18 @@ window.SiteAdapter = class SiteAdapter {
     supportsServerSummary() { return false; }
 
     /**
+     * Whether full-page screenshot capture may be attached to summaries/chat.
+     * @returns {boolean}
+     */
+    supportsScreenshot() { return true; }
+
+    /**
+     * Whether the hub panel shows Body / Images / Screenshot toggles.
+     * @returns {boolean}
+     */
+    supportsVisualAttachmentToggles() { return true; }
+
+    /**
      * Cache key segment for full-page summaries (not a single comment thread).
      * null → `summary_*_*_post_*`; non-null string → `summary_*_*_{id}_*`.
      * Override when one post slug has multiple summary scopes (e.g. article vs comments page).
