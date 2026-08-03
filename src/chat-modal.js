@@ -1986,6 +1986,8 @@ ${systemPromptIntro}
 
       requestData.url = settings.routerUrl || "http://127.0.0.1:4000";
       requestData.model = model;
+      requestData.protocol = settings.protocol || "chat-completions";
+      requestData.maxTokens = settings.maxTokens || 100000;
 
       // Log the exact messages being sent
       this.enhancer.logDebug(

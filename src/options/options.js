@@ -25,6 +25,7 @@ async function saveSettings() {
       apiKey: document.getElementById("router-key").value,
       model: document.getElementById("router-model").value,
       url: document.getElementById("router-url").value,
+      protocol: document.getElementById("router-protocol").value,
       supportsImages: modelSupportsImages,
     },
   };
@@ -595,6 +596,8 @@ async function loadSettings() {
           settings["openai-router"].apiKey || "";
         document.getElementById("router-url").value =
           settings["openai-router"].url || "http://127.0.0.1:4000";
+        document.getElementById("router-protocol").value =
+          settings["openai-router"].protocol || "chat-completions";
       }
 
       await initRouterModelPicker();
@@ -633,6 +636,9 @@ async function testProviderConnection() {
       apiKey: document.getElementById("router-key").value,
       model: document.getElementById("router-model").value,
       url: document.getElementById("router-url").value,
+      protocol: document.getElementById("router-protocol").value,
+      maxTokens:
+        parseInt(document.getElementById("max-tokens").value) || 100000,
       streaming: true,
       include_usage: true,
       messages: [
@@ -816,11 +822,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Update OpenAI Router URL preview update
   const routerUrlInput = document.getElementById("router-url");
   const fullUrlPreview = document.getElementById("full-url-preview");
+  const protocolSelect = document.getElementById("router-protocol");
+  const PROTOCOL_PATHS = {
+    "chat-completions": "/v1/chat/completions",
+    messages: "/v1/messages",
+    responses: "/v1/responses",
+  };
   function updateUrlPreview() {
     const baseUrl = routerUrlInput.value.replace(/\/$/, "");
-    fullUrlPreview.textContent = `Actual request: ${baseUrl}/v1/chat/completions`;
+    const path =
+      PROTOCOL_PATHS[protocolSelect.value] || PROTOCOL_PATHS["chat-completions"];
+    fullUrlPreview.textContent = `Actual request: ${baseUrl}${path}`;
   }
   routerUrlInput.addEventListener("input", updateUrlPreview);
+  protocolSelect.addEventListener("change", updateUrlPreview);
   updateUrlPreview(); // Initialize
 
   setupPasswordVisibilityToggle("router-key", "router-key-toggle-visibility");

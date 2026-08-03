@@ -294,6 +294,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const maxTokens = settingsData.settings?.maxTokens || 100000;
           const temperature = settingsData.settings?.temperature || 0.7;
           const routerUrl = settingsData.settings?.["openai-router"]?.url || "http://127.0.0.1:4000";
+          const protocol =
+            settingsData.settings?.["openai-router"]?.protocol || "chat-completions";
           const supportsImages =
             settingsData.settings?.[aiProvider]?.supportsImages === true;
           const screenshotEnabled =
@@ -305,6 +307,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             maxTokens,
             temperature,
             routerUrl,
+            protocol,
             supportsImages,
             screenshotEnabled,
           };
@@ -540,6 +543,11 @@ async function handleChatRequest(data) {
   const model = settingsData.settings?.["openai-router"]?.model;
   const apiKey = settingsData.settings?.["openai-router"]?.apiKey;
   const routerUrl = url || settingsData.settings?.["openai-router"]?.url || "http://127.0.0.1:4000";
+  const protocol =
+    data.protocol ||
+    settingsData.settings?.["openai-router"]?.protocol ||
+    "chat-completions";
+  const maxTokens = data.maxTokens || settingsData.settings?.maxTokens || 100000;
 
   const shouldStream = streaming;
 
@@ -550,6 +558,8 @@ async function handleChatRequest(data) {
       messages,
       streaming: shouldStream,
       url: routerUrl,
+      protocol,
+      maxTokens,
     });
     if (shouldStream) {
       return routerResponse;
@@ -563,6 +573,207 @@ async function handleChatRequest(data) {
   }
 }
 
+// OpenAI Router protocol endpoints
+const ROUTER_PROTOCOL_ENDPOINTS = {
+  "chat-completions": "/v1/chat/completions",
+  messages: "/v1/messages",
+  responses: "/v1/responses",
+};
+
+/** Convert an OpenAI-style content value (string | blocks) to plain text. */
+function contentToText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((block) => typeof block === "string" || block?.type === "text")
+      .map((block) => (typeof block === "string" ? block : block.text || ""))
+      .join("\n");
+  }
+  return "";
+}
+
+/** OpenAI image blocks -> Anthropic base64 image blocks. */
+function toAnthropicContent(content) {
+  if (typeof content !== "object" || !Array.isArray(content)) return content;
+  return content.map((block) => {
+    if (typeof block === "string") return { type: "text", text: block };
+    if (block.type === "image_url") {
+      const url = block.image_url?.url || block.image_url || "";
+      const match = url.match(/^data:([^;,]+);base64,(.+)$/s);
+      return match
+        ? {
+            type: "image",
+            source: { type: "base64", media_type: match[1], data: match[2] },
+          }
+        : { type: "text", text: "[image omitted]" };
+    }
+    return { type: "text", text: block.text ?? "" };
+  });
+}
+
+/** OpenAI image blocks -> Responses input_image blocks. */
+function toResponsesContent(content) {
+  // The Responses API requires each input item's content to be an array of
+  // content blocks (input_text / input_image) — a bare string is rejected.
+  if (typeof content === "string") {
+    return [{ type: "input_text", text: content }];
+  }
+  if (typeof content !== "object" || !Array.isArray(content)) return content;
+  return content.map((block) => {
+    if (typeof block === "string") return { type: "input_text", text: block };
+    if (block.type === "image_url") {
+      return {
+        type: "input_image",
+        image_url: block.image_url?.url || block.image_url || "",
+      };
+    }
+    return { type: "input_text", text: block.text ?? "" };
+  });
+}
+
+/** Build the protocol-specific request payload from the shared OpenAI-style messages. */
+function buildRouterPayload(protocol, data) {
+  const { model, messages, streaming, maxTokens } = data;
+
+  if (protocol === "messages") {
+    const system = messages.find((m) => m.role === "system");
+    const payload = {
+      model,
+      messages: messages
+        .filter((m) => m.role !== "system")
+        .map((m) => ({ role: m.role, content: toAnthropicContent(m.content) })),
+      stream: streaming,
+      max_tokens: maxTokens || 100000,
+    };
+    if (system) payload.system = contentToText(system.content);
+    return payload;
+  }
+
+  if (protocol === "responses") {
+    const system = messages.find((m) => m.role === "system");
+    const payload = {
+      model,
+      input: messages
+        .filter((m) => m.role !== "system")
+        .map((m) => ({ role: m.role, content: toResponsesContent(m.content) })),
+      stream: streaming,
+      max_output_tokens: maxTokens || 100000,
+    };
+    if (system) payload.instructions = contentToText(system.content);
+    return payload;
+  }
+
+  const payload = { model, messages, stream: streaming };
+  if (data.include_usage) payload.include_usage = true;
+  return payload;
+}
+
+/** Normalize non-streaming responses back to the OpenAI chat shape the content script expects. */
+function normalizeRouterResponse(protocol, data) {
+  if (protocol === "messages") {
+    const text = Array.isArray(data.content)
+      ? data.content
+          .filter((b) => b.type === "text")
+          .map((b) => b.text)
+          .join("\n")
+      : contentToText(data.content);
+    return { choices: [{ message: { content: text } }], usage: data.usage };
+  }
+  if (protocol === "responses") {
+    // output_text is a convenience field some gateways omit; fall back to
+    // walking the output array for message items.
+    let text = data.output_text || "";
+    if (!text) {
+      text = (data.output || [])
+        .filter((item) => item.type === "message")
+        .flatMap((item) => item.content || [])
+        .filter((b) => b.type === "output_text")
+        .map((b) => b.text)
+        .join("\n");
+    }
+    return {
+      choices: [{ message: { content: text } }],
+      usage: data.usage,
+    };
+  }
+  return data;
+}
+
+/**
+ * Wrap a non-chat stream so it emits OpenAI chat-completions chunk shape
+ * (choices[0].delta.content / finish_reason + data: [DONE]) — the content
+ * script keeps parsing it without knowing the wire protocol.
+ */
+function wrapStreamForProtocol(protocol, response) {
+  if (protocol === "chat-completions") return response;
+
+  let buffer = "";
+  let sentDone = false;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  const stream = new TransformStream({
+    transform(chunk, controller) {
+      if (sentDone) return;
+      buffer += decoder.decode(chunk, { stream: true });
+
+      let sep;
+      while ((sep = buffer.indexOf("\n\n")) !== -1) {
+        const rawEvent = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        const dataLine = rawEvent
+          .split("\n")
+          .find((line) => line.startsWith("data:"));
+        if (!dataLine) continue; // keep-alive comments
+
+        let parsed;
+        try {
+          parsed = JSON.parse(dataLine.slice(5).trim());
+        } catch {
+          continue;
+        }
+
+        let out = null;
+        let done = false;
+        if (protocol === "messages") {
+          if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
+            out = { choices: [{ delta: { content: parsed.delta.text } }] };
+          } else if (parsed.type === "message_delta" && parsed.delta?.stop_reason) {
+            out = { choices: [{ delta: {}, finish_reason: "stop" }] };
+          } else if (parsed.type === "message_stop") {
+            done = true;
+          }
+        } else if (protocol === "responses") {
+          if (parsed.type === "response.output_text.delta") {
+            out = { choices: [{ delta: { content: parsed.delta } }] };
+          } else if (
+            parsed.type === "response.completed" ||
+            parsed.type === "response.incomplete"
+          ) {
+            out = { choices: [{ delta: {}, finish_reason: "stop" }] };
+            done = true;
+          }
+        }
+
+        if (out) controller.enqueue(encoder.encode(`data: ${JSON.stringify(out)}\n\n`));
+        if (done) {
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          sentDone = true;
+          return;
+        }
+      }
+    },
+    flush(controller) {
+      if (!sentDone) controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+    },
+  });
+
+  return new Response(response.body.pipeThrough(stream), {
+    status: response.status,
+    headers: response.headers,
+  });
+}
+
 // Handle OpenAI Router API requests
 async function handleOpenAIRouterRequest(data) {
   const {
@@ -571,41 +782,36 @@ async function handleOpenAIRouterRequest(data) {
     messages,
     streaming = false,
     url = "http://127.0.0.1:4000",
+    protocol = "chat-completions",
   } = data;
 
-  console.log("Processing OpenAI Router API request，模型:", model, "流式:", streaming);
+  console.log("Processing OpenAI Router API request，模型:", model, "流式:", streaming, "协议:", protocol);
 
   if (!model || !messages) {
     console.error("OpenAI Router API request missing required parameters");
     throw new Error("Missing required parameters for OpenAI Router API request");
   }
 
-  // Normalize URL by removing trailing slash and appending /v1/chat/completions
-  const baseUrl = url.replace(/\/$/, '');
-  const endpoint = `${baseUrl}/v1/chat/completions`;
+  const baseUrl = url.replace(/\/$/, "");
+  const endpoint =
+    `${baseUrl}${ROUTER_PROTOCOL_ENDPOINTS[protocol] || ROUTER_PROTOCOL_ENDPOINTS["chat-completions"]}`;
 
   console.log("OpenAI Router API endpoint:", endpoint);
 
-  const payload = {
-    model: model,
-    messages: messages,
-    stream: streaming,
-  };
-
-  if (data.include_usage) {
-    payload.include_usage = true;
+  const payload = buildRouterPayload(protocol, data);
+  const headers = { "Content-Type": "application/json" };
+  if (protocol === "messages") {
+    // Anthropic-compatible endpoints expect x-api-key, not Authorization: Bearer
+    if (apiKey) headers["x-api-key"] = apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+  } else if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
   }
-
-
-  // API key should only be in Authorization header, not in request body for OpenAI Router proxy
 
   try {
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-      },
+      headers,
       body: JSON.stringify(payload),
     });
 
@@ -625,28 +831,12 @@ async function handleOpenAIRouterRequest(data) {
     }
 
     if (streaming) {
-      // Return the response stream for streaming
-      return response;
-    } else {
-      const responseData = await response.json();
-      console.log(
-        "OpenAI Router API response structure:",
-        JSON.stringify(
-          {
-            hasData: !!responseData,
-            hasChoices: !!(responseData && responseData.choices),
-            choicesCount:
-              responseData && responseData.choices
-                ? responseData.choices.length
-                : 0,
-          },
-          null,
-          2
-        )
-      );
-
-      return responseData;
+      // Return the stream normalized to chat-completions chunk shape
+      return wrapStreamForProtocol(protocol, response);
     }
+
+    const responseData = await response.json();
+    return normalizeRouterResponse(protocol, responseData);
   } catch (error) {
     console.error("OpenAI Router API request failed:", error);
     console.error("错误详情:", error.stack);

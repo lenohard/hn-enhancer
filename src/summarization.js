@@ -2438,7 +2438,8 @@ class Summarization {
           )
         : [];
 
-      const { maxTokens, routerUrl } = await this.getAIProviderModel();
+      const { maxTokens, routerUrl, protocol = "chat-completions" } =
+        await this.getAIProviderModel();
       const tokenLimitText = this.splitInputTextAtTokenLimit(text, maxTokens);
       let { systemPrompt, userPrompt } = await this.preparePrompts(
         tokenLimitText
@@ -2464,7 +2465,8 @@ class Summarization {
         routerUrl,
         imageUrls,
         screenshot,
-        requestOverride?.userPromptIsFinal === true
+        requestOverride?.userPromptIsFinal === true,
+        protocol
       );
       const generationMetadata = {
         aiProvider: providerName,
@@ -2677,7 +2679,8 @@ ${languageInstruction}`;
     routerUrl = "http://127.0.0.1:4000",
     imageUrls = [],
     screenshot = null,
-    userPromptIsFinal = false
+    userPromptIsFinal = false,
+    protocol = "chat-completions"
   ) {
     const baseData = {
       apiKey,
@@ -2685,6 +2688,8 @@ ${languageInstruction}`;
       streaming: streamingEnabled,
       url: routerUrl,
       include_usage: true,
+      maxTokens,
+      protocol,
     };
 
     // The adapter assigns stable [I#] labels and produces the shared

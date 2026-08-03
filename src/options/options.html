@@ -224,6 +224,18 @@
                                 <p id="full-url-preview" class="mt-1 text-xs text-gray-500 font-mono">Actual request: https://opencode.ai/zen/go/v1/chat/completions</p>
                             </div>
                             <div class="mt-2">
+                                <label for="router-protocol" class="block text-sm font-medium text-gray-900">API Protocol</label>
+                                <div class="mt-2 grid grid-cols-1">
+                                    <select id="router-protocol" name="router-protocol"
+                                        class="col-start-1 row-start-1 w-full appearance-none rounded-md bg-white py-1.5 pl-3 pr-8 text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 text-sm">
+                                        <option value="chat-completions">chat/completions (OpenAI compatible)</option>
+                                        <option value="messages">messages (Anthropic format)</option>
+                                        <option value="responses">responses (OpenAI Responses)</option>
+                                    </select>
+                                </div>
+                                <p class="mt-1 text-sm text-gray-600">Wire protocol for talking to the router. messages uses x-api-key auth; responses requires an OpenAI Responses endpoint.</p>
+                            </div>
+                            <div class="mt-2">
                                 <label for="router-key" class="sr-only">Enter OpenAI Router API Key (Optional)</label>
                                 <div class="password-field-wrap">
                                     <input type="password" id="router-key" name="router-key"

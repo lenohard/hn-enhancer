@@ -557,6 +557,13 @@ The current summarization caching implementation mixes summaries for entire post
 - `src/summarization.js`: `summarizeThread` and `summarizeTextWithAI`
 - `src/hn-state.js`: `getSummary` and `saveSummary` were functioning correctly but were provided with an ambiguous `commentId`.
 
+### OpenAI Router Protocol Selection (2026-08-03)
+**Feature**: The OpenAI Router provider can now choose the wire protocol: `chat-completions` (OpenAI compatible) / `messages` (Anthropic) / `responses` (OpenAI Responses).
+- `src/options/options.html` + `src/options/options.js`: "API Protocol" dropdown in the OpenAI Router section; URL preview follows the selected protocol; saved as `settings["openai-router"].protocol`.
+- `background.js`: `handleOpenAIRouterRequest` dispatches on `data.protocol`. Payload builders (`buildRouterPayload`) convert the shared OpenAI-style `messages` into Anthropic (`system` + `messages` + `max_tokens`, `x-api-key` header) or Responses (`instructions` + `input` + `max_output_tokens`, Bearer) shapes. Responses are normalized back to `{choices:[{message:{content}}]}`; streaming is wrapped via `wrapStreamForProtocol` (TransformStream) to emit chat-shape `choices[0].delta.content` chunks + `data: [DONE]` — **content scripts stay protocol-agnostic**.
+- `src/summarization.js` / `src/chat-modal.js`: pass `protocol` + `maxTokens` through requestData (protocol comes from FETCH_AI_SETTINGS).
+- **Gotchas (opencode-go)**: messages endpoint requires `x-api-key` header (Bearer → "Missing API key"); Responses `input` items need content as `input_text` array (bare string → upstream 500/403); `include: ["usage"]` breaks responses requests (use default usage in `response.completed`); non-streaming responses may omit top-level `output_text` — fall back to walking `output[]` message items.
+
 ## Recent Updates (2025-12-05)
 
 ### Manual Focus for Comment Navigation
