@@ -14,6 +14,7 @@ class HubPanel {
 
     this.onMouseMove = this.onMouseMove.bind(this);
     this.onMouseUp = this.onMouseUp.bind(this);
+    this.onDocumentPointerDown = this.onDocumentPointerDown.bind(this);
   }
 
   mount() {
@@ -543,6 +544,25 @@ class HubPanel {
         this.setCollapsed(false);
       }
     });
+
+    document.addEventListener("pointerdown", this.onDocumentPointerDown, true);
+  }
+
+  onDocumentPointerDown(event) {
+    if (!this.panel?.isConnected || this.isDragging) return;
+    if (this.isCollapsed && !this.activeView) return;
+    if (this.panel.contains(event.target)) return;
+
+    const ignoreSelector =
+      ".hn-extract-panel, #hn-enhancer-chat-modal, .keyboard-help-modal, .hn-selection-fab, .summary-panel";
+    if (event.target.closest?.(ignoreSelector)) return;
+
+    if (this.activeView) {
+      this.closeList();
+    }
+    if (!this.isCollapsed) {
+      this.setCollapsed(true);
+    }
   }
 
   onMouseMove(event) {
