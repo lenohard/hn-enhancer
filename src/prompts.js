@@ -24,7 +24,7 @@ Brief summary of the overall discussion in 2-3 sentences.
 [Interesting tangents that added value with [path] citations]
 
 # Recommendations
-[Extract recommended resources mentioned in comments with [path] citations and author attribution. Include books, papers, tools, github repos, sites, media, etc. Do NOT list everything — select only the most praised and well-endorsed resources. Max 8-10 items.]`;
+[Extract the most valuable resources recommended in comments with [path] citations and author attribution. Include books, papers, tools, github repos, sites, media, etc. Prioritize good but obscure, lesser-known, or niche projects and resources readers are unlikely to already know — include concrete links/URLs when the comment mentions them. De-prioritize or omit famous, widely-known tools and generic concepts (e.g. React, Docker, "microservices"). Do NOT list everything — select only the most praised and well-endorsed resources. Max 8-10 items.]`;
 }
 
 /** HN comment-thread system prompt (includes score, replies, downvotes) */
