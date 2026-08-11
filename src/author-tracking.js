@@ -79,12 +79,16 @@ class AuthorTracking {
             }
             
             const count = authorComments.length;
-            const container = document.createElement('span');
+            if (count <= 1) {
+                return;
+            }
 
-            const countSpan = document.createElement('span');
-            countSpan.className = 'comment-count';
-            countSpan.textContent = `(${count})`;
-            container.appendChild(countSpan);
+            const currentIndex = authorComments.indexOf(comment);
+            if (currentIndex === -1) {
+                return;
+            }
+
+            const container = document.createElement('span');
 
             const navPrev = document.createElement('span');
             navPrev.className = 'author-nav nav-triangle';
@@ -95,6 +99,11 @@ class AuthorTracking {
                 this.navigateAuthorComments(author, comment, 'prev');
             };
             container.appendChild(navPrev);
+
+            const countSpan = document.createElement('span');
+            countSpan.className = 'comment-count';
+            countSpan.textContent = `(${currentIndex + 1}/${count})`;
+            container.appendChild(countSpan);
 
             const navNext = document.createElement('span');
             navNext.className = 'author-nav nav-triangle';

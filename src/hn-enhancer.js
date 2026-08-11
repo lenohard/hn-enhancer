@@ -495,7 +495,6 @@ window.HNEnhancer = class HNEnhancer {
         this.injectToggleGrandchildrenButton(comment);
         this.injectFocusButton(comment);
         this.injectBookmarkToggle(comment);
-        this.injectBookmarkedCommentNav(comment);
         this.injectSaveCommentToggle(comment);
         this.addCacheIndicators(comment);
       }
@@ -703,21 +702,7 @@ window.HNEnhancer = class HNEnhancer {
           this.updateBookmarkLinkState(comment, bookmarkLink);
         }
 
-        // Remove any prior bookmarked-next link so we can re-render with
-        // the current bookmark state and an accurate n/m position.
-        const existingNext = comment.querySelector(".bookmarked-next");
-        if (existingNext) {
-          const prev = existingNext.previousSibling;
-          if (
-            prev &&
-            prev.nodeType === Node.TEXT_NODE &&
-            prev.textContent === " | "
-          ) {
-            prev.remove();
-          }
-          existingNext.remove();
-        }
-        this.injectBookmarkedCommentNav(comment);
+
       });
     }
 
@@ -1452,6 +1437,29 @@ window.HNEnhancer = class HNEnhancer {
     updateStatList("longest-comment", stats.topLongest, (item) =>
       renderCommentStat(item, " chars")
     );
+
+    const topCommenters =
+      stats.authorComments instanceof Map
+        ? Array.from(stats.authorComments.entries())
+            .filter(
+              ([author, entries]) =>
+                author && entries?.length && entries[0]?.commentId
+            )
+            .sort(
+              ([authorA, entriesA], [authorB, entriesB]) =>
+                entriesB.length - entriesA.length ||
+                authorA.localeCompare(authorB)
+            )
+            .slice(0, 5)
+            .map(([author, entries]) => ({
+              value: `${author} (${entries.length})`,
+              link: `#${entries[0].commentId}`,
+            }))
+        : [];
+    updateStatList("top-commenters", topCommenters, (item) =>
+      renderCommentStat(item)
+    );
+
     const karmaData = stats.topKarmaUsers;
     updateStatList(
       "highest-karma-users",
@@ -1936,43 +1944,6 @@ window.HNEnhancer = class HNEnhancer {
     }
 
     this.updateBookmarkLinkState(comment, bookmarkLink);
-  }
-
-  /**
-   * Injects an "n/m next" link into a comment header when its author is
-   * bookmarked. Clicking the link navigates to the next comment by the
-   * same author (wraps around at the end). Hidden when the author has
-   * only one comment on the page.
-   * @param {HTMLElement} comment
-   */
-  injectBookmarkedCommentNav(comment) {
-    if (!comment) return;
-    const author = this.domUtils.getCommentAuthor(comment);
-    if (!author || !this.isAuthorBookmarked(author)) return;
-
-    const authorComments =
-      this.authorTracking.authorComments.get(author) || [];
-    const total = authorComments.length;
-    if (total <= 1) return;
-
-    const idx = authorComments.indexOf(comment);
-    if (idx === -1) return;
-
-    const navsSpan = this.adapter?.getInjectTarget(comment) || comment.querySelector(".comhead .navs");
-    if (!navsSpan || navsSpan.querySelector(".bookmarked-next")) return;
-
-    const next = document.createElement("a");
-    next.href = "#";
-    next.className = "hn-enhancer-link bookmarked-next";
-    next.textContent = `${idx + 1}/${total} next`;
-    next.title = `Next comment by ${author} (${idx + 1} of ${total})`;
-    next.addEventListener("click", (e) => {
-      e.preventDefault();
-      this.authorTracking.navigateAuthorComments(author, comment, "next");
-    });
-
-    navsSpan.appendChild(document.createTextNode(" | "));
-    navsSpan.appendChild(next);
   }
 
   /**

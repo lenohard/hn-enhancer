@@ -61,6 +61,8 @@ Follow these guidelines:
 5. Quality Assessment:
    - Prioritize comments that exhibit a combination of high score, low downvotes, substantial replies, and depth of content
    - Actively identify and highlight expert explanations or in-depth analyses
+   - Also notice genuinely witty, humorous, satirical, or playful comments when they offer a sharp insight, memorable framing, or reveal community sentiment; include them selectively even when they are not among the highest-scoring comments
+   - Distinguish jokes, sarcasm, and irony from factual claims, and do not overinterpret them
    - Capture all recommended resources, especially those praised or endorsed by multiple users
 
 Based on the above instructions, you should summarize the discussion. Your output should be well-structured, informative, and easily digestible for someone who hasn't read the original thread.

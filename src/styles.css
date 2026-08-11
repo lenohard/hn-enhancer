@@ -624,15 +624,6 @@
     font-weight: bold;
 }
 
-.bookmarked-next {
-    cursor: pointer;
-    color: #ff6600;
-    font-weight: bold;
-}
-.bookmarked-next:hover {
-    text-decoration: underline;
-}
-
 .hn-save-comment-toggle {
     cursor: pointer;
     color: #828282;
