@@ -1209,6 +1209,7 @@ tr.athing.comtr.noshow .comhead .togg {
     width: 168px;
     font-family: Verdana, Geneva, sans-serif;
     font-size: 11px;
+    line-height: 1.2;
     color: #333;
     background: #f6f6ef;
     border: 1px solid #e0e0e0;
@@ -1217,14 +1218,45 @@ tr.athing.comtr.noshow .comhead .togg {
     user-select: none;
 }
 
+/* Keep host-page button resets from changing the Hub's control geometry. */
+.hn-hub-panel :where(button) {
+    display: inline-block;
+    align-items: initial;
+    justify-items: initial;
+    gap: normal;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-transform: none;
+    opacity: 1;
+    transform: none;
+    transition: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.hn-hub-panel button:hover {
+    opacity: 1;
+}
+
+.hn-hub-panel button:active {
+    transform: none;
+}
+
 .hn-hub-panel.is-dragging {
     opacity: 0.95;
     cursor: grabbing;
 }
 
 .hn-hub-panel.is-collapsed {
-    width: auto;
-    min-width: 120px;
+    width: 168px;
 }
 
 .hn-hub-panel.is-collapsed .hn-hub-body {
