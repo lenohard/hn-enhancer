@@ -17,3 +17,6 @@ src/options/options-styles.css
 /scripts/data
 
 /scripts/.env
+
+# npm lockfile (project uses pnpm)
+package-lock.json
