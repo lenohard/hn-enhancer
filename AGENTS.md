@@ -14,6 +14,8 @@ HN Enhancer 是一个浏览器扩展，为 Hacker News 和 Substack 等网站提
 - 构建 Tailwind: `pnpm run build:tailwind`
 - 构建 Tailwind (监视): `pnpm run build:tailwind:watch`
 
+**构建注意（2026-08-14 血泪教训）**: `build.js` 中 `copySrcDirectory` 必须在 `buildForBrowser`（打包 zip）**之前**执行，否则 `src/` 目录不进 zip，内容脚本全部 404（Chrome 加载目录正常、Firefox 加载 zip 完全失效）。改完构建后务必抽查 zip 内容：`unzip -l dist/hn-companion-*-v*.zip | grep -c 'src/'` 应 > 0。
+
 ### 测试命令
 
 - 运行所有测试: `pnpm run test`

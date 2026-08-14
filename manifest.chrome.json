@@ -105,9 +105,9 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "src/page-script.js",
-        "src/options-styles.css",
-        "src/options.js",
+        "page-script.js",
+        "options-styles.css",
+        "options.js",
         "src/hn-state.js",
         "src/api-client.js",
         "src/screenshot-capture.js",

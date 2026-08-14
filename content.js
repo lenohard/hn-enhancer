@@ -135,7 +135,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const pageScript = document.createElement("script");
-    pageScript.src = chrome.runtime.getURL("src/page-script.js");
+    pageScript.src = chrome.runtime.getURL("page-script.js");
     pageScript.dataset.hnPageScript = "true";
     document.head.appendChild(pageScript);
 });

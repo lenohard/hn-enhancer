@@ -54,27 +54,20 @@ async function build() {
     console.log("Creating dist directory...");
     fs.mkdirSync(DIST_DIR);
 
-    // Build for Chrome
+    // Copy src directory BEFORE building the zip so src/ files are included
+    copySrcDirectory(path.join(DIST_DIR, OUTPUT_DIR_CHROME));
     await buildForBrowser(
       OUTPUT_DIR_CHROME,
       OUTPUT_FILE_CHROME,
       manifestChrome
     );
 
-    // Copy src directory for Chrome
-    console.log("Copying src directory for Chrome...");
-    copySrcDirectory(path.join(DIST_DIR, OUTPUT_DIR_CHROME));
-
-    // Build for Firefox
+    copySrcDirectory(path.join(DIST_DIR, OUTPUT_DIR_FIREFOX));
     await buildForBrowser(
       OUTPUT_DIR_FIREFOX,
       OUTPUT_FILE_FIREFOX,
       manifestFirefox
     );
-
-    // Copy src directory for Firefox
-    console.log("Copying src directory for Firefox...");
-    copySrcDirectory(path.join(DIST_DIR, OUTPUT_DIR_FIREFOX));
   } catch (error) {
     console.error("Build failed:", error);
     process.exit(1);
@@ -84,11 +77,11 @@ async function build() {
 async function buildForBrowser(outputDir, outputFile, manifest) {
   // Create output directory inside dist
   const outputPath = path.join(DIST_DIR, outputDir);
-  fs.mkdirSync(outputPath);
+  fs.mkdirSync(outputPath, { recursive: true });
 
   // Create images directory
   const imagesPath = path.join(outputPath, "images");
-  fs.mkdirSync(imagesPath);
+  fs.mkdirSync(imagesPath, { recursive: true });
 
   // Copy main files
   console.log(`Copying extension files for ${outputDir}...`);
@@ -154,7 +147,7 @@ function copySrcDirectory(targetDir) {
   // Create src directory in target
   const srcTargetPath = path.join(targetDir, "src");
   if (!fs.existsSync(srcTargetPath)) {
-    fs.mkdirSync(srcTargetPath);
+    fs.mkdirSync(srcTargetPath, { recursive: true });
   }
 
   // List of JavaScript files to copy from src directory
