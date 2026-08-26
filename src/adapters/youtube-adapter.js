@@ -99,8 +99,60 @@ window.YouTubeAdapter = class YouTubeAdapter extends SiteAdapter {
 
     getBlockHTML(block) { return this.getBlockText(block); }
 
-    /** API-fetched comments have no stable DOM target to scroll to. */
-    resolveBlockByRef(_ref) { return null; }
+    resolveBlockByRef(ref) {
+        return ref ? this._findThreadElement(ref) : null;
+    }
+
+    /**
+     * Scroll the page until YouTube renders the thread for the given comment
+     * id, then return it. YouTube renders comment threads on demand while
+     * scrolling; reply ids resolve to their parent thread.
+     * @param {string} id comment id (top-level or reply)
+     * @returns {Promise<HTMLElement|null>}
+     */
+    async scrollToBlockById(id) {
+        let el = this._findThreadElement(id);
+        if (el) return el;
+        // Bring the comments section on screen so YouTube starts loading.
+        document.querySelector('ytd-comments')?.scrollIntoView({
+            behavior: 'instant',
+            block: 'start',
+        });
+        const deadline = Date.now() + 20000;
+        let lastHeight = -1;
+        let stuck = 0;
+        while (!el && Date.now() < deadline) {
+            window.scrollBy(0, Math.round(window.innerHeight * 0.9));
+            await new Promise((r) => setTimeout(r, 400));
+            el = this._findThreadElement(id);
+            if (el) return el;
+            const h = document.documentElement.scrollHeight;
+            // Give up after several checks without new content loading.
+            stuck = h === lastHeight ? stuck + 1 : 0;
+            lastHeight = h;
+            if (stuck >= 10) break;
+        }
+        return el;
+    }
+
+    /**
+     * The DOM thread element for a comment id. Threads carry their id in the
+     * permalink (`...&lc=<id>`) rather than an attribute; reply ids
+     * ("<parent>.A_<id>") map to their parent top-level thread.
+     * @param {string} id
+     * @returns {HTMLElement|null}
+     */
+    _findThreadElement(id) {
+        const topId = String(id).includes('.A_')
+            ? String(id).split('.A_')[0]
+            : id;
+        for (const t of document.querySelectorAll('ytd-comment-thread-renderer')) {
+            const a = t.querySelector('a[href*="lc="]');
+            const m = a?.href.match(/[?&]lc=([^&]+)/);
+            if (m && decodeURIComponent(m[1]) === topId) return t;
+        }
+        return null;
+    }
 
     /** No per-comment link injection — comments are not all present in the DOM. */
     getInjectTarget(_block) { return null; }
@@ -108,8 +160,10 @@ window.YouTubeAdapter = class YouTubeAdapter extends SiteAdapter {
     // ── Page-level UI anchor ──────────────────────────────────────
 
     getPageActionAnchor() {
-        return document.querySelector('ytd-comments-header-renderer')
-            || document.querySelector('ytd-watch-metadata #top-row')
+        // Prefer the always-visible title/action row; comments header is
+        // further down the page.
+        return document.querySelector('ytd-watch-metadata #top-row')
+            || document.querySelector('ytd-comments-header-renderer')
             || null;
     }
 

@@ -1453,7 +1453,7 @@ class Summarization {
    * Resolve a summary ref (e.g. "#1", "post", "P3", "I2", "S1") and scroll.
    * @param {string} ref
    */
-  _resolveAndScrollToRef(ref) {
+  async _resolveAndScrollToRef(ref) {
     // Screenshot ref: [S1] returns to the viewport captured for the request.
     if (/^S\d+$/i.test(ref)) {
       if (!this.enhancer.screenshotCapture?.resolveRef(ref)) {
@@ -1506,19 +1506,35 @@ class Summarization {
     const target = this.enhancer.adapter.resolveBlockByRef(cleanRef);
     if (target) {
       this._scrollAndFlashSummaryTarget(target);
-    } else {
-      if (cleanRef !== "post" && this._summaryPathMap) {
-        const mappedId = this._summaryPathMap.get(cleanRef);
-        const el = mappedId
-          ? this.enhancer.domUtils.findCommentElementById(String(mappedId))
-          : null;
-        if (el) {
-          this._scrollAndFlashSummaryTarget(el);
-          return;
-        }
-      }
-      console.warn("Could not resolve ref:", ref);
+      return;
     }
+
+    let fallbackId = null;
+    if (cleanRef !== "post" && this._summaryPathMap) {
+      const mappedId = this._summaryPathMap.get(cleanRef);
+      const el = mappedId
+        ? this.enhancer.domUtils.findCommentElementById(String(mappedId))
+        : null;
+      if (el) {
+        this._scrollAndFlashSummaryTarget(el);
+        return;
+      }
+      fallbackId = mappedId != null ? String(mappedId) : cleanRef;
+    }
+
+    // Sites with on-demand comment rendering (e.g. YouTube) may need to
+    // scroll the target into the DOM first; the adapter handles that.
+    if (
+      fallbackId &&
+      typeof this.enhancer.adapter.scrollToBlockById === "function"
+    ) {
+      const el = await this.enhancer.adapter.scrollToBlockById(fallbackId);
+      if (el) {
+        this._scrollAndFlashSummaryTarget(el);
+        return;
+      }
+    }
+    console.warn("Could not resolve ref:", ref);
   }
 
   /**
