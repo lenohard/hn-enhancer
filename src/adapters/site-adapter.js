@@ -104,6 +104,14 @@ window.SiteAdapter = class SiteAdapter {
      */
     supportsSummarizePostLink() { return false; }
 
+    /**
+     * Whether page-level action links (chat about post / summarize all
+     * comments) are injected into the page. Sites preferring the selection
+     * FAB can opt out.
+     * @returns {boolean}
+     */
+    supportsPageActionLinks() { return true; }
+
     /** Whether paragraph [P#] anchors are clickable for jump-to-source. */
     supportsParagraphJump() { return true; }
 

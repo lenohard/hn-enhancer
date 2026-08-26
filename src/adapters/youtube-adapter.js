@@ -66,7 +66,12 @@ window.YouTubeAdapter = class YouTubeAdapter extends SiteAdapter {
 
     isCommentsPage() { return this.matches(location.href); }
 
-    supportsSummarizePostLink() { return true; }
+    /** Chat/summarize live on the selection FAB; no page-injected links. */
+    supportsSelectionFab() { return true; }
+
+    supportsPageActionLinks() { return false; }
+
+    supportsSummarizePostLink() { return false; }
 
     getPromptContext() {
         return `the comment section of YouTube video "${this.getPostTitle()}"`;
@@ -156,16 +161,6 @@ window.YouTubeAdapter = class YouTubeAdapter extends SiteAdapter {
 
     /** No per-comment link injection — comments are not all present in the DOM. */
     getInjectTarget(_block) { return null; }
-
-    // ── Page-level UI anchor ──────────────────────────────────────
-
-    getPageActionAnchor() {
-        // Prefer the always-visible title/action row; comments header is
-        // further down the page.
-        return document.querySelector('ytd-watch-metadata #top-row')
-            || document.querySelector('ytd-comments-header-renderer')
-            || null;
-    }
 
     // ── SPA navigation ────────────────────────────────────────────
 

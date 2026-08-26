@@ -406,6 +406,7 @@ window.HNEnhancer = class HNEnhancer {
    * Injection is idempotent (deduped by link class in UIComponents).
    */
   _injectPageActionLinks(retries = 20) {
+    if (this.adapter?.supportsPageActionLinks?.() === false) return;
     const anchor = this.adapter?.getPageActionAnchor?.();
     if (!anchor) {
       if (retries > 0) {

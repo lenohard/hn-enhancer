@@ -2184,6 +2184,46 @@ ${systemPromptIntro}
   }
 
   /**
+   * Gathers post comment context from adapter comment blocks (non-HN
+   * adapters). Walks top-level blocks and their children with hierarchical
+   * path numbering ("1", "1.1", ...), mirroring Summarization's numbering.
+   * @param {boolean} childrenOnly - only top-level blocks
+   * @private
+   */
+  async _gatherPostContextFromBlocks(childrenOnly) {
+    const adapter = this.enhancer.adapter;
+    if (typeof adapter.prepareCommentBlocks === "function") {
+      await adapter.prepareCommentBlocks();
+    }
+    const contextArray = [];
+    const walk = (blocks, prefix) => {
+      (blocks || []).forEach((block, i) => {
+        const path = prefix ? `${prefix}.${i + 1}` : `${i + 1}`;
+        const id = adapter.getBlockId(block);
+        const author = adapter.getBlockAuthor(block);
+        if (id == null || author == null) return;
+        const children = childrenOnly
+          ? []
+          : adapter.getChildBlocks(block) || [];
+        contextArray.push({
+          id: String(id),
+          author,
+          text: adapter.getBlockText(block),
+          path,
+          score: 0,
+          replies: children.length,
+          downvotes: 0,
+          isTarget: false,
+        });
+        this.commentPathToIdMap.set(path, String(id));
+        if (!childrenOnly) walk(children, path);
+      });
+    };
+    walk(adapter.getCommentBlocks(), "");
+    return contextArray;
+  }
+
+  /**
    * Gathers context for the entire post and initiates the chat.
    * @param {string} [contextType='descendants'] - The type of context to gather ('descendants', 'children').
    *                                              For post chat, 'parents' is not applicable.
@@ -2333,11 +2373,21 @@ ${systemPromptIntro}
       const postTitle = this.enhancer.domUtils.getHNPostTitle() || "未知标题";
       const postText = this._getPostText(); // Get post text content if available
 
-      // Get comments based on context type
+      // Get comments based on context type.
+      // Non-HN adapters expose comments via the adapter block interface;
+      // the DOM scraping below is HN-specific.
       let contextArray = [];
+      const isHnAdapter =
+        this.enhancer.adapter?.getSiteKey?.() === "news.ycombinator.com";
 
-      // Call the appropriate function based on contextType
-      if (contextType === "descendants") {
+      if (
+        !isHnAdapter &&
+        typeof this.enhancer.adapter?.getCommentBlocks === "function"
+      ) {
+        contextArray = await this._gatherPostContextFromBlocks(
+          contextType === "children"
+        );
+      } else if (contextType === "descendants") {
         // Get all comments in the post
         const allComments = document.querySelectorAll("tr.athing.comtr");
         let commentIndex = 0;
