@@ -98,6 +98,12 @@ window.SiteAdapter = class SiteAdapter {
      */
     getPostSummaryCacheId() { return null; }
 
+    /**
+     * Whether the page-level "summarize all comments" link is injected.
+     * @returns {boolean}
+     */
+    supportsSummarizePostLink() { return false; }
+
     /** Whether paragraph [P#] anchors are clickable for jump-to-source. */
     supportsParagraphJump() { return true; }
 

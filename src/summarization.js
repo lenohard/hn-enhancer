@@ -1995,6 +1995,13 @@ class Summarization {
       });
     };
 
+    // Adapters that fetch comments on demand (e.g. YouTube innertube API)
+    // must complete their fetch before blocks are read; the fetch replaces
+    // the adapter's block array, so it has to happen first.
+    if (typeof adapter.prepareCommentBlocks === "function") {
+      await adapter.prepareCommentBlocks();
+    }
+
     const topBlocks = adapter.getCommentBlocks();
     walkBlocks(topBlocks);
 

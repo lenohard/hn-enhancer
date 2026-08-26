@@ -101,6 +101,7 @@ hn-enhancer/
 │   │   ├── site-adapter.js      # 抽象基类
 │   │   ├── hn-adapter.js        # HN 适配器
 │   │   ├── substack-adapter.js  # Substack 适配器
+│   │   ├── youtube-adapter.js   # YouTube 适配器（innertube API 拉评论）
 │   │   └── adapter-registry.js  # URL → adapter 注册表
 │   └── options/
 │       ├── options.html         # 设置页面
@@ -335,6 +336,7 @@ hn-enhancer/
 **已支持的站点**:
 - ✅ Hacker News (`news.ycombinator.com`) — `HnAdapter`
 - 🧪 Substack (`*.substack.com`) — `SubstackAdapter`（**选择器未经实际 Substack 页面测试**）
+- ✅ YouTube (`*.youtube.com/watch`) — `YouTubeAdapter`（评论经 innertube API 按需拉取，非 DOM）
 
 **添加新站点的步骤**:
 1. 创建 `src/adapters/new-site-adapter.js`，继承 `SiteAdapter`
@@ -748,3 +750,31 @@ Extended the chat modal so sites that summarize an *article body* (not a comment
 | `src/hn-enhancer.js` | `initUniversalMode()`, `_setupSelectionListener()`, `_summarizeSelection()`, `_chatSelection()` |
 | `src/styles.css` | `.hn-selection-fab`, `.hn-selection-fab-btn` |
 | `manifest.chrome.json` / `manifest.firefox.json` | Second `content_scripts` entry |
+
+### YouTube Adapter & SPA Re-init (2026-08-26)
+**YouTube comment support**: `YouTubeAdapter` fetches comments via YouTube's internal innertube API (`youtubei/v1/next`) — YouTube lazy-loads comments, so the DOM never contains the full thread. Comments are exposed as plain block objects (`{id, author, text, publishedTime, permalink, children}`), not DOM nodes.
+
+**Key mechanics** (verified live, anonymous — no login/cookies required):
+- Innertube config (`INNERTUBE_API_KEY` + `INNERTUBE_CONTEXT`) is parsed from inline `ytcfg.set({...})` scripts — content scripts cannot read `window.ytcfg` (isolated world).
+- Flow: POST `{context, videoId}` → comments-section continuation token in `twoColumnWatchNextResults` → POST `{context, continuation}` pages → `commentThreadRenderer` items + trailing `continuationItemRenderer` (next page). Comment text/author live in `frameworkUpdates.entityBatchUpdate.mutations[].payload.commentEntityPayload`, matched by `commentViewModel.commentKey` (new viewModel format; legacy `commentRenderer` fallback included). Replies via `replies.commentRepliesRenderer.subThreads[0]` continuation token.
+- Caps: `MAX_TOP_PAGES = 30`, `MAX_REPLY_PAGES = 2` per thread. Permalink: `watch?v=<id>&lc=<commentId>`.
+- No per-comment link injection / anchor jumping (blocks have no DOM element); page-level links anchor to `ytd-comments-header-renderer` or `ytd-watch-metadata #top-row`.
+
+**New adapter hooks**:
+- `prepareCommentBlocks()` (async, cached per video, concurrent-safe) — `Summarization._getThreadFromDOM()` awaits it before walking blocks, **before** reading `getCommentBlocks()` (the fetch replaces the block array).
+- `supportsSummarizePostLink()` — gates the page-level "summarize all comments" link (HN + YouTube true, base false).
+- `onSpaNavigate()` — invalidates comment cache when the video changed.
+
+**SPA re-init in `content.js`**: `watchForSpaNavigation()` now always runs (not just on failed init). On href change it re-resolves the adapter: if the resolved adapter is a different instance, `HNEnhancer.dispose()` runs (removes UI nodes + tracked document listeners via `_trackDocListener`) and a fresh enhancer initializes; if the same adapter still matches, `hnEnhancer.handleSpaNavigation()` re-injects page-level links (with retry while the SPA renders the anchor; injection deduped by `.hn-summarize-post-link` / `.hn-chat-post-link` classes).
+
+**Files changed**:
+| File | What |
+|---|---|
+| `src/adapters/youtube-adapter.js` | New — YouTube adapter |
+| `src/adapters/adapter-registry.js` | Register before SelectionAdapter |
+| `src/adapters/site-adapter.js` | `supportsSummarizePostLink()` base |
+| `src/summarization.js` | `prepareCommentBlocks()` hook in `_getThreadFromDOM()` |
+| `src/hn-enhancer.js` | `_injectPageActionLinks()`, `handleSpaNavigation()`, `dispose()`, `_trackDocListener()` |
+| `src/ui-components.js` | Idempotent page-link injection |
+| `content.js` | Always-on SPA watcher + adapter-identity re-init |
+| `manifest.chrome.json` / `manifest.firefox.json` | Load `youtube-adapter.js` in both content_scripts entries |

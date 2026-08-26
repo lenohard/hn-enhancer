@@ -63,6 +63,7 @@
         "src/adapters/site-adapter.js",
         "src/adapters/hn-adapter.js",
         "src/adapters/substack-adapter.js",
+        "src/adapters/youtube-adapter.js",
         "src/adapters/adapter-registry.js",
         "src/hn-enhancer.js",
         "content.js"
@@ -100,6 +101,7 @@
         "src/adapters/site-adapter.js",
         "src/adapters/hn-adapter.js",
         "src/adapters/substack-adapter.js",
+        "src/adapters/youtube-adapter.js",
         "src/adapters/selection-adapter.js",
         "src/adapters/adapter-registry.js",
         "src/hn-enhancer.js",
@@ -128,6 +130,7 @@
       "src/adapters/site-adapter.js",
       "src/adapters/hn-adapter.js",
       "src/adapters/substack-adapter.js",
+      "src/adapters/youtube-adapter.js",
       "src/adapters/adapter-registry.js",
       "src/hn-enhancer.js"
     ],

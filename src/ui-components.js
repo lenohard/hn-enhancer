@@ -138,11 +138,12 @@ class UIComponents {
    */
   injectSummarizePostLink() {
     const navLinks = this.enhancer.adapter?.getPageActionAnchor();
-    if (!navLinks) return;
+    if (!navLinks || navLinks.querySelector(".hn-summarize-post-link")) return;
 
     const summarizeLink = document.createElement("a");
     summarizeLink.href = "#";
     summarizeLink.textContent = "summarize all comments";
+    summarizeLink.className = "hn-enhancer-link hn-summarize-post-link";
 
     summarizeLink.addEventListener("click", async (e) => {
       e.preventDefault();
@@ -158,7 +159,7 @@ class UIComponents {
    */
   injectChatPostLink() {
     const navLinks = this.enhancer.adapter?.getPageActionAnchor();
-    if (!navLinks) return;
+    if (!navLinks || navLinks.querySelector(".hn-chat-post-link")) return;
 
     const chatLink = document.createElement("a");
     chatLink.href = "#";

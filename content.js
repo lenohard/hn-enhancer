@@ -83,8 +83,26 @@
             }
             lastHref = location.href;
             await loadCustomDomains();
+
+            // SPA sites (e.g. YouTube) can navigate across adapter boundaries
+            // (home/search → watch page). If the resolved adapter changed,
+            // tear down the old enhancer and initialize a fresh one.
+            if (typeof AdapterRegistry !== "undefined" && window.hnEnhancer) {
+                const resolved = AdapterRegistry.resolve(location.href);
+                if (resolved && resolved !== window.hnEnhancer.adapter) {
+                    try {
+                        window.hnEnhancer.dispose?.();
+                    } catch (e) {
+                        console.warn("[HN Companion] dispose failed:", e);
+                    }
+                    window.hnEnhancer = null;
+                }
+            }
+
             if (!window.hnEnhancer) {
                 initEnhancer();
+            } else {
+                window.hnEnhancer.handleSpaNavigation?.();
             }
         });
         observer.observe(document.documentElement, {
@@ -95,6 +113,10 @@
 
     async function bootstrap() {
         await loadCustomDomains();
+
+        // Always watch: SPA sites may navigate into/out of supported pages
+        // (or across adapters) long after the initial load.
+        watchForSpaNavigation();
 
         if (initEnhancer()) {
             return;
@@ -119,7 +141,6 @@
                             "[HN Companion] Waiting for supported page",
                             { href: location.href, domains: window.__HN_SUBSTACK_CUSTOM_DOMAINS }
                         );
-                        watchForSpaNavigation();
                     }
                 }
             }

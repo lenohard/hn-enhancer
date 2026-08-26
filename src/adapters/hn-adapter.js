@@ -61,6 +61,10 @@ window.HnAdapter = class HnAdapter extends SiteAdapter {
         return true;
     }
 
+    supportsSummarizePostLink() {
+        return true;
+    }
+
     supportsScreenshot() {
         return false;
     }

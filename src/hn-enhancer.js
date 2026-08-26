@@ -345,23 +345,23 @@ window.HNEnhancer = class HNEnhancer {
       requestAnimationFrame(showFab);
     };
 
-    document.addEventListener('mouseup', (e) => {
+    this._trackDocListener('mouseup', (e) => {
       if (fab && fab.contains(e.target)) return;
       scheduleShowFab();
     }, true);
-    document.addEventListener('selectionchange', scheduleShowFab);
-    document.addEventListener('keyup', (e) => {
+    this._trackDocListener('selectionchange', scheduleShowFab);
+    this._trackDocListener('keyup', (e) => {
       if (e.key === 'Shift' || e.key.startsWith('Arrow')) {
         scheduleShowFab();
       }
     });
-    document.addEventListener('mousedown', (e) => {
+    this._trackDocListener('mousedown', (e) => {
       if (fab && !fab.contains(e.target)) removeFab();
     });
   }
 
   _setupImageSaveListener() {
-    document.addEventListener('click', (e) => {
+    this._trackDocListener('click', (e) => {
       if (!e.shiftKey) return;
       const img = e.target.closest('img');
       if (!img?.src || img.closest('.hn-selection-fab, .hn-hub-panel, .hn-save-toast')) {
@@ -398,6 +398,60 @@ window.HNEnhancer = class HNEnhancer {
   _chatSelection() {
     this._captureSelectionForAdapter();
     this.openPostChatModal();
+  }
+
+  /**
+   * Inject page-level action links (chat about post / summarize all comments).
+   * Retries briefly because SPA sites (YouTube) may render the anchor late.
+   * Injection is idempotent (deduped by link class in UIComponents).
+   */
+  _injectPageActionLinks(retries = 20) {
+    const anchor = this.adapter?.getPageActionAnchor?.();
+    if (!anchor) {
+      if (retries > 0) {
+        setTimeout(() => this._injectPageActionLinks(retries - 1), 500);
+      }
+      return;
+    }
+    this.uiComponents.injectChatPostLink();
+    if (this.adapter?.supportsSummarizePostLink?.()) {
+      this.uiComponents.injectSummarizePostLink();
+    }
+  }
+
+  /**
+   * Called by content.js when the SPA navigates within the same adapter
+   * (e.g. YouTube watch → watch). Resets adapter page state and re-injects
+   * page-level links into the freshly rendered DOM.
+   */
+  handleSpaNavigation() {
+    this.adapter?.onSpaNavigate?.();
+    this._injectPageActionLinks();
+  }
+
+  /** Track a document listener so dispose() can remove it. */
+  _trackDocListener(type, fn, opts) {
+    (this._docListeners = this._docListeners || []).push({ type, fn, opts });
+    document.addEventListener(type, fn, opts);
+  }
+
+  /**
+   * Tear down UI and document listeners. Used when an SPA navigation switches
+   * to a page handled by a different adapter, before a fresh HNEnhancer is
+   * constructed.
+   */
+  dispose() {
+    (this._docListeners || []).forEach(({ type, fn, opts }) =>
+      document.removeEventListener(type, fn, opts)
+    );
+    this._docListeners = [];
+    this.summaryPanel?.panel?.remove();
+    this.statisticsPanel?.panel?.remove?.();
+    document
+      .querySelectorAll(
+        '.help-icon, .keyboard-help-modal, .hn-hub-panel, .hn-selection-fab, .hn-save-toast'
+      )
+      .forEach((el) => el.remove());
   }
 
   initHomePageNavigation() {
@@ -469,11 +523,11 @@ window.HNEnhancer = class HNEnhancer {
     }
 
     // --- Step 3: Inject post-level UI elements ---
-    // Chat about post works for any adapter that supplies chat context options,
-    // so it's universal; the rest remain HN-specific.
-    this.uiComponents.injectChatPostLink();
+    // Chat about post works for any adapter that supplies chat context options;
+    // the summarize link is injected for adapters that opt in. Retries briefly
+    // because SPA sites (YouTube) may still be rendering the anchor element.
+    this._injectPageActionLinks();
     if (isHN) {
-      this.uiComponents.injectSummarizePostLink();
       this.uiComponents.injectToggleGrandchildrenRootLink();
       this.addCacheIndicators(); // Call without comment parameter for post-level indicators
     }
@@ -915,7 +969,7 @@ window.HNEnhancer = class HNEnhancer {
     let lastKeyPressTime = 0;
     const KEY_COMBO_TIMEOUT = 1000; // 1 second timeout for combinations
 
-    document.addEventListener("keydown", (e) => {
+    this._trackDocListener("keydown", (e) => {
       // Handle key press only when it is not in an input field and not Ctrl / Cmd keys.
       //  This will allow the default behavior when these keys are pressed
       const isInputField = e.target.matches(

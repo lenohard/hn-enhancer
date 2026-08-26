@@ -42,10 +42,11 @@ class AdapterRegistryClass {
 // Singleton
 window.AdapterRegistry = new AdapterRegistryClass();
 
-// Register built-in adapters (order = priority: HN first, Substack, then universal fallback).
+// Register built-in adapters (order = priority: HN first, Substack, YouTube, then universal fallback).
 // SelectionAdapter is registered LAST so site-specific adapters take priority.
 window.AdapterRegistry.register(new HnAdapter());
 window.AdapterRegistry.register(new SubstackAdapter());
+window.AdapterRegistry.register(new YouTubeAdapter());
 if (typeof SelectionAdapter !== 'undefined') {
     window.AdapterRegistry.register(new SelectionAdapter());
 }
