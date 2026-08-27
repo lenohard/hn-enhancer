@@ -24,6 +24,8 @@ window.YouTubeAdapter = class YouTubeAdapter extends SiteAdapter {
 
     /** Max pages of top-level comments (~20 per page). */
     static MAX_TOP_PAGES = 30;
+    /** Max top-level comments to fetch (capped to keep Chat fast). */
+    static MAX_TOP_COMMENTS = 60;
     /** Max reply pages fetched per thread. */
     static MAX_REPLY_PAGES = 2;
 
@@ -34,6 +36,9 @@ window.YouTubeAdapter = class YouTubeAdapter extends SiteAdapter {
         this._fetchedVideoId = null;
         this._fetchPromise = null;
         this._cfg = null;
+        // Pre-fetch comments on YouTube watch pages so they're ready when
+        // the user clicks Chat or Summarize.
+        this._prefetch();
     }
 
     // ── URL matching ──────────────────────────────────────────────
@@ -176,6 +181,33 @@ window.YouTubeAdapter = class YouTubeAdapter extends SiteAdapter {
     }
 
     // ── Comment fetching ──────────────────────────────────────────
+
+    /**
+     * Pre-fetch comments on page load (fire-and-forget). Checks
+     * sessionStorage cache first for SPA resilience.
+     */
+    _prefetch() {
+        const videoId = this.getPostId();
+        if (!videoId) return;
+        try {
+            const cached = sessionStorage.getItem('hn-youtube-comments.' + videoId);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed)) {
+                    this._blocks = parsed;
+                    this._fetchedVideoId = videoId;
+                    this._blockMap = new Map();
+                    const walk = (b) => {
+                        if (b.id) this._blockMap.set(b.id, b);
+                        for (const c of (b.children || [])) walk(c);
+                    };
+                    for (const b of parsed) walk(b);
+                    return;
+                }
+            }
+        } catch { /* ignore cache errors */ }
+        this.prepareCommentBlocks(); // fire-and-forget
+    }
 
     /**
      * Fetch the full comment tree for the current video (async, cached,
@@ -372,6 +404,11 @@ window.YouTubeAdapter = class YouTubeAdapter extends SiteAdapter {
                 }
             }
         }
+
+        // 4. Cache in sessionStorage for SPA resilience
+        try {
+            sessionStorage.setItem('hn-youtube-comments.' + videoId, JSON.stringify(blocks));
+        } catch { /* quota exceeded */ }
 
         return blocks;
     }
