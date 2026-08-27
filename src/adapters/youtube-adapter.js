@@ -25,7 +25,7 @@ window.YouTubeAdapter = class YouTubeAdapter extends SiteAdapter {
     /** Max pages of top-level comments (~20 per page). */
     static MAX_TOP_PAGES = 30;
     /** Max top-level comments to fetch (capped to keep Chat fast). */
-    static MAX_TOP_COMMENTS = 60;
+    static MAX_TOP_COMMENTS = 500;
     /** Max reply pages fetched per thread. */
     static MAX_REPLY_PAGES = 2;
 
