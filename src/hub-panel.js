@@ -101,7 +101,7 @@ class HubPanel {
     chatBtn.textContent = 'Chat';
     chatBtn.title = 'Chat about this post';
     chatBtn.addEventListener('click', async () => {
-      this.enhancer.chatModal?.openPostChatModal();
+      this.enhancer.openPostChatModal();
     });
     actions.appendChild(chatBtn);
 
