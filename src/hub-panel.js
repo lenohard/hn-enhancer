@@ -95,6 +95,16 @@ class HubPanel {
     });
     actions.appendChild(summaryBtn);
 
+    const chatBtn = document.createElement('button');
+    chatBtn.type = 'button';
+    chatBtn.className = 'hn-hub-action';
+    chatBtn.textContent = 'Chat';
+    chatBtn.title = 'Chat about this post';
+    chatBtn.addEventListener('click', async () => {
+      this.enhancer.chatModal?.openPostChatModal();
+    });
+    actions.appendChild(chatBtn);
+
     const optionsBtn = document.createElement('button');
     optionsBtn.type = 'button';
     optionsBtn.className = 'hn-hub-action';

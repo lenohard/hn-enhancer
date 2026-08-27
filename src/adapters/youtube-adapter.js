@@ -66,9 +66,7 @@ window.YouTubeAdapter = class YouTubeAdapter extends SiteAdapter {
 
     isCommentsPage() { return this.matches(location.href); }
 
-    /** Chat/summarize live on the selection FAB; no page-injected links. */
-    supportsSelectionFab() { return true; }
-
+    /** No page-injected action links; use the Hub panel instead. */
     supportsPageActionLinks() { return false; }
 
     supportsSummarizePostLink() { return false; }
