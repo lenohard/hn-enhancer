@@ -8,10 +8,11 @@ async function saveSettings() {
   const modelSupportsImages = document.getElementById(
     "router-model-supports-images"
   ).checked;
-  const maxTokens =
-    parseInt(document.getElementById("max-tokens").value) || 100000;
+  const maxTokens = parseInt(document.getElementById("max-tokens").value) || 100000;
   const temperature =
     parseFloat(document.getElementById("temperature").value) || 0.7;
+  const maxYouTubeComments =
+    parseInt(document.getElementById("max-youtube-comments").value) || 500;
   const settings = {
     providerSelection: "openai-router",
     language,
@@ -21,6 +22,7 @@ async function saveSettings() {
     screenshotEnabled,
     maxTokens,
     temperature,
+    maxYouTubeComments,
     "openai-router": {
       apiKey: document.getElementById("router-key").value,
       model: document.getElementById("router-model").value,
@@ -588,6 +590,12 @@ async function loadSettings() {
         document.getElementById("temperature").value = settings.temperature;
       } else {
         document.getElementById("temperature").value = 0.7; // Default value
+      }
+
+      // Set YouTube max comments setting
+      if (settings.maxYouTubeComments !== undefined) {
+        document.getElementById("max-youtube-comments").value =
+          settings.maxYouTubeComments;
       }
 
       // Set OpenAI Router settings
