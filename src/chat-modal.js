@@ -1130,6 +1130,20 @@ class ChatModal {
       return null;
     }
 
+    // Non-HN adapters (e.g. YouTube): resolve via adapter's
+    // resolveBlockByRef + path-to-id mapping.
+    if (this.enhancer.adapter?.getSiteKey?.() !== "news.ycombinator.com") {
+      const path = segments.join(".");
+      const id =
+        this.commentPathToIdMap instanceof Map
+          ? this.commentPathToIdMap.get(path)
+          : null;
+      if (id && typeof this.enhancer.adapter.resolveBlockByRef === "function") {
+        return this.enhancer.adapter.resolveBlockByRef(id);
+      }
+      return null;
+    }
+
     const topLevelComments = Array.from(
       document.querySelectorAll("tr.athing.comtr")
     ).filter(
