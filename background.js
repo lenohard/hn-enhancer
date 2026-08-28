@@ -611,6 +611,18 @@ function toAnthropicContent(content) {
   });
 }
 
+/** Assistant messages in Responses API must use output_text, not input_text. */
+function toAssistantResponsesContent(content) {
+  if (typeof content === "string") {
+    return [{ type: "output_text", text: content }];
+  }
+  if (typeof content !== "object" || !Array.isArray(content)) return content;
+  return content.map((block) => {
+    if (typeof block === "string") return { type: "output_text", text: block };
+    return { type: "output_text", text: block.text ?? "" };
+  });
+}
+
 /** OpenAI image blocks -> Responses input_image blocks. */
 function toResponsesContent(content) {
   // The Responses API requires each input item's content to be an array of
@@ -655,7 +667,12 @@ function buildRouterPayload(protocol, data) {
       model,
       input: messages
         .filter((m) => m.role !== "system")
-        .map((m) => ({ role: m.role, content: toResponsesContent(m.content) })),
+        .map((m) => ({
+          role: m.role,
+          content: m.role === "assistant"
+            ? toAssistantResponsesContent(m.content)
+            : toResponsesContent(m.content),
+        })),
       stream: streaming,
       max_output_tokens: maxTokens || 100000,
     };
