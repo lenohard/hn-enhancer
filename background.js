@@ -816,7 +816,10 @@ async function handleOpenAIRouterRequest(data) {
   console.log("OpenAI Router API endpoint:", endpoint);
 
   const payload = buildRouterPayload(protocol, data);
-  const headers = { "Content-Type": "application/json" };
+  const headers = {
+    "Content-Type": "application/json",
+    "x-opencode-session": crypto.randomUUID(),
+  };
   if (protocol === "messages") {
     // Anthropic-compatible endpoints expect x-api-key, not Authorization: Bearer
     if (apiKey) headers["x-api-key"] = apiKey;
