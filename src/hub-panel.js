@@ -320,6 +320,7 @@ class HubPanel {
           [provider]: {
             ...(settings[provider] || {}),
             model: modelName,
+            protocol: getHNOpenAIRouterModelConfig(modelName).protocol,
             supportsImages: model.supportsImages === true,
           },
         };

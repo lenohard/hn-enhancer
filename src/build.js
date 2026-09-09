@@ -153,6 +153,7 @@ function copySrcDirectory(targetDir) {
   // List of JavaScript files to copy from src directory
   const srcFiles = [
     "hn-state.js",
+    "router-model-config.js",
     "api-client.js",
     "screenshot-capture.js",
     "markdown-utils.js",

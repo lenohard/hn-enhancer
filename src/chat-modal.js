@@ -25,6 +25,7 @@ class ChatModal {
     this.modelIndicatorElement = null; // Displays current/history model info
     this.historyProvider = null; // Provider used for the last saved response
     this.historyModel = null; // Model used for the last saved response
+    this.routerSessionId = null; // Stable OpenCode Go session ID for this chat
     this.currentModelSupportsImages = false;
     this.activeScreenshot = null; // In-memory only; never persisted in chat history.
 
@@ -172,6 +173,7 @@ class ChatModal {
       );
       this.conversationHistory = [];
       this.commentPathToIdMap = new Map();
+      this.routerSessionId = crypto.randomUUID();
       this.currentLlmMessageElement = null;
       this.historyProvider = null;
       this.historyModel = null;
@@ -393,6 +395,7 @@ class ChatModal {
     }
 
     this.isPostChat = false; // This is a comment-level chat
+    this.routerSessionId = crypto.randomUUID();
     this.targetCommentElement = commentElement;
     this.currentPostId = postId; // Store the post ID
     const commentId = this.enhancer.domUtils.getCommentId(commentElement);
@@ -451,6 +454,7 @@ class ChatModal {
    * @private
    */
   async _openForPostAsync(postId) {
+    this.routerSessionId = crypto.randomUUID();
     this.isPostChat = true; // This is a post-level chat
     this.targetCommentElement = null; // No specific comment
     this.currentPostId = postId;
@@ -1419,6 +1423,8 @@ class ChatModal {
           `Loaded existing chat history for ${postId}/${commentId}/${contextType}`
         );
         this.conversationHistory = loadedHistory;
+        this.routerSessionId =
+          storedHistoryEntry?.routerSessionId || this.routerSessionId || crypto.randomUUID();
         this.historyProvider = storedHistoryEntry?.provider || null;
         this.historyModel = storedHistoryEntry?.model || null;
 
@@ -1914,6 +1920,7 @@ ${systemPromptIntro}
           {
             provider: this.currentAiProvider,
             model: this.currentModel,
+            routerSessionId: this.routerSessionId,
           }
         );
         this.enhancer.logDebug("Saved history after Chrome AI response.");
@@ -1996,6 +2003,7 @@ ${systemPromptIntro}
       }
       const requestData = {
         messages: messagesForRequest,
+        sessionId: this.routerSessionId || (this.routerSessionId = crypto.randomUUID()),
       };
 
       requestData.url = settings.routerUrl || "http://127.0.0.1:4000";
@@ -2067,6 +2075,7 @@ ${systemPromptIntro}
         {
           provider: this.currentAiProvider,
           model: this.currentModel,
+          routerSessionId: this.routerSessionId,
         }
       );
       this.enhancer.logDebug(`Saved history after ${aiProvider} response.`);
@@ -2128,6 +2137,7 @@ ${systemPromptIntro}
     // 2. Clear conversation area and history
     this.conversationArea.innerHTML = ""; // Clear visually
     this.conversationHistory = []; // Clear internal history
+    this.routerSessionId = crypto.randomUUID();
     this.currentLlmMessageElement = null; // Reset stream element
 
     // 3. Disable input while loading new context
@@ -2296,6 +2306,8 @@ ${systemPromptIntro}
           `Loaded existing post chat history for ${this.currentPostId}/${contextType}`
         );
         this.conversationHistory = loadedHistory;
+        this.routerSessionId =
+          storedHistoryEntry?.routerSessionId || this.routerSessionId || crypto.randomUUID();
         this.historyProvider = storedHistoryEntry?.provider || null;
         this.historyModel = storedHistoryEntry?.model || null;
 
@@ -2719,6 +2731,8 @@ ${systemPromptIntro}
           `Loaded existing post-body chat history for ${postId}/${contextType}`
         );
         this.conversationHistory = loadedHistory;
+        this.routerSessionId =
+          storedHistoryEntry?.routerSessionId || this.routerSessionId || crypto.randomUUID();
         this.historyProvider = storedHistoryEntry?.provider || null;
         this.historyModel = storedHistoryEntry?.model || null;
 

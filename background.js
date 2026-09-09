@@ -1,3 +1,5 @@
+importScripts("src/router-model-config.js");
+
 async function onInstalled() {
   console.log("[BACKGROUND] 扩展已安装/启动");
   await registerSubstackCustomDomainScripts();
@@ -22,6 +24,7 @@ async function onInstalled() {
 // Keep in sync with manifest content_scripts js/css arrays
 const HN_CONTENT_SCRIPT_JS = [
   "src/hn-state.js",
+  "src/router-model-config.js",
   "src/api-client.js",
   "src/screenshot-capture.js",
   "src/markdown-utils.js",
@@ -293,9 +296,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const language = settingsData.settings?.language || "en";
           const maxTokens = settingsData.settings?.maxTokens || 100000;
           const temperature = settingsData.settings?.temperature || 0.7;
-          const routerUrl = settingsData.settings?.["openai-router"]?.url || "http://127.0.0.1:4000";
-          const protocol =
-            settingsData.settings?.["openai-router"]?.protocol || "chat-completions";
+          const routerSettings = settingsData.settings?.["openai-router"] || {};
+          const routerUrl = routerSettings.url || "http://127.0.0.1:4000";
+          const protocol = getHNOpenAIRouterModelConfig(model).protocol;
           const supportsImages =
             settingsData.settings?.[aiProvider]?.supportsImages === true;
           const screenshotEnabled =
@@ -543,10 +546,7 @@ async function handleChatRequest(data) {
   const model = settingsData.settings?.["openai-router"]?.model;
   const apiKey = settingsData.settings?.["openai-router"]?.apiKey;
   const routerUrl = url || settingsData.settings?.["openai-router"]?.url || "http://127.0.0.1:4000";
-  const protocol =
-    data.protocol ||
-    settingsData.settings?.["openai-router"]?.protocol ||
-    "chat-completions";
+  const protocol = getHNOpenAIRouterModelConfig(model).protocol;
   const maxTokens = data.maxTokens || settingsData.settings?.maxTokens || 100000;
 
   const shouldStream = streaming;
@@ -560,6 +560,7 @@ async function handleChatRequest(data) {
       url: routerUrl,
       protocol,
       maxTokens,
+      sessionId: data.sessionId,
     });
     if (shouldStream) {
       return routerResponse;
@@ -799,8 +800,8 @@ async function handleOpenAIRouterRequest(data) {
     messages,
     streaming = false,
     url = "http://127.0.0.1:4000",
-    protocol = "chat-completions",
   } = data;
+  const protocol = getHNOpenAIRouterModelConfig(model).protocol;
 
   console.log("Processing OpenAI Router API request，模型:", model, "流式:", streaming, "协议:", protocol);
 
@@ -816,9 +817,14 @@ async function handleOpenAIRouterRequest(data) {
   console.log("OpenAI Router API endpoint:", endpoint);
 
   const payload = buildRouterPayload(protocol, data);
+  const sessionId =
+    typeof data.sessionId === "string" && data.sessionId.trim()
+      ? data.sessionId.trim()
+      : crypto.randomUUID();
   const headers = {
     "Content-Type": "application/json",
-    "x-opencode-session": crypto.randomUUID(),
+    "x-opencode-client": "hn-enhancer/1.2.0",
+    "x-opencode-session": sessionId,
   };
   if (protocol === "messages") {
     // Anthropic-compatible endpoints expect x-api-key, not Authorization: Bearer
@@ -916,13 +922,23 @@ async function handleFetchOpenAIRouterModels(data) {
     const models = responseData.data || [];
 
     return {
-      models: models.map((model) => ({
-        name: model.id || model.name,
-        displayName: model.id || model.name,
-        description: `OpenAI Router model: ${model.id || model.name}`,
-        inputTokenLimit: 0,
-        outputTokenLimit: 0,
-      })),
+      models: models.map((model) => {
+        const modelId = model.id || model.name;
+        const config = getHNOpenAIRouterModelConfig(modelId);
+        const isKnownModel = config !== HN_OPENAI_ROUTER_DEFAULT_CONFIG;
+        return {
+          name: modelId,
+          displayName: modelId,
+          description: isKnownModel
+            ? `${config.provider} · ${config.endpoint}`
+            : "OpenAI-compatible · /v1/chat/completions (default)",
+          provider: config.provider,
+          protocol: config.protocol,
+          endpoint: config.endpoint,
+          inputTokenLimit: 0,
+          outputTokenLimit: 0,
+        };
+      }),
     };
   } catch (error) {
     console.error("OpenAI Router models API request failed:", error);

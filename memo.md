@@ -53,5 +53,18 @@ This approach allows for incremental progress across multiple sessions, even wit
 
 ## current task plan and progress
 
+### OpenCode Go model protocol routing (2026-09-09)
+
+**已完成:**
+- [x] Added a shared model mapping for provider, protocol, and endpoint metadata.
+- [x] Automatically selects Responses, Messages, or Chat Completions from the selected model.
+- [x] Unknown/new models default to `/v1/chat/completions`.
+- [x] Applied the resolver in the background request path, Options page, and Hub model picker.
+- [x] Preserved the stable OpenCode session ID for chat history from the previous fix.
+
+**经验:** Keep protocol resolution server-side as well as in the UI; this prevents stale settings or direct requests from using the wrong endpoint. Keep the model map explicit and small, with a safe default for newly released models.
+
+**验证:** JavaScript syntax, manifest JSON, mapping examples, and `git diff --check` pass. Full Jest/build validation still requires installing the missing `node_modules` dependencies.
+
 
 

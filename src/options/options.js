@@ -13,6 +13,7 @@ async function saveSettings() {
     parseFloat(document.getElementById("temperature").value) || 0.7;
   const maxYouTubeComments =
     parseInt(document.getElementById("max-youtube-comments").value) || 500;
+  const routerModel = document.getElementById("router-model").value.trim();
   const settings = {
     providerSelection: "openai-router",
     language,
@@ -25,9 +26,9 @@ async function saveSettings() {
     maxYouTubeComments,
     "openai-router": {
       apiKey: document.getElementById("router-key").value,
-      model: document.getElementById("router-model").value,
+      model: routerModel,
       url: document.getElementById("router-url").value,
-      protocol: document.getElementById("router-protocol").value,
+      protocol: getRouterModelConfig(routerModel).protocol,
       supportsImages: modelSupportsImages,
     },
   };
@@ -105,6 +106,12 @@ function setupPasswordVisibilityToggle(inputId, toggleButtonId) {
 
 function normalizeRouterUrl(url) {
   return (url || "").trim().replace(/\/$/, "");
+}
+
+function getRouterModelConfig(model) {
+  return globalThis.getHNOpenAIRouterModelConfig
+    ? globalThis.getHNOpenAIRouterModelConfig(model)
+    : { protocol: "chat-completions", endpoint: "/v1/chat/completions" };
 }
 
 function sortRouterModels(models) {
@@ -219,13 +226,23 @@ class RouterModelPicker {
     const previousFlags = new Map(
       (cache[cacheKey]?.models || []).map((m) => [m.name, m.supportsImages])
     );
-    const merged = (models || []).map((m) => ({
-      ...m,
-      supportsImages:
-        typeof m.supportsImages === "boolean"
-          ? m.supportsImages
-          : previousFlags.get(m.name) === true,
-    }));
+    const merged = (models || []).map((m) => {
+      const config = getRouterModelConfig(m.name);
+      const isKnownModel = config.provider && config.provider !== "Unknown";
+      return {
+        ...m,
+        provider: config.provider,
+        protocol: config.protocol,
+        endpoint: config.endpoint,
+        description: isKnownModel
+          ? `${config.provider} · ${config.endpoint}`
+          : "OpenAI-compatible · /v1/chat/completions (default)",
+        supportsImages:
+          typeof m.supportsImages === "boolean"
+            ? m.supportsImages
+            : previousFlags.get(m.name) === true,
+      };
+    });
     cache[cacheKey] = {
       models: merged,
       timestamp: Date.now(),
@@ -604,14 +621,14 @@ async function loadSettings() {
           settings["openai-router"].apiKey || "";
         document.getElementById("router-url").value =
           settings["openai-router"].url || "http://127.0.0.1:4000";
-        document.getElementById("router-protocol").value =
-          settings["openai-router"].protocol || "chat-completions";
       }
 
       await initRouterModelPicker();
       const routerModelElement = document.getElementById("router-model");
-      if (routerModelElement && settings["openai-router"]?.model) {
-        routerModelElement.value = settings["openai-router"].model;
+      if (routerModelElement) {
+        routerModelElement.value = settings["openai-router"]?.model || "";
+        document.getElementById("router-protocol").value =
+          getRouterModelConfig(routerModelElement.value).protocol;
       }
       const savedSupportsImages =
         settings["openai-router"]?.supportsImages === true;
@@ -831,6 +848,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const routerUrlInput = document.getElementById("router-url");
   const fullUrlPreview = document.getElementById("full-url-preview");
   const protocolSelect = document.getElementById("router-protocol");
+  const routerModelInput = document.getElementById("router-model");
   const PROTOCOL_PATHS = {
     "chat-completions": "/v1/chat/completions",
     messages: "/v1/messages",
@@ -842,9 +860,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       PROTOCOL_PATHS[protocolSelect.value] || PROTOCOL_PATHS["chat-completions"];
     fullUrlPreview.textContent = `Actual request: ${baseUrl}${path}`;
   }
+  function updateProtocolForModel() {
+    protocolSelect.value = getRouterModelConfig(routerModelInput.value).protocol;
+    updateUrlPreview();
+  }
   routerUrlInput.addEventListener("input", updateUrlPreview);
-  protocolSelect.addEventListener("change", updateUrlPreview);
-  updateUrlPreview(); // Initialize
+  routerModelInput.addEventListener("input", updateProtocolForModel);
+  routerModelInput.addEventListener("change", updateProtocolForModel);
+  updateProtocolForModel();
 
   setupPasswordVisibilityToggle("router-key", "router-key-toggle-visibility");
 

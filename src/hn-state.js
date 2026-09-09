@@ -786,6 +786,9 @@ class HNState {
       if (metadata.model) {
         storageEntry.model = metadata.model;
       }
+      if (metadata.routerSessionId) {
+        storageEntry.routerSessionId = metadata.routerSessionId;
+      }
     }
 
     chrome.storage.local.set({ [key]: storageEntry }).catch((error) => {
@@ -847,6 +850,7 @@ class HNState {
         savedAt: entry.savedAt,
         provider: entry.provider,
         model: entry.model,
+        routerSessionId: entry.routerSessionId,
       };
     } catch (error) {
       console.error(`Error retrieving chat history for ${key}:`, error);
