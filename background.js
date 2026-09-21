@@ -298,7 +298,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const temperature = settingsData.settings?.temperature || 0.7;
           const routerSettings = settingsData.settings?.["openai-router"] || {};
           const routerUrl = routerSettings.url || "http://127.0.0.1:4000";
-          const protocol = getHNOpenAIRouterModelConfig(model).protocol;
+          const protocol = getHNOpenAIRouterProtocol(
+            model,
+            routerSettings.protocol,
+            routerUrl
+          );
           const supportsImages =
             settingsData.settings?.[aiProvider]?.supportsImages === true;
           const screenshotEnabled =
@@ -546,7 +550,12 @@ async function handleChatRequest(data) {
   const model = settingsData.settings?.["openai-router"]?.model;
   const apiKey = settingsData.settings?.["openai-router"]?.apiKey;
   const routerUrl = url || settingsData.settings?.["openai-router"]?.url || "http://127.0.0.1:4000";
-  const protocol = getHNOpenAIRouterModelConfig(model).protocol;
+  const routerSettings = settingsData.settings?.["openai-router"] || {};
+  const protocol = getHNOpenAIRouterProtocol(
+    model,
+    data.protocol || routerSettings.protocol,
+    routerUrl
+  );
   const maxTokens = data.maxTokens || settingsData.settings?.maxTokens || 100000;
 
   const shouldStream = streaming;
@@ -573,13 +582,6 @@ async function handleChatRequest(data) {
     throw error;
   }
 }
-
-// OpenAI Router protocol endpoints
-const ROUTER_PROTOCOL_ENDPOINTS = {
-  "chat-completions": "/v1/chat/completions",
-  messages: "/v1/messages",
-  responses: "/v1/responses",
-};
 
 /** Convert an OpenAI-style content value (string | blocks) to plain text. */
 function contentToText(content) {
@@ -801,7 +803,7 @@ async function handleOpenAIRouterRequest(data) {
     streaming = false,
     url = "http://127.0.0.1:4000",
   } = data;
-  const protocol = getHNOpenAIRouterModelConfig(model).protocol;
+  const protocol = getHNOpenAIRouterProtocol(model, data.protocol, url);
 
   console.log("Processing OpenAI Router API request，模型:", model, "流式:", streaming, "协议:", protocol);
 
@@ -810,9 +812,11 @@ async function handleOpenAIRouterRequest(data) {
     throw new Error("Missing required parameters for OpenAI Router API request");
   }
 
-  const baseUrl = url.replace(/\/$/, "");
-  const endpoint =
-    `${baseUrl}${ROUTER_PROTOCOL_ENDPOINTS[protocol] || ROUTER_PROTOCOL_ENDPOINTS["chat-completions"]}`;
+  const baseUrl = normalizeHNOpenAIRouterBaseUrl(url);
+  const endpoint = `${baseUrl}${
+    HN_OPENAI_ROUTER_PROTOCOL_PATHS[protocol] ||
+    HN_OPENAI_ROUTER_PROTOCOL_PATHS["chat-completions"]
+  }`;
 
   console.log("OpenAI Router API endpoint:", endpoint);
 
@@ -877,7 +881,7 @@ async function handleFetchOpenAIRouterModels(data) {
   console.log("Processing fetch OpenAI Router models request");
 
   // Normalize URL by removing trailing slash and appending /v1/models
-  const baseUrl = url.replace(/\/$/, '');
+  const baseUrl = normalizeHNOpenAIRouterBaseUrl(url);
   const endpoint = `${baseUrl}/v1/models`;
 
   console.log("OpenAI Router models API endpoint:", endpoint);

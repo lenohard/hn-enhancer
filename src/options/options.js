@@ -1,44 +1,42 @@
+// Read form fields defensively: a missing element must never abort a save.
+function fieldValue(id, fallback = "") {
+  const element = document.getElementById(id);
+  return element ? element.value : fallback;
+}
+
+function fieldChecked(id, fallback = false) {
+  const element = document.getElementById(id);
+  return element ? element.checked : fallback;
+}
+
 // Save settings to Chrome storage
 async function saveSettings() {
-  const language = document.getElementById("language-select").value;
-  const streamingEnabled = document.getElementById("streaming-enabled").checked;
-  const bodyEnabled = document.getElementById("body-enabled").checked;
-  const imagesEnabled = document.getElementById("images-enabled").checked;
-  const screenshotEnabled = document.getElementById("screenshot-enabled").checked;
-  const modelSupportsImages = document.getElementById(
-    "router-model-supports-images"
-  ).checked;
-  const maxTokens = parseInt(document.getElementById("max-tokens").value) || 100000;
-  const temperature =
-    parseFloat(document.getElementById("temperature").value) || 0.7;
-  const maxYouTubeComments =
-    parseInt(document.getElementById("max-youtube-comments").value) || 500;
-  const routerModel = document.getElementById("router-model").value.trim();
-  const settings = {
-    providerSelection: "openai-router",
-    language,
-    streamingEnabled,
-    bodyEnabled,
-    imagesEnabled,
-    screenshotEnabled,
-    maxTokens,
-    temperature,
-    maxYouTubeComments,
-    "openai-router": {
-      apiKey: document.getElementById("router-key").value,
-      model: routerModel,
-      url: document.getElementById("router-url").value,
-      protocol: getRouterModelConfig(routerModel).protocol,
-      supportsImages: modelSupportsImages,
-    },
-  };
-
   try {
+    const settings = {
+      providerSelection: "openai-router",
+      language: fieldValue("language-select", "en"),
+      streamingEnabled: fieldChecked("streaming-enabled"),
+      bodyEnabled: fieldChecked("body-enabled", true),
+      imagesEnabled: fieldChecked("images-enabled"),
+      screenshotEnabled: fieldChecked("screenshot-enabled"),
+      maxTokens: parseInt(fieldValue("max-tokens"), 10) || 100000,
+      temperature: parseFloat(fieldValue("temperature")) || 0.7,
+      maxYouTubeComments:
+        parseInt(fieldValue("max-youtube-comments"), 10) || 500,
+      "openai-router": {
+        apiKey: fieldValue("router-key"),
+        model: fieldValue("router-model").trim(),
+        url: fieldValue("router-url", "http://127.0.0.1:4000").trim(),
+        protocol: fieldValue("router-protocol", "auto"),
+        supportsImages: fieldChecked("router-model-supports-images"),
+      },
+    };
+
     await chrome.storage.sync.set({ settings });
     try {
       await routerModelPicker?.setModelSupportsImages(
         settings["openai-router"].model,
-        modelSupportsImages
+        settings["openai-router"].supportsImages
       );
     } catch (error) {
       console.warn("Could not update cached model capabilities:", error);
@@ -52,6 +50,7 @@ async function saveSettings() {
     }, 2000);
   } catch (error) {
     console.error("Error saving settings:", error);
+    alert(`Failed to save settings: ${error.message}`);
   }
 }
 
@@ -105,13 +104,40 @@ function setupPasswordVisibilityToggle(inputId, toggleButtonId) {
 }
 
 function normalizeRouterUrl(url) {
-  return (url || "").trim().replace(/\/$/, "");
+  return globalThis.normalizeHNOpenAIRouterBaseUrl
+    ? globalThis.normalizeHNOpenAIRouterBaseUrl(url)
+    : (url || "").trim().replace(/\/$/, "");
 }
 
 function getRouterModelConfig(model) {
   return globalThis.getHNOpenAIRouterModelConfig
     ? globalThis.getHNOpenAIRouterModelConfig(model)
     : { protocol: "chat-completions", endpoint: "/v1/chat/completions" };
+}
+
+// "auto" (default) follows the model metadata; any other value pins a protocol.
+function getRouterProtocol(model, override, url) {
+  return globalThis.getHNOpenAIRouterProtocol
+    ? globalThis.getHNOpenAIRouterProtocol(model, override, url)
+    : override && override !== "auto"
+      ? override
+      : "chat-completions";
+}
+
+// Only keep a stored protocol that is actually honoured; otherwise it is an
+// auto-derived leftover from an older version, which "auto" describes better.
+function resolveStoredProtocol(routerSettings) {
+  const stored = routerSettings.protocol;
+  const protocolPaths = globalThis.HN_OPENAI_ROUTER_PROTOCOL_PATHS || {};
+  if (!protocolPaths[stored]) {
+    return "auto";
+  }
+  const effective = getRouterProtocol(
+    routerSettings.model,
+    stored,
+    routerSettings.url
+  );
+  return effective === stored ? stored : "auto";
 }
 
 function sortRouterModels(models) {
@@ -627,8 +653,9 @@ async function loadSettings() {
       const routerModelElement = document.getElementById("router-model");
       if (routerModelElement) {
         routerModelElement.value = settings["openai-router"]?.model || "";
-        document.getElementById("router-protocol").value =
-          getRouterModelConfig(routerModelElement.value).protocol;
+        document.getElementById("router-protocol").value = resolveStoredProtocol(
+          settings["openai-router"] || {}
+        );
       }
       const savedSupportsImages =
         settings["openai-router"]?.supportsImages === true;
@@ -844,30 +871,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   const testButton = document.getElementById("test-connection");
   testButton.addEventListener("click", testProviderConnection);
 
-  // Update OpenAI Router URL preview update
+  // Update OpenAI Router request preview: base URL + resolved protocol path
   const routerUrlInput = document.getElementById("router-url");
   const fullUrlPreview = document.getElementById("full-url-preview");
   const protocolSelect = document.getElementById("router-protocol");
   const routerModelInput = document.getElementById("router-model");
-  const PROTOCOL_PATHS = {
+  const PROTOCOL_PATHS = globalThis.HN_OPENAI_ROUTER_PROTOCOL_PATHS || {
     "chat-completions": "/v1/chat/completions",
     messages: "/v1/messages",
     responses: "/v1/responses",
   };
   function updateUrlPreview() {
-    const baseUrl = routerUrlInput.value.replace(/\/$/, "");
-    const path =
-      PROTOCOL_PATHS[protocolSelect.value] || PROTOCOL_PATHS["chat-completions"];
-    fullUrlPreview.textContent = `Actual request: ${baseUrl}${path}`;
-  }
-  function updateProtocolForModel() {
-    protocolSelect.value = getRouterModelConfig(routerModelInput.value).protocol;
-    updateUrlPreview();
+    const baseUrl = normalizeRouterUrl(routerUrlInput.value);
+    const protocol = getRouterProtocol(
+      routerModelInput.value.trim(),
+      protocolSelect.value,
+      baseUrl
+    );
+    fullUrlPreview.textContent = `Actual request: ${baseUrl}${PROTOCOL_PATHS[protocol]}`;
   }
   routerUrlInput.addEventListener("input", updateUrlPreview);
-  routerModelInput.addEventListener("input", updateProtocolForModel);
-  routerModelInput.addEventListener("change", updateProtocolForModel);
-  updateProtocolForModel();
+  routerModelInput.addEventListener("input", updateUrlPreview);
+  routerModelInput.addEventListener("change", updateUrlPreview);
+  protocolSelect.addEventListener("change", updateUrlPreview);
+  updateUrlPreview();
 
   setupPasswordVisibilityToggle("router-key", "router-key-toggle-visibility");
 
