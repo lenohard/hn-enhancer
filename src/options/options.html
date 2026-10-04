@@ -14,7 +14,7 @@
 
 <body class="options-body">
     <div class="options-page">
-        <form>
+        <form novalidate>
             <fieldset>
                 <legend class="text-sm/6 font-semibold text-gray-900">Hacker News Companion Settings</legend>
                 <p class="mt-1 text-sm/6 text-gray-600">Select the LLM provider for summarization.</p>
@@ -254,9 +254,9 @@
                                         <option value="responses">responses (OpenAI Responses)</option>
                                     </select>
                                 </div>
-                                <p class="mt-1 text-sm text-gray-600">Auto follows the model on routers that expose all
-                                    three APIs; any other gateway uses OpenAI-compatible chat/completions. Pick a protocol
-                                    to pin it.</p>
+                                <p class="mt-1 text-sm text-gray-600">Auto follows the model table on routers that expose all
+                                    three APIs; any other gateway uses OpenAI-compatible chat/completions. Any protocol you
+                                    pick here is used as-is.</p>
                             </div>
                             <div class="mt-2">
                                 <label for="router-key" class="sr-only">Enter OpenAI Router API Key (Optional)</label>

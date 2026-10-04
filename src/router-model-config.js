@@ -189,23 +189,54 @@
     }
   };
 
+  // Settings written by builds that auto-derived the protocol from the model
+  // table carry no marker, so their `protocol` may be a leftover rather than a
+  // choice. Version 2 means the value was written by the options page.
+  const PROTOCOL_SETTINGS_VERSION = 2;
+  global.HN_OPENAI_ROUTER_PROTOCOL_VERSION = PROTOCOL_SETTINGS_VERSION;
+  global.isHNLegacyRouterProtocolSettings = (routerSettings) =>
+    ((routerSettings && routerSettings.protocolVersion) || 0) <
+    PROTOCOL_SETTINGS_VERSION;
+
   /**
    * Resolve the protocol for a request.
-   * `override` is the user's choice — "auto"/undefined follows the model.
-   * A pin that only repeats the model metadata on a gateway which does not
-   * publish that surface is a leftover from older auto-derived settings, so it
-   * is ignored rather than sent to an endpoint that answers 404.
+   * `override` is the user's choice — "auto"/undefined follows the router.
+   * A pin is always honoured; only when the settings predate protocol
+   * version 2 (`legacyAutoProtocol`) is a pin that merely repeats the model
+   * metadata on a gateway that does not publish that surface treated as an
+   * auto-derived leftover, since it would otherwise be sent to an endpoint
+   * that answers 404.
    */
-  global.getHNOpenAIRouterProtocol = (model, override, baseUrl) => {
+  global.getHNOpenAIRouterProtocol = (
+    model,
+    override,
+    baseUrl,
+    legacyAutoProtocol = false
+  ) => {
     const derived = global.getHNOpenAIRouterModelConfig(model).protocol;
     const router = isMultiProtocolRouter(baseUrl);
     const pinned = PROTOCOL_PATHS[override] ? override : null;
-    if (pinned && (pinned !== derived || router)) return pinned;
+    if (pinned) {
+      if (!legacyAutoProtocol) return pinned;
+      if (pinned !== derived || router) return pinned;
+    }
     return router ? derived : "chat-completions";
   };
 
-  global.getHNOpenAIRouterEndpointPath = (model, override, baseUrl) =>
-    PROTOCOL_PATHS[global.getHNOpenAIRouterProtocol(model, override, baseUrl)];
+  global.getHNOpenAIRouterEndpointPath = (
+    model,
+    override,
+    baseUrl,
+    legacyAutoProtocol = false
+  ) =>
+    PROTOCOL_PATHS[
+      global.getHNOpenAIRouterProtocol(
+        model,
+        override,
+        baseUrl,
+        legacyAutoProtocol
+      )
+    ];
 
   /**
    * Normalize the configured base URL: trim, drop trailing slashes and any API

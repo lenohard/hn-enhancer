@@ -9,9 +9,44 @@ function fieldChecked(id, fallback = false) {
   return element ? element.checked : fallback;
 }
 
+// Read a numeric field clamped to the range the UI documents. The form is
+// rendered with `novalidate`, so a value the browser would reject (off-step,
+// out of range) must not abort the save — it is coerced here and reported.
+function numberField(id, { min, max, fallback, integer = false }) {
+  const element = document.getElementById(id);
+  const raw = parseFloat(element ? element.value : "");
+  const parsed = Number.isFinite(raw) ? raw : fallback;
+  let value = Math.min(max, Math.max(min, parsed));
+  if (integer) {
+    value = Math.round(value);
+  }
+  if (element && value !== parsed) {
+    element.value = value;
+  }
+  return { value, adjusted: value !== parsed };
+}
+
 // Save settings to Chrome storage
 async function saveSettings() {
   try {
+    const maxTokensField = numberField("max-tokens", {
+      min: 1000,
+      max: 200000,
+      fallback: 100000,
+      integer: true,
+    });
+    const temperatureField = numberField("temperature", {
+      min: 0,
+      max: 2,
+      fallback: 0.7,
+    });
+    const maxYouTubeCommentsField = numberField("max-youtube-comments", {
+      min: 20,
+      max: 2000,
+      fallback: 500,
+      integer: true,
+    });
+
     const settings = {
       providerSelection: "openai-router",
       language: fieldValue("language-select", "en"),
@@ -19,15 +54,16 @@ async function saveSettings() {
       bodyEnabled: fieldChecked("body-enabled", true),
       imagesEnabled: fieldChecked("images-enabled"),
       screenshotEnabled: fieldChecked("screenshot-enabled"),
-      maxTokens: parseInt(fieldValue("max-tokens"), 10) || 100000,
-      temperature: parseFloat(fieldValue("temperature")) || 0.7,
-      maxYouTubeComments:
-        parseInt(fieldValue("max-youtube-comments"), 10) || 500,
+      maxTokens: maxTokensField.value,
+      temperature: temperatureField.value,
+      maxYouTubeComments: maxYouTubeCommentsField.value,
       "openai-router": {
         apiKey: fieldValue("router-key"),
         model: fieldValue("router-model").trim(),
         url: fieldValue("router-url", "http://127.0.0.1:4000").trim(),
         protocol: fieldValue("router-protocol", "auto"),
+        protocolVersion:
+          globalThis.HN_OPENAI_ROUTER_PROTOCOL_VERSION || 2,
         supportsImages: fieldChecked("router-model-supports-images"),
       },
     };
@@ -41,6 +77,20 @@ async function saveSettings() {
     } catch (error) {
       console.warn("Could not update cached model capabilities:", error);
     }
+
+    const clampedFields = [
+      maxTokensField.adjusted && "Max Tokens",
+      temperatureField.adjusted && "Temperature",
+      maxYouTubeCommentsField.adjusted && "YouTube Max Comments",
+    ].filter(Boolean);
+    if (clampedFields.length) {
+      alert(
+        `Saved, but these values are outside the allowed range and were clamped: ${clampedFields.join(
+          ", "
+        )}.`
+      );
+    }
+
     // Optional: Show save confirmation
     const saveButton = document.querySelector('button[type="submit"]');
     const originalText = saveButton.textContent;
@@ -116,9 +166,14 @@ function getRouterModelConfig(model) {
 }
 
 // "auto" (default) follows the model metadata; any other value pins a protocol.
-function getRouterProtocol(model, override, url) {
+function getRouterProtocol(model, override, url, legacyAutoProtocol = false) {
   return globalThis.getHNOpenAIRouterProtocol
-    ? globalThis.getHNOpenAIRouterProtocol(model, override, url)
+    ? globalThis.getHNOpenAIRouterProtocol(
+        model,
+        override,
+        url,
+        legacyAutoProtocol
+      )
     : override && override !== "auto"
       ? override
       : "chat-completions";
@@ -132,10 +187,14 @@ function resolveStoredProtocol(routerSettings) {
   if (!protocolPaths[stored]) {
     return "auto";
   }
+  const legacy = globalThis.isHNLegacyRouterProtocolSettings
+    ? globalThis.isHNLegacyRouterProtocolSettings(routerSettings)
+    : false;
   const effective = getRouterProtocol(
     routerSettings.model,
     stored,
-    routerSettings.url
+    routerSettings.url,
+    legacy
   );
   return effective === stored ? stored : "auto";
 }

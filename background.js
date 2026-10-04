@@ -298,10 +298,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const temperature = settingsData.settings?.temperature || 0.7;
           const routerSettings = settingsData.settings?.["openai-router"] || {};
           const routerUrl = routerSettings.url || "http://127.0.0.1:4000";
+          const legacyProtocol = isHNLegacyRouterProtocolSettings(routerSettings);
           const protocol = getHNOpenAIRouterProtocol(
             model,
             routerSettings.protocol,
-            routerUrl
+            routerUrl,
+            legacyProtocol
           );
           const supportsImages =
             settingsData.settings?.[aiProvider]?.supportsImages === true;
@@ -554,7 +556,8 @@ async function handleChatRequest(data) {
   const protocol = getHNOpenAIRouterProtocol(
     model,
     data.protocol || routerSettings.protocol,
-    routerUrl
+    routerUrl,
+    data.protocol ? false : isHNLegacyRouterProtocolSettings(routerSettings)
   );
   const maxTokens = data.maxTokens || settingsData.settings?.maxTokens || 100000;
 
