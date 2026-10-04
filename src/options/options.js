@@ -1,3 +1,70 @@
+let toastTimer;
+
+function showToast(message, type = "success") {
+  const toast = document.getElementById("options-toast");
+  if (!toast) return;
+
+  clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.className = "options-toast";
+  if (type === "error" || type === "info") {
+    toast.classList.add(`is-${type}`);
+  }
+  toast.hidden = false;
+  toastTimer = setTimeout(() => {
+    toast.hidden = true;
+  }, type === "error" ? 7000 : 4000);
+}
+
+function confirmAction(message) {
+  const dialog = document.getElementById("options-confirm-dialog");
+  const messageElement = document.getElementById("options-confirm-message");
+  if (!dialog || !messageElement) {
+    return Promise.resolve(false);
+  }
+
+  messageElement.textContent = message;
+  return new Promise((resolve) => {
+    dialog.addEventListener(
+      "close",
+      () => resolve(dialog.returnValue === "confirm"),
+      { once: true }
+    );
+    dialog.showModal();
+  });
+}
+
+function setupSettingsTabs() {
+  const tabs = [...document.querySelectorAll(".options-tab")];
+  const panels = [...document.querySelectorAll(".options-tab-panel")];
+  if (!tabs.length || !panels.length) return;
+
+  const activateTab = (tab) => {
+    tabs.forEach((item) => {
+      const selected = item === tab;
+      item.classList.toggle("is-active", selected);
+      item.setAttribute("aria-selected", String(selected));
+      item.tabIndex = selected ? 0 : -1;
+    });
+    panels.forEach((panel) => {
+      panel.hidden = panel.id !== tab.getAttribute("aria-controls");
+    });
+  };
+
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => activateTab(tab));
+    tab.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const nextIndex =
+        (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
+        tabs.length;
+      tabs[nextIndex].focus();
+      activateTab(tabs[nextIndex]);
+    });
+  });
+}
+
 // Read form fields defensively: a missing element must never abort a save.
 function fieldValue(id, fallback = "") {
   const element = document.getElementById(id);
@@ -83,24 +150,22 @@ async function saveSettings() {
       temperatureField.adjusted && "Temperature",
       maxYouTubeCommentsField.adjusted && "YouTube Max Comments",
     ].filter(Boolean);
-    if (clampedFields.length) {
-      alert(
-        `Saved, but these values are outside the allowed range and were clamped: ${clampedFields.join(
+    const saveNotice = clampedFields.length
+      ? `Settings saved. Adjusted to the allowed range: ${clampedFields.join(
           ", "
         )}.`
-      );
-    }
+      : "Settings saved.";
 
-    // Optional: Show save confirmation
     const saveButton = document.querySelector('button[type="submit"]');
     const originalText = saveButton.textContent;
     saveButton.textContent = "Saved!";
+    showToast(saveNotice, clampedFields.length ? "info" : "success");
     setTimeout(() => {
       saveButton.textContent = originalText;
     }, 2000);
   } catch (error) {
     console.error("Error saving settings:", error);
-    alert(`Failed to save settings: ${error.message}`);
+    showToast(`Failed to save settings: ${error.message}`, "error");
   }
 }
 
@@ -806,50 +871,27 @@ async function testProviderConnection() {
   }
 }
 
-// Function to show test result with visual feedback
+// Show the connection result in a fixed-size status area so the form does not jump.
 function showTestResult(message, type) {
-  // Create or update the test result element
   let resultElement = document.getElementById("test-result");
   if (!resultElement) {
     resultElement = document.createElement("div");
     resultElement.id = "test-result";
-    resultElement.className = "mt-3 p-3 rounded-md text-sm";
-
-    // Insert after the test button
-    const testButton = document.getElementById("test-connection");
-    testButton.parentNode.insertBefore(resultElement, testButton.nextSibling);
+    document
+      .getElementById("test-connection")
+      ?.parentNode.appendChild(resultElement);
   }
 
-  // Remove existing classes
-  resultElement.className = "mt-3 p-3 rounded-md text-sm";
+  resultElement.className = "options-test-result";
+  resultElement.dataset.type = type || "default";
+  resultElement.textContent = message;
 
-  // Apply type-specific styling
-  switch (type) {
-    case "success":
-      resultElement.className +=
-        " bg-green-50 text-green-800 border border-green-200";
-      break;
-    case "error":
-      resultElement.className +=
-        " bg-red-50 text-red-800 border border-red-200";
-      break;
-    case "warning":
-      resultElement.className +=
-        " bg-yellow-50 text-yellow-800 border border-yellow-200";
-      break;
-    default:
-      resultElement.className +=
-        " bg-gray-50 text-gray-800 border border-gray-200";
-  }
-
-  // Set the message
-  resultElement.innerHTML = message.replace(/\n/g, "<br>");
-
-  // Auto-hide after 10 seconds for success messages
   if (type === "success") {
     setTimeout(() => {
-      if (resultElement && resultElement.parentNode) {
-        resultElement.remove();
+      if (resultElement?.isConnected) {
+        resultElement.textContent =
+          "Test uses the current fields; no need to save first.";
+        resultElement.removeAttribute("data-type");
       }
     }, 10000);
   }
@@ -896,7 +938,7 @@ async function renderSubstackDomainsList() {
     listEl.querySelectorAll(".remove-substack-domain").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const domain = btn.dataset.domain;
-        if (!domain || !confirm(`Remove ${domain} from enabled Substack sites?`)) {
+        if (!domain || !(await confirmAction(`Remove ${domain} from enabled Substack sites?`))) {
           return;
         }
         btn.disabled = true;
@@ -904,7 +946,7 @@ async function renderSubstackDomainsList() {
           await sendBackgroundMessage("REMOVE_SUBSTACK_DOMAIN", { hostname: domain });
           await renderSubstackDomainsList();
         } catch (error) {
-          alert(`Failed to remove domain: ${error.message}`);
+          showToast(`Failed to remove domain: ${error.message}`, "error");
           btn.disabled = false;
         }
       });
@@ -916,6 +958,8 @@ async function renderSubstackDomainsList() {
 
 // Initialize event listeners and load settings
 document.addEventListener("DOMContentLoaded", async () => {
+  setupSettingsTabs();
+
   // Load saved settings (this will also load Gemini models if needed)
   await loadSettings();
 
@@ -974,7 +1018,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }, 2000);
     } catch (error) {
       refreshRouterButton.textContent = "刷新失败";
-      alert(`Failed to fetch OpenAI Router models: ${error.message}`);
+      showToast(`Failed to fetch OpenAI Router models: ${error.message}`, "error");
       setTimeout(() => {
         refreshRouterButton.textContent = originalText;
       }, 3000);
@@ -1007,7 +1051,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   clearCacheButton.addEventListener("click", async () => {
-    if (confirm("Are you sure you want to clear all cached summaries? This action cannot be undone.")) {
+    const confirmed = await confirmAction(
+      "Are you sure you want to clear all cached summaries? This action cannot be undone."
+    );
+    if (confirmed) {
       try {
         // Get all storage data and remove summary keys
         const allData = await chrome.storage.local.get(null);
@@ -1035,7 +1082,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     addSubstackDomainBtn.addEventListener("click", async () => {
       const hostname = normalizeDomainInput(substackDomainInput.value);
       if (!hostname || hostname.includes(" ")) {
-        alert("Enter a valid domain (e.g. stratechery.com)");
+        showToast("Enter a valid domain (e.g. stratechery.com)", "info");
         return;
       }
       addSubstackDomainBtn.disabled = true;
@@ -1044,7 +1091,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         substackDomainInput.value = "";
         await renderSubstackDomainsList();
       } catch (error) {
-        alert(`Failed to add domain: ${error.message}`);
+        showToast(`Failed to add domain: ${error.message}`, "error");
       } finally {
         addSubstackDomainBtn.disabled = false;
       }
