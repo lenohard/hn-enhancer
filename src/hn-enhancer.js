@@ -74,9 +74,10 @@ window.HNEnhancer = class HNEnhancer {
         return;
       }
 
-      // Selection FAB on sites that opt in (e.g. Substack)
+      // Selection toolbar (翻译 / 解读 + 保存) is adapter-independent, so mount it
+      // on every supported site — HN included. Image saving stays opt-in.
+      this._setupSelectionListener();
       if (this.adapter?.supportsSelectionFab?.()) {
-        this._setupSelectionListener();
         this._setupImageSaveListener();
       }
 
