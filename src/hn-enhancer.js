@@ -68,7 +68,7 @@ window.HNEnhancer = class HNEnhancer {
 
       this.initializeBookmarks();
 
-      // Universal mode: lightweight init for selection-based summary/chat
+      // Universal mode: page tools plus independent selection lookup/save
       if (this.adapter?.isUniversal) {
         this.initUniversalMode();
         return;
@@ -185,6 +185,7 @@ window.HNEnhancer = class HNEnhancer {
   }
 
   _showSaveToast(message) {
+    if (this._disposed) return;
     let toast = document.querySelector(".hn-save-toast");
     if (!toast) {
       toast = document.createElement("div");
@@ -221,12 +222,13 @@ window.HNEnhancer = class HNEnhancer {
     }
   }
 
-  async saveSelectedText(text) {
+  async saveSelectedText(text, snapshot = null) {
     const trimmed = String(text || "").trim();
-    if (trimmed.length < 20) return;
+    if (!trimmed) return false;
 
-    const ctx = this._getPageSaveContext();
-    const commentId = HNState.makeSaveId("text", ctx.pageUrl, trimmed.slice(0, 200));
+    // Keep the original source even if the page navigates while a lookup is open.
+    const ctx = snapshot || this._getPageSaveContext();
+    const commentId = HNState.makeSaveId("text", ctx.pageUrl, trimmed);
     try {
       this.savedComments = await this.hnState.saveItem({
         commentId,
@@ -239,10 +241,12 @@ window.HNEnhancer = class HNEnhancer {
         postTitle: ctx.postTitle,
       });
       this.hubPanel?.updateStats();
-      this._showSaveToast("Text saved");
+      this._showSaveToast("已保存原文和网页来源");
+      return true;
     } catch (error) {
       console.error("Error saving text:", error);
-      this._showSaveToast("Failed to save text");
+      this._showSaveToast("保存失败，请重试");
+      return false;
     }
   }
 
@@ -274,90 +278,9 @@ window.HNEnhancer = class HNEnhancer {
   }
 
   _setupSelectionListener() {
-    let fab = null;
-    const self = this;
-
-    function removeFab() {
-      if (fab) { fab.remove(); fab = null; }
-    }
-
-    function showFab() {
-      const sel = window.getSelection();
-      const text = sel ? sel.toString().trim() : '';
-      if (text.length < 20) { removeFab(); return; }
-
-      // Don't re-create if already showing for same selection
-      if (fab && fab.dataset.selText === text) return;
-      removeFab();
-
-      const range = sel.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-
-      fab = document.createElement('div');
-      fab.className = 'hn-selection-fab';
-      fab.dataset.selText = text;
-
-      const sumBtn = document.createElement('button');
-      sumBtn.className = 'hn-selection-fab-btn';
-      sumBtn.textContent = 'Summarize';
-      sumBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        self._summarizeSelection();
-        removeFab();
-      });
-
-      const chatBtn = document.createElement('button');
-      chatBtn.className = 'hn-selection-fab-btn';
-      chatBtn.textContent = 'Chat';
-      chatBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        self._chatSelection();
-        removeFab();
-      });
-
-      const saveBtn = document.createElement('button');
-      saveBtn.className = 'hn-selection-fab-btn';
-      saveBtn.textContent = 'Save';
-      saveBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        self.saveSelectedText(text);
-        removeFab();
-      });
-
-      fab.appendChild(sumBtn);
-      fab.appendChild(chatBtn);
-      fab.appendChild(saveBtn);
-
-      // Position above the selection end, clamped to viewport
-      const fabWidth = 280;
-      const top = Math.max(8, rect.top - 44);
-      const left = Math.min(
-        window.innerWidth - fabWidth,
-        Math.max(8, rect.left + rect.width / 2 - fabWidth / 2)
-      );
-      fab.style.top = `${top + window.scrollY}px`;
-      fab.style.left = `${left + window.scrollX}px`;
-
-      document.body.appendChild(fab);
-    }
-
-    const scheduleShowFab = () => {
-      requestAnimationFrame(showFab);
-    };
-
-    this._trackDocListener('mouseup', (e) => {
-      if (fab && fab.contains(e.target)) return;
-      scheduleShowFab();
-    }, true);
-    this._trackDocListener('selectionchange', scheduleShowFab);
-    this._trackDocListener('keyup', (e) => {
-      if (e.key === 'Shift' || e.key.startsWith('Arrow')) {
-        scheduleShowFab();
-      }
-    });
-    this._trackDocListener('mousedown', (e) => {
-      if (fab && !fab.contains(e.target)) removeFab();
-    });
+    if (this.selectionTools) return;
+    this.selectionTools = new SelectionTools(this);
+    this.selectionTools.mount();
   }
 
   _setupImageSaveListener() {
@@ -373,31 +296,49 @@ window.HNEnhancer = class HNEnhancer {
     }, true);
   }
 
-  _captureSelectionForAdapter() {
-    const sel = window.getSelection()?.toString().trim() || '';
-    if (sel.length >= 20 && this.adapter?.setSelectionOverride) {
-      this.adapter.setSelectionOverride(sel);
-      this._useSelectionScope = true;
-    } else {
-      this._useSelectionScope = false;
-    }
-  }
-
   clearSelectionScope() {
     this.adapter?.clearSelectionScope?.();
     this._useSelectionScope = false;
   }
 
-  _summarizeSelection() {
-    this._captureSelectionForAdapter();
-    if (this.summarization) {
-      this.summarization.summarizeAllComments();
+  /** A standalone language lookup: no summary scope, cache, or chat history. */
+  async lookupSelectedText(snapshot) {
+    const text = String(snapshot?.text || "").trim();
+    if (!text) throw new Error("请先选择要翻译或解读的文字。");
+    if (text.length > 12000) {
+      throw new Error("选中文字超过 12,000 字符，请缩小选区后重试；仍可保存完整原文。");
     }
-  }
 
-  _chatSelection() {
-    this._captureSelectionForAdapter();
-    this.openPostChatModal();
+    const settings = await this.apiClient.sendBackgroundMessage("FETCH_AI_SETTINGS");
+    if (!settings?.model) {
+      throw new Error("请先在扩展的 Options 中配置模型和 API 连接，再重试。");
+    }
+    const configuredLimit = Number(settings.maxTokens);
+    const maxTokens = Number.isFinite(configuredLimit) && configuredLimit > 0
+      ? Math.min(Math.max(16, Math.floor(configuredLimit)), 8192)
+      : 8192;
+    const response = await this.apiClient.sendBackgroundMessage("HN_CHAT_REQUEST", {
+      messages: [
+        { role: "system", content: HNPrompts.selectionLookup.system },
+        { role: "user", content: JSON.stringify({
+          selectedText: text,
+          surroundingText: String(snapshot.context || "").slice(0, 1600),
+          pageTitle: String(snapshot.postTitle || "").slice(0, 500),
+          sourceUrl: snapshot.pageUrl || "",
+        }) },
+      ],
+      model: settings.model,
+      url: settings.routerUrl,
+      protocol: settings.protocol || "chat-completions",
+      maxTokens,
+      streaming: false,
+      sessionId: `selection-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    });
+    const result = MarkdownUtils.stripThinkingContent(response).trim();
+    if (!result || result === "No response content") {
+      throw new Error("模型没有返回解读内容，请重试或在 Options 中更换模型。");
+    }
+    return result;
   }
 
   /**
@@ -426,6 +367,7 @@ window.HNEnhancer = class HNEnhancer {
    * page-level links into the freshly rendered DOM.
    */
   handleSpaNavigation() {
+    this.selectionTools?.reset();
     this.adapter?.onSpaNavigate?.();
     this._injectPageActionLinks();
   }
@@ -442,6 +384,9 @@ window.HNEnhancer = class HNEnhancer {
    * constructed.
    */
   dispose() {
+    this._disposed = true;
+    this.selectionTools?.dispose();
+    clearTimeout(this._saveToastTimer);
     (this._docListeners || []).forEach(({ type, fn, opts }) =>
       document.removeEventListener(type, fn, opts)
     );

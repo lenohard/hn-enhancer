@@ -316,12 +316,13 @@ class HNState {
    * Retrieves saved (favorite) comments.
    * @returns {Promise<Map<string, object>>} Map keyed by commentId.
    */
-  static async getSavedComments() {
+  static async getSavedComments({ strict = false } = {}) {
     try {
       const data = await chrome.storage.local.get(this.SAVED_COMMENTS_KEY);
       return this.deserializeSavedComments(data[this.SAVED_COMMENTS_KEY] || {});
     } catch (error) {
       console.error("Error retrieving saved comments:", error);
+      if (strict) throw error;
       return new Map();
     }
   }
@@ -335,7 +336,7 @@ class HNState {
       const id = String(entry?.commentId || commentId || "");
       if (!id) return;
       let text = entry?.text || "";
-      if (text.length > this.SAVED_COMMENT_TEXT_MAX) {
+      if (entry?.type !== "text" && text.length > this.SAVED_COMMENT_TEXT_MAX) {
         text = text.slice(0, this.SAVED_COMMENT_TEXT_MAX);
       }
       normalized.set(id, {
@@ -358,7 +359,7 @@ class HNState {
   /**
    * @param {Map<string, object>} savedMap
    */
-  static async saveSavedComments(savedMap) {
+  static async saveSavedComments(savedMap, { strict = false } = {}) {
     if (!(savedMap instanceof Map)) {
       console.error(
         "saveSavedComments: Expected a Map of saved comments, received:",
@@ -371,7 +372,7 @@ class HNState {
       const id = String(value?.commentId || key || "");
       if (!id) return;
       let text = value?.text || "";
-      if (text.length > this.SAVED_COMMENT_TEXT_MAX) {
+      if (value?.type !== "text" && text.length > this.SAVED_COMMENT_TEXT_MAX) {
         text = text.slice(0, this.SAVED_COMMENT_TEXT_MAX);
       }
       serialized[id] = {
@@ -394,6 +395,7 @@ class HNState {
       });
     } catch (error) {
       console.error("Error saving saved comments:", error);
+      if (strict) throw error;
     }
   }
 
@@ -473,17 +475,26 @@ class HNState {
    * @param {object} itemData
    * @returns {Promise<Map<string, object>>}
    */
-  static async saveItem(itemData) {
+  static saveItem(itemData) {
+    // Serialize saves in this content-script instance so rapid selections do not
+    // overwrite one another between the asynchronous storage read and write.
+    const pending = (this._saveItemQueue || Promise.resolve())
+      .then(() => this._saveItem(itemData));
+    this._saveItemQueue = pending.catch(() => {});
+    return pending;
+  }
+
+  static async _saveItem(itemData) {
     const commentId = String(itemData?.commentId || "");
     if (!commentId) {
       console.error("saveItem: Missing commentId.", itemData);
       return new Map();
     }
     let text = itemData?.text || "";
-    if (text.length > this.SAVED_COMMENT_TEXT_MAX) {
+    if (itemData?.type !== "text" && text.length > this.SAVED_COMMENT_TEXT_MAX) {
       text = text.slice(0, this.SAVED_COMMENT_TEXT_MAX);
     }
-    const saved = await this.getSavedComments();
+    const saved = await this.getSavedComments({ strict: true });
     saved.set(commentId, {
       commentId,
       type: itemData?.type || "link",
@@ -497,7 +508,7 @@ class HNState {
       postTitle: itemData?.postTitle || null,
       savedAt: Date.now(),
     });
-    await this.saveSavedComments(saved);
+    await this.saveSavedComments(saved, { strict: true });
     return saved;
   }
 

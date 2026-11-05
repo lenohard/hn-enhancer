@@ -738,30 +738,15 @@ Extended the chat modal so sites that summarize an *article body* (not a comment
 
 **Note**: History is saved only after the first successful AI response; failed calls leave nothing persisted. `hide()` preserves in-memory session; reopen via chat link re-runs `_dispatchGather` and reloads from storage.
 
-### Universal Selection Mode (2026-07-25)
+### Universal Pages and Selection Tools (2026-11-05)
 
-**Feature**: On any webpage (not just HN/Substack), users can select text and get a floating action button (FAB) to **Summarize** or **Chat** with the selection.
-
-**Architecture**:
-- `src/adapters/selection-adapter.js` — fallback `SiteAdapter` subclass with `isUniversal = true`, matches all URLs, registered **last** in `AdapterRegistry` so HN/Substack take priority.
-- `src/hn-enhancer.js` — `initUniversalMode()`: lightweight init creating only `SummaryPanel` + `Summarization` + selection listener. Guarded by `if (this.adapter?.isUniversal)` early in the constructor.
-- `manifest.*.json` — second `content_scripts` entry: `matches: ["<all_urls>"]`, `exclude_matches` for HN/Substack, includes `selection-adapter.js` before `adapter-registry.js`.
-
-**Key design decisions**:
-- **No hub panel, no help icon, no keyboard shortcuts** in universal mode — minimal footprint on arbitrary pages.
-- **FAB positioning**: absolute, above selection end, clamped to viewport. Auto-dismisses on click elsewhere.
-- **`getPostText()`**: selection > article container > `document.body.innerText` (capped at 50k chars).
-- **`getPostId()`**: hash of `location.href` for cache keying (stable per page, not per selection).
-- **No caching of summaries** in universal mode (selections are ephemeral); chat history is keyed by site + URL hash.
-
-**Files changed**:
-| File | What |
-|---|---|
-| `src/adapters/selection-adapter.js` | New — fallback adapter |
-| `src/adapters/adapter-registry.js` | Register SelectionAdapter last |
-| `src/hn-enhancer.js` | `initUniversalMode()`, `_setupSelectionListener()`, `_summarizeSelection()`, `_chatSelection()` |
-| `src/styles.css` | `.hn-selection-fab`, `.hn-selection-fab-btn` |
-| `manifest.chrome.json` / `manifest.firefox.json` | Second `content_scripts` entry |
+- `SelectionAdapter` remains the fallback adapter for page-level Summary/Chat/Preview, registered last; `isUniversal` selects the lightweight initialization path.
+- Selection actions are independent: `src/selection-tools.js` owns a shadow-root toolbar with exactly **翻译 / 解读** and **保存**, plus a compact fixed-height lookup popup. `HNEnhancer._setupSelectionListener()` mounts it on adapters opting into `supportsSelectionFab()`.
+- `HNEnhancer.lookupSelectedText(snapshot)` uses the configured model via `FETCH_AI_SETTINGS` / non-streaming `HN_CHAT_REQUEST`, with `HNPrompts.selectionLookup.system`. It never sets adapter selection scope or writes summary/chat history. Stream messages currently lack per-request IDs, so separate lookup requests deliberately avoid the shared chat stream.
+- Capture `{text, context, pageUrl, postTitle, siteKey, postId, rect}` before focus changes; nearby context is bounded to 1,600 characters. Lookup accepts 1–12,000 characters, uses Chinese explanations independently of the Summary language, and renders plain text safely. Longer selections can be saved in full.
+- `saveSelectedText(text, snapshot)` preserves original provenance, uses the full text in its upsert ID, and returns a success boolean. `HNState.saveItem()` serializes writes within the instance and propagates storage errors; text items retain their complete contents during save/read/export, and Saved lists in the hub and Options offer expandable originals with page title/link context.
+- `SelectionTools.reset()` handles same-adapter SPA navigation; `dispose()` removes listeners/timers/UI and invalidates pending results. Hide both `.hn-selection-fab` and `.hn-selection-lookup` during screenshot capture.
+- New content-script files must be added to **both** content-script entries in **both** manifests and to `src/build.js`'s explicit source-file whitelist.
 
 ### YouTube Adapter & SPA Re-init (2026-08-26)
 **YouTube comment support**: `YouTubeAdapter` fetches comments via YouTube's internal innertube API (`youtubei/v1/next`) — YouTube lazy-loads comments, so the DOM never contains the full thread. Comments are exposed as plain block objects (`{id, author, text, publishedTime, permalink, children}`), not DOM nodes.

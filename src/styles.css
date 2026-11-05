@@ -1554,6 +1554,7 @@ html.hn-capturing-screenshot .summary-panel,
 html.hn-capturing-screenshot #hn-enhancer-chat-modal,
 html.hn-capturing-screenshot .hn-extract-panel,
 html.hn-capturing-screenshot .hn-selection-fab,
+html.hn-capturing-screenshot .hn-selection-lookup,
 html.hn-capturing-screenshot .hn-save-toast {
     visibility: hidden !important;
 }
@@ -2047,36 +2048,7 @@ html.hn-screenshot-focus::after {
     cursor: not-allowed;
 }
 
-/* ---- Universal selection floating action button ---- */
-.hn-selection-fab {
-    position: absolute;
-    z-index: 2147483647;
-    display: flex;
-    gap: 4px;
-    background: #1a1a1b;
-    border-radius: 6px;
-    padding: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-.hn-selection-fab-btn {
-    background: transparent;
-    color: #d7dadc;
-    border: none;
-    padding: 4px 10px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    border-radius: 4px;
-    white-space: nowrap;
-    transition: background 0.15s, color 0.15s;
-}
-
-.hn-selection-fab-btn:hover {
-    background: #ff6600;
-    color: #fff;
-}
+/* Selection toolbar and lookup popup use isolated shadow-root styles. */
 
 .hn-save-toast {
     position: fixed;
@@ -2116,6 +2088,24 @@ html.hn-screenshot-focus::after {
 
 .hn-hub-list-page {
     color: #666;
+}
+
+.hn-saved-text-details {
+    margin-top: 6px;
+    font-size: 11px;
+}
+
+.hn-saved-text-details > summary {
+    cursor: pointer;
+}
+
+.hn-saved-text-full {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
 }
 
 /* ---- Image support: extract-panel thumbnails + hub Images toggle ---- */

@@ -1143,7 +1143,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (entries.length === 0) {
         savedCommentsList.innerHTML =
-          `<div class="text-gray-500 px-1 py-2">Nothing saved yet. Save HN comments, page links (hub Save), or selected text via the FAB.</div>`;
+          `<div class="text-gray-500 px-1 py-2">Nothing saved yet. Save HN comments, page links (hub Save), or select text and choose 保存.</div>`;
         return;
       }
 
@@ -1154,13 +1154,17 @@ document.addEventListener("DOMContentLoaded", async () => {
           const typeLabel = HNState.getSavedItemTypeLabel(type);
           const title = HNState.getSavedItemDisplayTitle(entry);
           const author = entry.author || "unknown";
-          const snippet = truncateText(entry.text, 180);
+          const fullText = String(entry.text || "");
+          const snippet = truncateText(fullText, 180);
+          const fullTextDetails = type === "text" && (fullText.length > 180 || /[\r\n]/.test(fullText))
+            ? `<details class="mt-2 text-gray-700"><summary style="cursor: pointer;">查看完整原文</summary><div style="white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 8px;">${escapeHtml(fullText)}</div></details>`
+            : "";
           const savedAt = entry.savedAt
             ? new Date(entry.savedAt).toLocaleString()
             : "";
           const pageLine =
             type !== "comment" && entry.pageUrl
-              ? `<div class="mt-1 text-xs text-gray-400">${escapeHtml(truncateText(entry.pageUrl, 120))}</div>`
+              ? `<div class="mt-1 text-xs text-gray-400">${entry.postTitle ? `<div>${escapeHtml(entry.postTitle)}</div>` : ""}${escapeHtml(truncateText(entry.pageUrl, 120))}</div>`
               : "";
           const openLabel =
             type === "comment" ? "Open &amp; focus" : "Open";
@@ -1179,6 +1183,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             <div class="mt-1 text-xs text-gray-500">${metaLine}</div>
             ${pageLine}
             <div class="mt-2 text-gray-700">${escapeHtml(snippet) || "(no text stored)"}</div>
+            ${fullTextDetails}
             <div class="mt-3 flex flex-wrap items-center gap-3">
               <a class="text-indigo-600 hover:text-indigo-500 font-medium" ${openAttr}>${openLabel}</a>
               <button type="button" class="unsave-comment-btn text-red-600 hover:text-red-500 font-medium" data-comment-id="${escapeHtml(entry.commentId)}">Unsave</button>
@@ -1295,6 +1300,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("cancel-settings")?.addEventListener("click", () => {
     window.close();
   });
-
 
 });

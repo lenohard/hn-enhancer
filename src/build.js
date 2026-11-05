@@ -166,6 +166,7 @@ function copySrcDirectory(targetDir) {
     "chat-modal.js",
     "hub-panel.js",
     "extract-panel.js",
+    "selection-tools.js",
     "prompts.js",
     "substack-domains.js",
     "hn-enhancer.js",

@@ -828,7 +828,7 @@ class HubPanel {
 
     if (entries.length === 0) {
       list.innerHTML =
-        '<div class="hn-hub-empty">Nothing saved yet. Use <strong>Save</strong> on the hub, <strong>save</strong> on HN comments, or the selection FAB (Summarize / Chat / Save).</div>';
+        '<div class="hn-hub-empty">Nothing saved yet. Use <strong>Save</strong> on the hub, <strong>save</strong> on HN comments, or select text and choose <strong>保存</strong>.</div>';
       return;
     }
 
@@ -844,10 +844,14 @@ class HubPanel {
           type === "comment"
             ? this.escapeHtml(entry.author || "unknown")
             : this.escapeHtml(entry.siteKey || "");
-        const snippet = this.escapeHtml(this.truncateText(entry.text, 100));
+        const fullText = String(entry.text || "");
+        const snippet = this.escapeHtml(this.truncateText(fullText, 100));
+        const fullTextDetails = type === "text" && (fullText.length > 100 || /[\r\n]/.test(fullText))
+          ? `<details class="hn-saved-text-details"><summary>查看完整原文</summary><div class="hn-saved-text-full">${this.escapeHtml(fullText)}</div></details>`
+          : "";
         const pageHint =
           type !== "comment" && entry.pageUrl
-            ? `<div class="hn-hub-list-meta hn-hub-list-page">${this.escapeHtml(this.truncateText(entry.pageUrl, 80))}</div>`
+            ? `${entry.postTitle ? `<div class="hn-hub-list-meta hn-hub-list-page" title="${this.escapeHtml(entry.postTitle)}">${this.escapeHtml(this.truncateText(entry.postTitle, 80))}</div>` : ""}<div class="hn-hub-list-meta hn-hub-list-page">${this.escapeHtml(this.truncateText(entry.pageUrl, 80))}</div>`
             : "";
         const metaLine =
           type === "comment"
@@ -862,6 +866,7 @@ class HubPanel {
           ${metaLine}
           ${pageHint}
           <div class="hn-hub-list-snippet">${snippet || "(no text stored)"}</div>
+          ${fullTextDetails}
         </div>`;
       })
       .join("");

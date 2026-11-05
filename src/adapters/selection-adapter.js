@@ -1,7 +1,7 @@
 /**
  * SelectionAdapter — fallback adapter for arbitrary pages.
  *
- * Provides text-selection → summarize/chat on any webpage.
+ * Provides page tools on arbitrary webpages; SelectionTools handles lookup/save.
  * Registered LAST in AdapterRegistry so HN/Substack take priority.
  */
 window.SelectionAdapter = class SelectionAdapter extends SiteAdapter {

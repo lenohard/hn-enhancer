@@ -32,6 +32,12 @@ Transform your Hacker News experience with intelligent navigation, AI-powered su
   * Use Chrome's built-in AI for local processing on Chrome browser
   * Support for multiple languages - English, Chinese, Spanish, French, German, Japanese, Korean, Russian, Portuguese, and Italian
 
+* **Selection Translation & Saving**
+  * Select a word, phrase, or passage on supported pages to choose **翻译 / 解读** or **保存**.
+  * Get a Chinese translation and contextual explanations of terminology, slang, idioms, and cultural references in a compact, independent popup; Chinese selections receive an English translation with Chinese explanations.
+  * Copy the result, retry a failed lookup, or save the original text with its page title and source link. Saved text appears in **Saved** with expandable full originals and does not require an AI connection.
+  * Lookups use the configured model with nearby text for context, independently of page summaries and chat history. Selections over 12,000 characters can still be saved in full; narrow the selection to translate them.
+
 * **Enhanced Comment Navigation**
     * Quick-jump between comments by the same author
     * Visual indicators for post authors and comment counts

@@ -317,7 +317,7 @@ window.SiteAdapter = class SiteAdapter {
     }
 
     /**
-     * Whether to show the selection FAB (Summarize / Chat / Save on text select).
+     * Whether to show the selection toolbar (Translate / Explain and Save).
      * @returns {boolean}
      */
     supportsSelectionFab() { return false; }
