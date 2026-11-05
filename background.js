@@ -1,8 +1,10 @@
 importScripts("src/router-model-config.js");
+importScripts("src/config-sync.js");
 
 async function onInstalled() {
   console.log("[BACKGROUND] 扩展已安装/启动");
   await registerSubstackCustomDomainScripts();
+  await refreshConfigSyncAlarm();
   const data = await chrome.storage.sync.get("settings");
   const settings = data.settings;
 
@@ -221,6 +223,9 @@ chrome.runtime.onStartup.addListener(() => {
   registerSubstackCustomDomainScripts().catch((error) => {
     console.error("[BACKGROUND] Failed to register Substack custom domains:", error);
   });
+  refreshConfigSyncAlarm()
+    .then(() => scheduleConfigSync("startup", 1500))
+    .catch((error) => console.error("[CONFIG-SYNC] startup failed:", error));
 });
 
 registerSubstackCustomDomainScripts().catch((error) => {
@@ -229,6 +234,84 @@ registerSubstackCustomDomainScripts().catch((error) => {
 
 // 添加启动日志
 console.log("[BACKGROUND] Background script 已加载");
+
+// ---------------------------------------------------------------------------
+// Cross-device config sync (WebDAV) — see src/config-sync.js
+// ---------------------------------------------------------------------------
+const CONFIG_SYNC_ALARM = "hn-config-sync";
+const CONFIG_SYNC_DEBOUNCE_MS = 4000;
+const CONFIG_SYNC_TRIGGER_KEYS = [
+  "settings",
+  "substackCustomDomains",
+  "bookmarkedAuthors",
+  "savedComments",
+];
+let configSyncTimer = null;
+
+async function refreshConfigSyncAlarm() {
+  if (typeof HNConfigSync === "undefined" || !chrome.alarms) return;
+  const config = await HNConfigSync.getConfig();
+  if (config.enabled && config.autoSync && config.baseUrl) {
+    const existing = await chrome.alarms.get(CONFIG_SYNC_ALARM);
+    if (!existing || existing.periodInMinutes !== config.periodMinutes) {
+      await chrome.alarms.create(CONFIG_SYNC_ALARM, { periodInMinutes: config.periodMinutes });
+    }
+  } else {
+    await chrome.alarms.clear(CONFIG_SYNC_ALARM);
+  }
+}
+
+async function runConfigSync(reason) {
+  if (typeof HNConfigSync === "undefined") return null;
+  try {
+    const result = await HNConfigSync.sync({ reason });
+    if (result && result.ok) {
+      console.log(
+        `[CONFIG-SYNC] ${reason}: rev ${result.rev}, pushed=${result.pushed}, pulled=${
+          (result.appliedToLocal || []).join(",") || "none"
+        }, conflicts=${result.conflictCount || 0}`
+      );
+    } else if (result && !result.skipped) {
+      console.warn(`[CONFIG-SYNC] ${reason} failed:`, result.error);
+    }
+    return result;
+  } catch (error) {
+    console.error(`[CONFIG-SYNC] ${reason} threw:`, error);
+    return { ok: false, error: error && error.message ? error.message : String(error) };
+  }
+}
+
+function scheduleConfigSync(reason, delayMs = CONFIG_SYNC_DEBOUNCE_MS) {
+  if (configSyncTimer) clearTimeout(configSyncTimer);
+  configSyncTimer = setTimeout(() => {
+    configSyncTimer = null;
+    runConfigSync(reason).catch((error) => console.error("[CONFIG-SYNC] scheduled run failed:", error));
+  }, delayMs);
+}
+
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (typeof HNConfigSync === "undefined") return;
+    // Ignore the writes this module itself performs while applying remote values.
+    if (HNConfigSync.isApplyingRemote()) return;
+    const touched = CONFIG_SYNC_TRIGGER_KEYS.some((key) => Object.prototype.hasOwnProperty.call(changes, key));
+    if (!touched) return;
+    HNConfigSync.getConfig()
+      .then((config) => {
+        if (config.enabled && config.autoSync && config.baseUrl) {
+          scheduleConfigSync(`change:${areaName}`);
+        }
+      })
+      .catch((error) => console.error("[CONFIG-SYNC] cannot read config:", error));
+  });
+}
+
+if (typeof chrome !== "undefined" && chrome.alarms && chrome.alarms.onAlarm) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name !== CONFIG_SYNC_ALARM) return;
+    runConfigSync("alarm").catch((error) => console.error("[CONFIG-SYNC] alarm run failed:", error));
+  });
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("[BACKGROUND] 收到消息, 类型:", message.type);
@@ -250,6 +333,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "HN_SHOW_OPTIONS":
       chrome.tabs.create({ url: chrome.runtime.getURL("options.html") });
       break;
+
+    case "HN_CONFIG_SYNC_NOW":
+      return handleAsyncMessage(
+        message,
+        async () => {
+          if (configSyncTimer) {
+            clearTimeout(configSyncTimer);
+            configSyncTimer = null;
+          }
+          const result = await HNConfigSync.sync({ reason: "manual" });
+          if (!result.ok && !result.skipped) {
+            throw new Error(result.error || "Sync failed");
+          }
+          return result;
+        },
+        sendResponse
+      );
+
+    case "HN_CONFIG_SYNC_TEST":
+      return handleAsyncMessage(
+        message,
+        async () => await HNConfigSync.testConnection(),
+        sendResponse
+      );
+
+    case "HN_CONFIG_SYNC_CONFIG_SAVED":
+      return handleAsyncMessage(
+        message,
+        async () => {
+          await refreshConfigSyncAlarm();
+          const config = await HNConfigSync.getConfig();
+          if (config.enabled && config.autoSync && config.baseUrl) {
+            scheduleConfigSync("config-saved", 500);
+          }
+          return { enabled: config.enabled, periodMinutes: config.periodMinutes };
+        },
+        sendResponse
+      );
 
     case "CAPTURE_VISIBLE_TAB":
       return handleAsyncMessage(

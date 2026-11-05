@@ -956,6 +956,172 @@ async function renderSubstackDomainsList() {
   }
 }
 
+// -------------------------------------------------------------------------
+// Cross-device sync (WebDAV) — config editing happens here, network sync runs
+// in the background worker so both sides share one merge baseline.
+// -------------------------------------------------------------------------
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatSyncTimestamp(isoString) {
+  if (!isoString) return "never";
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return isoString;
+  return date.toLocaleString();
+}
+
+async function setupConfigSync() {
+  const enabledInput = document.getElementById("sync-enabled");
+  const urlInput = document.getElementById("sync-url");
+  const directoryInput = document.getElementById("sync-directory");
+  const usernameInput = document.getElementById("sync-username");
+  const passwordInput = document.getElementById("sync-password");
+  const saveButton = document.getElementById("sync-save-config");
+  const testButton = document.getElementById("sync-test-connection");
+  const syncNowButton = document.getElementById("sync-now");
+  const statusEl = document.getElementById("sync-status");
+
+  if (!enabledInput || typeof HNConfigSync === "undefined") return;
+
+  const showStatus = (html, isError = false) => {
+    if (!statusEl) return;
+    statusEl.innerHTML = html;
+    statusEl.classList.toggle("text-red-600", isError);
+    statusEl.classList.remove("hidden");
+  };
+
+  const fillForm = async () => {
+    const config = await HNConfigSync.getConfig();
+    enabledInput.checked = Boolean(config.enabled);
+    urlInput.value = config.baseUrl || "";
+    directoryInput.value = config.directory || "";
+    usernameInput.value = config.username || "";
+    passwordInput.value = "";
+    passwordInput.placeholder = config.password
+      ? "WebDAV password (saved — leave blank to keep)"
+      : "WebDAV password";
+  };
+
+  const renderStatus = async (extra = null) => {
+    const { config, state } = await HNConfigSync.getStatus();
+    const lines = [];
+    lines.push(
+      `<div><span class="font-medium">Last sync:</span> ${escapeHtml(formatSyncTimestamp(state.lastSyncAt))}` +
+        ` · <span class="font-medium">rev</span> ${state.rev || 0}` +
+        (state.lastReason ? ` · ${escapeHtml(state.lastReason)}` : "") +
+        `</div>`
+    );
+    lines.push(
+      `<div><span class="font-medium">Target:</span> ${escapeHtml(config.baseUrl || "(not configured)")}` +
+        (config.directory ? `/${escapeHtml(config.directory)}` : "") +
+        ` · ${escapeHtml(HNConfigSync.DOC_FILENAME)}</div>`
+    );
+    if (config.enabled && !config.autoSync) {
+      lines.push(`<div>Automatic sync is off — only the “Sync Now” button uploads.</div>`);
+    }
+    if (extra) {
+      lines.push(`<div class="${extra.isError ? "text-red-600" : "text-green-700"}">${escapeHtml(extra.text)}</div>`);
+    }
+    if (state.lastError) {
+      lines.push(`<div class="text-red-600">Last error: ${escapeHtml(state.lastError)}</div>`);
+    }
+    const conflicts = state.conflicts || [];
+    if (conflicts.length) {
+      lines.push(
+        `<div class="mt-1"><span class="font-medium">${conflicts.length} conflict(s), local value kept:</span><ul class="list-disc pl-5">` +
+          conflicts
+            .slice(0, 6)
+            .map((conflict) => `<li><code>${escapeHtml(conflict.path)}</code></li>`)
+            .join("") +
+          `</ul></div>`
+      );
+    }
+    showStatus(lines.join(""), Boolean(state.lastError) && !extra);
+  };
+
+  const persistForm = async () => {
+    const patch = {
+      enabled: Boolean(enabledInput.checked),
+      baseUrl: urlInput.value.trim(),
+      directory: directoryInput.value.trim(),
+      username: usernameInput.value.trim(),
+    };
+    if (passwordInput.value) patch.password = passwordInput.value;
+    const config = await HNConfigSync.saveConfig(patch);
+    passwordInput.value = "";
+    passwordInput.placeholder = config.password
+      ? "WebDAV password (saved — leave blank to keep)"
+      : "WebDAV password";
+    return config;
+  };
+
+  saveButton?.addEventListener("click", async () => {
+    try {
+      await persistForm();
+      await sendBackgroundMessage("HN_CONFIG_SYNC_CONFIG_SAVED", {});
+      showToast("Sync configuration saved", "success");
+      await renderStatus({ text: "Configuration saved." });
+    } catch (error) {
+      showStatus(`Save failed: ${escapeHtml(error.message)}`, true);
+    }
+  });
+
+  testButton?.addEventListener("click", async () => {
+    testButton.disabled = true;
+    try {
+      await persistForm();
+      const result = await sendBackgroundMessage("HN_CONFIG_SYNC_TEST", {});
+      showStatus(
+        `<div class="text-green-700">WebDAV reachable · directory <code>${escapeHtml(result.directory)}</code>` +
+          ` · remote file ${result.remoteDocExists ? `exists (${result.size} bytes)` : "not created yet"}</div>`
+      );
+    } catch (error) {
+      showStatus(`Connection test failed: ${escapeHtml(error.message)}`, true);
+    } finally {
+      testButton.disabled = false;
+    }
+  });
+
+  syncNowButton?.addEventListener("click", async () => {
+    syncNowButton.disabled = true;
+    const originalText = syncNowButton.textContent;
+    syncNowButton.textContent = "Syncing…";
+    try {
+      await persistForm();
+      const result = await sendBackgroundMessage("HN_CONFIG_SYNC_NOW", {});
+      if (result.skipped) {
+        showStatus(`Sync skipped: ${escapeHtml(result.error || "not configured")}`, true);
+      } else {
+        const parts = [];
+        parts.push(`rev ${result.rev}`);
+        parts.push(result.pushed ? "uploaded changes" : "no remote change");
+        parts.push(
+          result.appliedToLocal?.length
+            ? `pulled ${result.appliedToLocal.join(", ")}`
+            : "nothing to pull"
+        );
+        if (result.conflictCount) parts.push(`${result.conflictCount} conflict(s)`);
+        await renderStatus({ text: `Sync complete · ${parts.join(" · ")}` });
+        showToast("Sync complete", "success");
+      }
+    } catch (error) {
+      showStatus(`Sync failed: ${escapeHtml(error.message)}`, true);
+    } finally {
+      syncNowButton.disabled = false;
+      syncNowButton.textContent = originalText;
+    }
+  });
+
+  await fillForm();
+  await renderStatus();
+}
+
 // Initialize event listeners and load settings
 document.addEventListener("DOMContentLoaded", async () => {
   setupSettingsTabs();
@@ -1299,6 +1465,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Add cancel button event listener
   document.getElementById("cancel-settings")?.addEventListener("click", () => {
     window.close();
+  });
+
+  setupConfigSync().catch((error) => {
+    console.error("Failed to initialize cross-device sync UI:", error);
   });
 
 });

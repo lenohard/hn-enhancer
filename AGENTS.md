@@ -521,6 +521,18 @@ HN Enhancer 扩展遵循模块化架构进行 AI 提供商集成：
    - 处理对话式 AI 交互
    - 发送通用聊天请求，由后台脚本路由
 
+## Cross-device config sync (WebDAV)
+
+`src/config-sync.js` 把用户配置镜像到 WebDAV 服务器上的单个 JSON 文件，用于 Chrome / Arc / Orion / 未来 Firefox 之间互通（`chrome.storage.sync` 只在同一 Google 账号的 Chromium 内生效，换浏览器就断）。
+
+- **同步区段只有 4 个**：`settings`、`substackCustomDomains`（sync 区）、`bookmarkedAuthors`、`savedComments`（local 区）。摘要缓存、聊天历史、karma 统计永不同步。
+- **合并**：用 `chrome.storage.local.configSyncState.base`（上次同步快照）做三方合并——只有「本地自上次同步后未改动」的字段才接受远端值，所以陈旧设备不会覆盖别人的新改动；真正冲突的字段保留本地值，并记录到 `state.conflicts`（选项页可见）。删除靠同一规则传播（对方未改动则接受删除）。
+- **远端文件** `hn-enhancer-sync.json`：`{schema, rev, updatedAt, device, sections:{settings,domains,authors,comments}}`，纯 JSON，可手工查看/修改。
+- **网络只在 background 做**：manifest 的 `<all_urls>` host permission 让 service worker 的 fetch 不受 CORS 限制（content script 里 fetch 会被页面 CORS 挡）。触发点：4 个区段的 `storage.onChanged`（4s 防抖）、`chrome.alarms` 周期同步（默认 10 分钟，需 `alarms` 权限）、浏览器启动、选项页「Sync Now」。
+- **凭据**存 `chrome.storage.local.configSyncConfig`，不参与同步（否则新设备没有凭据可拉）。选项页留空密码表示保持原值。
+- **AList WebDAV 没有条件写**：实测 `If-Match: "bogus"` 仍返回 201，所以不能用 ETag 做乐观锁；并发窗口靠「本地未改动才接受远端」抵消。
+- **测试**：`scripts/config-sync-merge.test.js`（合并语义单元测试 + 两设备端到端，chrome.storage 与 WebDAV 均为内存 mock）。
+
 ## Caching Lessons Learned
 
 ### 1. Storage Mechanism
