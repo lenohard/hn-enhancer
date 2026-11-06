@@ -51,37 +51,50 @@ function makeResponse(status, body = "") {
   };
 }
 
-function createWebDAVServer() {
+// `mkcolStatus` simulates a server that refuses MKCOL everywhere (e.g. AList's read-only
+// WebDAV root): MKCOL answers 405 and PROPFIND says the collection does not exist.
+function createWebDAVServer({ mkcolStatus = null } = {}) {
   const files = new Map();
+  const dirs = new Set(["/dav"]);
   const requests = [];
+  const trim = (path) => (path.length > 1 ? path.replace(/\/+$/, "") : path);
 
   const fetchImpl = async (url, init = {}) => {
     const method = init.method || "GET";
-    const path = new URL(url).pathname;
+    const path = trim(new URL(url).pathname);
     requests.push(`${method} ${path}`);
 
-    if (method === "MKCOL") return makeResponse(files.has(path) ? 405 : 201);
+    if (method === "MKCOL") {
+      if (mkcolStatus) return makeResponse(mkcolStatus);
+      if (dirs.has(path) || files.has(path)) return makeResponse(405);
+      dirs.add(path);
+      return makeResponse(201);
+    }
     if (method === "PUT") {
+      if (!dirs.has(path.slice(0, path.lastIndexOf("/")))) return makeResponse(404);
       files.set(path, String(init.body));
-      return makeResponse(files.size === 1 ? 201 : 204);
+      return makeResponse(201);
     }
     if (method === "GET") {
       if (!files.has(path)) return makeResponse(404);
       return makeResponse(200, files.get(path));
     }
     if (method === "PROPFIND") {
-      if (!files.has(path)) return makeResponse(404);
-      const size = files.get(path).length;
-      return makeResponse(
-        207,
-        `<D:multistatus><D:response><D:prop><D:getetag>"e${size}"</D:getetag>` +
-          `<D:getcontentlength>${size}</D:getcontentlength></D:prop></D:response></D:multistatus>`
-      );
+      if (files.has(path)) {
+        const size = files.get(path).length;
+        return makeResponse(
+          207,
+          `<D:multistatus><D:response><D:prop><D:getetag>"e${size}"</D:getetag>` +
+            `<D:getcontentlength>${size}</D:getcontentlength></D:prop></D:response></D:multistatus>`
+        );
+      }
+      if (dirs.has(path)) return makeResponse(207, "<D:multistatus></D:multistatus>");
+      return makeResponse(404);
     }
     return makeResponse(405);
   };
 
-  return { files, requests, fetchImpl };
+  return { files, dirs, requests, fetchImpl };
 }
 
 const BASE_CONFIG = {
@@ -329,6 +342,22 @@ describe("ConfigSync end-to-end", () => {
 
     const state = deviceA.areas.local.configSyncState;
     expect(state.lastError).toContain("认证失败");
+  });
+
+  test("a server that refuses MKCOL surfaces a readable directory error", async () => {
+    // AList's WebDAV root: MKCOL always 405 and PROPFIND confirms the directory is absent.
+    const server = createWebDAVServer({ mkcolStatus: 405 });
+
+    const deviceA = device({ sync: { settings: { language: "en" } } });
+    activateDevice(deviceA, server);
+
+    const result = await HNConfigSync.sync({ reason: "test" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("不允许创建目录");
+    expect(result.error).toContain("magpie-sync/hn-enhancer");
+    // Nothing was uploaded, and the local sections stay untouched.
+    expect(server.files.size).toBe(0);
+    expect(deviceA.areas.sync.settings).toEqual({ language: "en" });
   });
 
   test("missing baseUrl skips the run", async () => {

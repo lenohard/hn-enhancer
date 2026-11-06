@@ -531,7 +531,10 @@ HN Enhancer 扩展遵循模块化架构进行 AI 提供商集成：
 - **网络只在 background 做**：manifest 的 `<all_urls>` host permission 让 service worker 的 fetch 不受 CORS 限制（content script 里 fetch 会被页面 CORS 挡）。触发点：4 个区段的 `storage.onChanged`（4s 防抖）、`chrome.alarms` 周期同步（默认 10 分钟，需 `alarms` 权限）、浏览器启动、选项页「Sync Now」。
 - **凭据**存 `chrome.storage.local.configSyncConfig`，不参与同步（否则新设备没有凭据可拉）。选项页留空密码表示保持原值。
 - **AList WebDAV 没有条件写**：实测 `If-Match: "bogus"` 仍返回 201，所以不能用 ETag 做乐观锁；并发窗口靠「本地未改动才接受远端」抵消。
-- **测试**：`scripts/config-sync-merge.test.js`（合并语义单元测试 + 两设备端到端，chrome.storage 与 WebDAV 均为内存 mock）。
+- **AList 的 WebDAV 根是只读的**：`MKCOL /dav/<x>/` 返回 405、`PUT /dav/<x>/f.json` 返回 404，只有挂载点（`/dav/magpie-sync`、`/dav/Documents`、`/dav/Downloads`）里面才能建目录/写文件。所以 `baseUrl` 要写到挂载点为止，`directory` 再往下分一层：本机用 `baseUrl=https://mathemac-mini.tailb0587a.ts.net/dav/magpie-sync` + `directory=hn-enhancer`（或 `baseUrl=…/dav` + `directory=magpie-sync/hn-enhancer`）。写成 `baseUrl=…/dav` + `directory=hn-enhancer` 会 404。
+- **目录 URL 不能走 `_url()`**：`_url()` 会把 `config.directory` 再拼到前面，只适合文件等「目录内相对路径」；`ensureDirectory()` 用 `_baseUrl()`（相对 `baseUrl` 直接拼），否则会建出 `…/hn-enhancer/hn-enhancer` 这种重复层级。
+- **405 不等于「目录已存在」**：AList 对只读根也回 405。`ensureDirectory()` 收到 404/405/409 一律先用 `PROPFIND Depth: 0` 确认是否真的存在，不存在就抛带提示的错误，不能静默放过（否则最后只在 PUT 里看到一个没头没脑的 404）。
+- **测试**：`scripts/config-sync-merge.test.js`（合并语义单元测试 + 两设备端到端，chrome.storage 与 WebDAV 均为内存 mock；mock 用 `dirs` 集合模拟目录，`mkcolStatus` 选项模拟「拒绝 MKCOL 的只读根」）。跑法：`NODE_OPTIONS=--experimental-vm-modules npx jest scripts/config-sync-merge.test.js`。
 
 ## Caching Lessons Learned
 

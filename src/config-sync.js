@@ -225,6 +225,16 @@
             return path ? `${base}/${path}` : `${base}/`;
         }
 
+        /** Absolute URL for a path relative to the WebDAV base, without the sync directory prefix. */
+        _baseUrl(relativePath = "") {
+            const path = String(relativePath)
+                .split("/")
+                .filter(Boolean)
+                .map((segment) => encodeURIComponent(segment))
+                .join("/");
+            return path ? `${this.config.baseUrl}/${path}` : `${this.config.baseUrl}/`;
+        }
+
         _headers(extra = {}) {
             const headers = { ...extra };
             if (this.config.username || this.config.password) {
@@ -262,19 +272,39 @@
             }
         }
 
+        /** True when the collection already exists (PROPFIND Depth 0 answers 207). */
+        async _collectionExists(relativePath) {
+            const url = this._baseUrl(relativePath);
+            const response = await this._request("PROPFIND", url, { headers: { Depth: "0" } });
+            this._assertAuth(response, url);
+            return response.status === 207 || response.status === 200;
+        }
+
         async ensureDirectory() {
             if (!this.config.directory) return;
             const segments = this.config.directory.split("/").filter(Boolean);
             let current = "";
             for (const segment of segments) {
                 current = current ? `${current}/${segment}` : segment;
-                const collectionUrl = this._url(current);
+                // `_url` is relative to the sync directory; the directory itself must not repeat.
+                const collectionUrl = this._baseUrl(current);
                 const response = await this._request("MKCOL", collectionUrl);
                 this._assertAuth(response, collectionUrl);
-                // 201 created, 405 already exists, 301/409 tolerated (parent created it)
-                if (![201, 200, 204, 405, 301, 302, 409].includes(response.status)) {
-                    throw new Error(`创建 WebDAV 目录失败（HTTP ${response.status}）：${collectionUrl}`);
+                if ([201, 200, 204, 301, 302].includes(response.status)) continue;
+                // 405/409 are ambiguous: "already exists" on most servers, but AList answers
+                // 405 for its read-only WebDAV root too. Only a PROPFIND tells them apart.
+                if (response.status === 409) {
+                    throw new Error(`创建 WebDAV 目录失败（HTTP 409，上级目录不存在）：${collectionUrl}`);
                 }
+                if (response.status === 405 || response.status === 404) {
+                    if (await this._collectionExists(current)) continue;
+                    throw new Error(
+                        `WebDAV 服务器不允许创建目录「${current}」（HTTP ${response.status}）：` +
+                        `AList 一类服务的 WebDAV 根目录是只读的，请把目录填成某个存储挂载点下的子目录` +
+                        `（例如 magpie-sync/hn-enhancer）。${collectionUrl}`
+                    );
+                }
+                throw new Error(`创建 WebDAV 目录失败（HTTP ${response.status}）：${collectionUrl}`);
             }
         }
 
@@ -337,8 +367,12 @@
             this._assertAuth(response, url);
             if (![200, 201, 204].includes(response.status)) {
                 const detail = await response.text().catch(() => "");
+                const hint =
+                    response.status === 404
+                        ? `（目录「${this.config.directory || "/"}」不存在或不可写）`
+                        : "";
                 throw new Error(
-                    `写入远端同步文件失败（HTTP ${response.status}）：${url}${detail ? ` — ${detail.slice(0, 200)}` : ""}`
+                    `写入远端同步文件失败（HTTP ${response.status}）${hint}：${url}${detail ? ` — ${detail.slice(0, 200)}` : ""}`
                 );
             }
             return true;
