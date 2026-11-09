@@ -519,16 +519,7 @@ window.HNEnhancer = class HNEnhancer {
       try {
         const stats = this.domUtils.calculateCommentStatistics();
         this.updateStatisticsPanel(stats, this.bookmarkedAuthors);
-        this.buildKarmaStatistics(stats.authorComments, stats.rootAuthorOrder)
-          .then((topKarmaUsers) => {
-            this.updateStatisticsPanel(
-              { ...stats, topKarmaUsers },
-              this.bookmarkedAuthors
-            );
-          })
-          .catch((error) => {
-            console.warn("Failed to build karma statistics:", error);
-          });
+        this._setupKarmaFetchButton();
       } catch (error) {
         console.error("Error calculating or displaying statistics:", error);
         if (this.statisticsPanel) {
@@ -726,19 +717,7 @@ window.HNEnhancer = class HNEnhancer {
             console.warn("Failed to read cached karma stats:", error);
           });
 
-        this.buildKarmaStatistics(stats.authorComments, stats.rootAuthorOrder)
-          .then((topKarmaUsers) => {
-            if (topKarmaUsers && topKarmaUsers.length > 0) {
-              this.hnState.saveKarmaStats(postId, topKarmaUsers);
-            }
-            this.updateStatisticsPanel(
-              { ...stats, topKarmaUsers },
-              this.bookmarkedAuthors
-            );
-          })
-          .catch((error) => {
-            console.warn("Failed to refresh karma statistics:", error);
-          });
+        this._setupKarmaFetchButton();
       } catch (error) {
         console.error("Error refreshing statistics panel:", error);
       }
@@ -1020,6 +999,38 @@ window.HNEnhancer = class HNEnhancer {
         }
       },
     };
+  }
+
+  _setupKarmaFetchButton() {
+    const btn = this.statisticsPanel?.querySelector('.karma-fetch-btn');
+    if (!btn || btn.dataset.handlerAttached) return;
+    btn.dataset.handlerAttached = '1';
+    btn.addEventListener('click', async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = 'Fetching…';
+      try {
+        const stats = this.domUtils.calculateCommentStatistics();
+        const topKarmaUsers = await this.buildKarmaStatistics(
+          stats.authorComments,
+          stats.rootAuthorOrder
+        );
+        const postId = this.domUtils.getCurrentHNItemId?.();
+        if (topKarmaUsers && topKarmaUsers.length > 0) {
+          this.hnState.saveKarmaStats(postId, topKarmaUsers);
+        }
+        this.updateStatisticsPanel(
+          { ...stats, topKarmaUsers },
+          this.bookmarkedAuthors
+        );
+        // Re-attach button since updateStatisticsPanel re-renders the list
+        this._setupKarmaFetchButton();
+      } catch (err) {
+        console.warn('Karma fetch failed:', err);
+        btn.textContent = 'Fetch Karma';
+        btn.disabled = false;
+      }
+    });
   }
 
   async buildKarmaStatistics(authorCommentsMap = new Map(), rootAuthorOrder = []) {
@@ -1523,7 +1534,11 @@ window.HNEnhancer = class HNEnhancer {
       '[data-stat-list="highest-karma-users"] ul'
     );
     if (listElement && (!karmaData || karmaData.length === 0)) {
-      listElement.innerHTML = "<li>No karma data available</li>";
+      // Keep the fetch button if it exists (user hasn't clicked yet)
+      if (!listElement.querySelector('.karma-fetch-btn')) {
+        listElement.innerHTML = '<li><button class="karma-fetch-btn" title="Fetch karma data for top commenters">Fetch Karma</button></li>';
+        this._setupKarmaFetchButton();
+      }
     }
 
     // Wire the "Users with Highest Karma:" label so clicking it jumps to the

@@ -594,6 +594,24 @@
     text-decoration: underline;
 }
 
+.karma-fetch-btn {
+    background: #ff6600;
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: Verdana, Geneva, sans-serif;
+}
+.karma-fetch-btn:hover {
+    background: #e55c00;
+}
+.karma-fetch-btn:disabled {
+    background: #ccc;
+    cursor: wait;
+}
+
 .hn-bookmarked-comment {
     background-color: #fff9d6;
     box-shadow: inset 3px 0 0 #ff6600;

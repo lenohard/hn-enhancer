@@ -232,7 +232,7 @@ class UIComponents {
                 </div>
                 <div class="stat-item">
                     <div class="stat-label" data-stat-label-action="jump-to-top-karma" title="Jump to top karma user's comment">Users with Highest Karma:</div>
-                    <div class="stat-value" data-stat-list="highest-karma-users"><ul><li>Loading from cache…</li></ul></div>
+                    <div class="stat-value" data-stat-list="highest-karma-users"><ul><li><button class="karma-fetch-btn" title="Fetch karma data for top commenters">Fetch Karma</button></li></ul></div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-label">Bookmarked Users:</div>
